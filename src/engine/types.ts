@@ -1,0 +1,89 @@
+import type OpenAI from 'openai'
+
+export type Decision = 'pending' | 'approved' | 'removed' | 'distinguished'
+export type Relationship = 'CONFIRMS' | 'CONTRADICTS' | 'UPDATES' | 'TEMPORAL' | 'UNRELATED'
+
+export type Entity = {
+  type: string
+  surfaceText: string
+  canonical: string
+}
+
+export type Scope = 'global' | 'local'
+
+export type Item = {
+  id: string
+  type: 'post' | 'comment'
+  text: string
+  textNormalized: string
+  authorId: string
+  authorName: string
+  createdAt: number
+  threadRootId: string
+  parentId: string | null
+  embedding: number[]
+  entities: Entity[]
+  decision: Decision
+  decisionAt: number | null
+  decisionBy: string | null
+  decisionReason: string | null
+}
+
+export type RawItem = {
+  id: string
+  type: 'post' | 'comment'
+  text: string
+  authorId: string
+  authorName: string
+  createdAt: number
+  threadRootId: string
+  parentId: string | null
+}
+
+export type Rule = {
+  id: string
+  shortName: string
+  description: string
+  embedding: number[]
+  priority: number
+}
+
+export type RuleInput = {
+  id: string
+  shortName: string
+  description: string
+  priority: number
+}
+
+export type Hit = {
+  item: Item
+  weight: number
+}
+
+export type Recommendation = {
+  recommendation: 'remove' | 'approve' | 'skip'
+  rationale: string
+  ruleId: string | null
+}
+
+export type SearchFilter = {
+  decision?: Decision[]
+  maxAge?: number
+  excludeIds?: Set<string>
+}
+
+
+export type StoredItem = Omit<Item, 'embedding'>
+
+export type StoredRule = {
+  id: string
+  shortName: string
+  description: string
+  embedding: number[]
+  priority: number
+}
+
+export type CostTracker = {
+  track(usage: { input_tokens?: number; output_tokens?: number } | null | undefined): void
+  total: number
+}

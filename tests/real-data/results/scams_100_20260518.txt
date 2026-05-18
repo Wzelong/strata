@@ -1,0 +1,17 @@
+=== Strata Real-Data Validation ===
+Subreddit: r/scams
+Sample size: 100
+Prompt: v3 (specific identifiers only, global/local scope)
+Retrieval: findConnections (identifier + similar modes)
+
+Items processed: 100
+Entity keys extracted: 72
+Clusters (3+ items, 2+ authors): 1
+  - product:whatsapp — 3 items, 3 authors
+
+Stage A retrieval recall: 100.0%
+Stage A classification: 2/2 related (CONFIRMS: 1, CONTRADICTS: 1)
+Stage B inject-and-detect: skipped (not enough large clusters)
+
+Total cost: $0.0861
+Time: 19.4s

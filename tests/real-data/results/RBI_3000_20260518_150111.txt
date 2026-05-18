@@ -1,0 +1,78 @@
+
+=== Strata Real-Data Validation ===
+Subreddit: r/RBI
+Sample size: 3000
+
+Loading posts...
+  2137 raw posts
+Loading comments...
+  50650 raw comments
+  46007 valid items after filtering
+  3000 items sampled for processing
+
+--- COST ESTIMATE ---
+Embedding: 3000 items → ~$0.002
+Entity extraction: 3000 × 2 passes → ~$1.920
+Total ingestion: ~$1.922
+Classification (later): ~10-20 pairs → ~$0.02
+Grand total estimate: ~$1.942
+--------------------
+
+Proceed with ingestion? (3000 items, ~$1.92) [auto-confirmed with --yes]
+
+Ingesting (two-pass entity extraction, concurrency=100)...
+  500/3000 ingested (105s, $0.6186)
+  1000/3000 ingested (256s, $1.1928)
+  1500/3000 ingested (379s, $1.8017)
+  2000/3000 ingested (507s, $2.4344)
+  2500/3000 ingested (606s, $3.0275)
+  3000/3000 ingested (747s, $3.6390)
+  Done in 747.1s. Cost: $3.6390
+  Cache written: C:\Users\zewang\Documents\GitHub\strata\tests\real-data\cache\RBI_fa5304b15bf8c9a2.json
+
+=== Stage A: Pure Discovery ===
+  Total entity keys: 1785
+  Clusters (3+ items, 2+ authors): 129
+  Top 20 clusters:
+    organization:police — 62 items, 59 authors
+    person:mom — 40 items, 38 authors
+    person:dad — 37 items, 35 authors
+    person:op — 32 items, 32 authors
+    organization:reddit — 31 items, 31 authors
+    organization:facebook — 24 items, 23 authors
+    url:imgur.com — 19 items, 16 authors
+    organization:fbi — 19 items, 19 authors
+    organization:rbi — 18 items, 15 authors
+    url:reddit.com — 17 items, 15 authors
+
+  Running retrieval from top 20 clusters...
+
+  Retrieval recall (avg across 20 clusters): 83.0%
+
+  Classification: 10 pairs, est. ~$0.007
+  Run classification? (10 pairs, ~$0.007) [auto-confirmed with --yes]
+
+  Classification distribution:
+    UPDATES: 5
+    UNRELATED: 3
+    CONFIRMS: 2
+
+=== Stage B: Inject-and-Detect ===
+  Injecting 5 synthetic cases referencing real entities...
+    Case 0: organization:police → recall 100% (5/5)
+    Case 1: person:mom → recall 100% (5/5)
+    Case 2: person:dad → recall 100% (5/5)
+    Case 3: person:op → recall 0% (0/5)
+    Case 4: organization:reddit → recall 100% (5/5)
+
+  Inject-and-detect recall@5: 80.0% (target ≥70%)
+  PASS
+
+=== Summary ===
+Subreddit: r/RBI
+Items processed: 3000
+Entity clusters found: 129
+Stage A retrieval recall: 83.0%
+Stage A classification: 7/10 pairs classified as related
+Total cost: $3.6490
+
