@@ -1,5 +1,11 @@
 # Strata — Stage Report
 
+## Status: E2E Demo Working
+
+Post the case post on r/strata_hackathon_dev → trigger fires → engine finds 4 buried connections from 3,011 items → modmail delivered to mod inbox. Full pipeline runs on Devvit.
+
+---
+
 ## What Strata Is
 
 One engine. Two modes.
@@ -7,138 +13,106 @@ One engine. Two modes.
 - **Surface** — when something important happens, find everything the community already knows but hasn't connected
 - **Flag** — when something looks wrong, catch what's slipping past current tools
 
-## The Architecture
+---
 
-### Pipeline
+## The Demo Story
+
+A cyclist is hit on Mass Ave in Cambridge. Driver flees. Her roommate posts desperately on r/boston.
+
+What nobody knows: **4 strangers already posted about this car** over the past 3 weeks — buried in completely unrelated threads. A near-miss pedestrian. A dashcam owner with footage. A garage neighbor who sees the damaged car every morning. An earwitness who heard the crash.
+
+Strata surfaces all 4 in one modmail, seconds after the case post appears.
+
+---
+
+## Architecture
 
 ```
-Post/comment arrives
-  → Normalize text
-  → Embed full text (OpenAI text-embedding-3-small, 256 dims)
-  → Extract entities (LLM structured output: type, surfaceText, canonical)
-  → Store item + embedding + entity index
-
-On query (Surface or Flag):
-  → Embedding similarity: cosine rank against all stored items → top candidates
-  → LLM classification: for each candidate, classify relationship to query item
-  → Return: CONFIRMS / UPDATES / TEMPORAL / CONTRADICTS / UNRELATED
+Post arrives → onPostSubmit trigger
+  → Fetch full post text via Reddit API
+  → engine.ingest(): normalize → embed (256-dim) → extract entities
+  → engine.findSimilar(): cosine scan all 3K stored embeddings → top 15
+  → engine.classifyBatch(): one gpt-5.5 call classifies all candidates
+  → Filter UNRELATED → send modmail with connections
 ```
 
-### Key Architecture Changes (from initial design)
+### Key Design Decisions
 
-| What changed | Why |
+| Decision | Why |
 |---|---|
-| **Embedding is primary retrieval, not entity matching** | Entity canonical matching is brittle — "dark green SUV possibly Subaru" ≠ "dark_green_subaru_outback". Embedding catches all 4 fragments regardless of wording. Validated: all 4 signals ranked top 7 out of 3,011 items. |
-| **Entity extraction still extracts, but doesn't normalize to shared canonicals for retrieval** | Entities are valuable for brigade detection (shared entity in temporal window) and contradiction detection (same author + same entity + conflicting claims). But retrieval is embedding-driven. |
-| **Type-isolated entity embedding as supplementary retrieval** | When comparing entities across items, search within the same type bucket only (product↔product, location↔location). This catches cross-phrasing ("dark green SUV" ↔ "dark green Subaru Outback" = 0.76 similarity) without noise from unrelated types. |
-| **LLM classification is the precision layer** | Embedding recall is broad (finds anything semantically similar). LLM classification is the filter that separates real connections from coincidences. 100% accuracy in our tests — correctly classified all signals as related and all noise as UNRELATED. |
+| **Embedding is primary retrieval** | Entity canonical matching is brittle ("dark green SUV" ≠ "dark_green_subaru_outback"). Embedding finds all 4 fragments regardless of wording. |
+| **Batch classification (gpt-5.5, reasoning:low)** | One LLM call classifies all candidates together. Faster (7s vs 20s), cheaper ($0.001 vs $0.01), better reasoning (sees all candidates in context). |
+| **256-dim embeddings** | Higher dims make scores WORSE for this use case. 256-dim compresses the space and pushes related items closer. Validated empirically. |
+| **Embedded seed data (gzip+base64 in server bundle)** | Devvit blocks `raw.githubusercontent.com` fetch despite allowlist. Solution: compress 16MB → 4.6MB base64, embed in CJS bundle. Decompresses at runtime. |
+| **hScan pagination for embeddings** | `hGetAll` on 8MB hash exceeds Devvit's 5MB response limit. `hScan` with count=500 paginates safely. |
 
-### What Each Component Does
+### Classification Prompt
 
-| Component | Role | Model |
-|---|---|---|
-| `normalize.ts` | Clean text (whitespace, smart quotes) | — |
-| `embed.ts` | 256-dim vectors, batched up to 2048 | text-embedding-3-small |
-| `extract.ts` | Structured entity extraction | gpt-5.4-mini |
-| `search.ts` | findSimilar (cosine), findByIdentifier (entity index), detectCampaign (temporal) | — |
-| `classify.ts` | Two-stage relationship classification | gpt-5.4-mini |
-| `recommend.ts` | Moderation recommendation based on precedents + rules | gpt-5.4-mini |
-| `scope.ts` | Hub detection — entities appearing in >15% of items are filtered | — |
-| `storage/` | KVStore interface with MemoryKVStore and RedisKVStore implementations | — |
+```
+Classify each candidate's relationship to the case post.
 
----
+Relationships:
+- CONFIRMS: Corroborates the same event from a different angle
+- UPDATES: Adds new facts, evidence, or leads about the same situation
+- TEMPORAL: Describes a prior incident that establishes a pattern
+- CONTRADICTS: Conflicts with claims in the case post
+- UNRELATED: No meaningful connection
 
-## The Dataset
+Two items are connected when they share a specific identifier — the same person,
+vehicle, phone number, address, username, or physical description. Shared location
+or topic alone is not enough; shared specific details are.
 
-### Source
-
-Real r/boston data: 3,700 posts + 93,080 comments (April 1 – May 17, 2026). Sampled 3,000 items (deterministic seed). All embedded + entity-extracted. Cached at `tests/real-data/cache/boston_98290c99d8d108e9.json`.
-
-### Planted Signal Items (13 total)
-
-All items are part of one interconnected story: a hit-and-run on Mass Ave in Cambridge.
-
-**BACKFILL (8 items)** — pre-loaded in the store:
-
-| ID | Role | Text summary | Day |
-|---|---|---|---|
-| `t1_strata_surface1` | Near-miss pedestrian | "dark green Subaru Outback blew through crosswalk at Prospect" buried in cycling thread | Apr 8 |
-| `t3_strata_surface2` | Dashcam owner | "dashcam caught green SUV jump curb on Mass Ave" — own post, 4 upvotes | Apr 14 |
-| `t1_strata_surface3` | Garage neighbor | "dark green Subaru Outback on P3 has fresh bumper damage" in parking rant thread | Apr 20 |
-| `t3_strata_surface4` | Earwitness | "heard crash, found bike with bent wheel" — no vehicle description | Apr 8 |
-| `t1_strata_flag2a` | Contradiction setup | TKfromCambridge: "my roommate drives, we park on P3 on Tuesdays" | Apr 25 |
-| `t3_strata_flag3a` | Removed precedent | "silver Honda running reds on Mass Ave" — removed for witch-hunting | Apr 3 |
-| `t3_strata_flag3b` | Removed precedent | "white pickup on Cambridge St, maybe dealing" — removed | Apr 6 |
-| `t3_strata_flag3c` | Removed precedent | "blue minivan circling my block in Allston" — removed | Apr 10 |
-
-**LIVE (7 items)** — arrive after backfill (demo triggers):
-
-| ID | Role | Text summary | Day |
-|---|---|---|---|
-| `t3_strata_casepost` | The case post | "My roommate was hit on Mass Ave — driver fled — PLEASE HELP" | May 11 |
-| `t1_strata_brigade1-4` | Brigade (×4) | 4 fresh accounts defending the driver within 90 minutes | May 12 |
-| `t1_strata_flag2b` | Contradiction reveal | Same TKfromCambridge: "my roommate was home all evening, doesn't drive" | May 12 |
-| `t3_strata_flag4` | Pattern match | "dark green SUV blowing red lights — can we get a plate?" | May 13 |
-
-### Total seed: 3,011 items (15.7MB)
-
-3,000 real r/boston items + 8 planted backfill items + 3 marked as removed.
-
----
-
-## The Story
-
-### ACT 1: Before the crash
-
-Over 3 weeks, four strangers independently encounter a reckless dark green Subaru Outback on Mass Ave. Each posts about it — but in completely unrelated threads. A cycling recommendations thread. A low-engagement dashcam post. A monthly parking rant. A "what was that noise?" post. Nobody connects them. Nobody could.
-
-### ACT 2: The crash
-
-Sarah is biking home on Mass Ave. The car hits her. Driver flees. She's in the ICU. Her roommate posts desperately on r/boston.
-
-**Strata surfaces all 4 buried witnesses in under 2 seconds.**
-
-### ACT 3: The aftermath
-
-The post goes viral. The suspect's circle panics:
-- 4 fresh accounts flood the thread defending the driver (brigade)
-- The suspect's roommate claims "he was home all evening" — but said 2 weeks ago "he drives on Tuesdays, we park on P3" (contradiction)
-- A new post warning about the same car matches 3 previously-removed witch-hunting posts (pattern match)
-
-**Strata flags all three.**
+A moderator investigating the case post would find a connected item useful as
+evidence, context, or a lead. That is the test.
+```
 
 ---
 
 ## Validation Results
 
-### Test: `validate-full-dataset.ts`
-
-Loaded full 3,011-item seed + ingested 7 live items. 8 hypotheses tested.
+### Full Dataset Test (3,011 items, 8 hypotheses)
 
 ```
-H1 (All 4 surface items in top 10):       PASS ✓  — positions 1, 2, 3, 7
-H2 (Signals rank above noise):            PASS ✓  — best signal at #1
-H3 (Surface items classified as related):  PASS ✓  — UPDATES, CONFIRMS, CONFIRMS
-H4 (Noise classified as unrelated):        PASS ✓  — 3/3 noise correctly UNRELATED
-H5 (2+ removed items found for precedent): PASS ✓  — all 3 found
-H6 (Precedent similarity > 0.6):           PASS ✓  — best: 0.7058
-H7 (Brigade detected):                    PASS ✓  — 4 items, 4 authors, 90 min
-H8 (Contradiction detected):              PASS ✓  — CONTRADICTS
+H1 (All 4 surface items in top 10):       PASS ✓
+H2 (Signals rank above noise):            PASS ✓
+H3 (Surface items classified as related):  PASS ✓
+H4 (Noise classified as unrelated):        PASS ✓
+H5 (2+ removed items found for precedent): PASS ✓
+H6 (Precedent similarity > 0.6):           PASS ✓
+H7 (Brigade detected):                    PASS ✓
+H8 (Contradiction detected):              PASS ✓
 
 8/8 passed. Cost: $0.01.
 ```
 
-### Prior validation tests
+### Live E2E Test (Devvit, r/strata_hackathon_dev)
 
-| Test | What it proved | Result |
-|---|---|---|
-| `validate-hitrun.ts` | Embedding finds all 4 fragments in top 5 out of 24 items (small scale) | 4/5 pass |
-| `validate-entity-embed-v2.ts` | Type-isolated entity embedding catches cross-phrasing at 0.85+ | 5/5 pass |
-| `blind-boston.ts` | Engine runs on 3K real items, finds 344 organic clusters | Completed, $3.79 |
+```
+Post case post → trigger fires → 4 connections found:
+1. UPDATES (0.683) — DashcamDave_617: has dashcam footage
+2. CONFIRMS (0.672) — InmanSq_Walker: heard the crash, found the bike
+3. TEMPORAL (0.671) — ThursdayCommuter: almost hit by same car weeks earlier
+4. UPDATES (0.582) — CambridgeSide_Resident: sees damaged car in garage daily
 
-### Interesting organic finding
+Modmail delivered. All noise correctly filtered as UNRELATED.
+```
 
-Real r/boston item `t3_1te57i7` — "Anyone on Mass Ave 9pm Thursday see this vehicle (Florida plates)" — ranked #4 naturally (score 0.64). This is a REAL post from r/boston asking about a vehicle on Mass Ave. The engine found it as a potential connection, and the LLM correctly classified it as UNRELATED (different vehicle, different time, different incident). This demonstrates the system works on real data with real noise.
+### Batch Classification Test (gpt-5.5 vs gpt-5.4-mini)
+
+```
+gpt-5.4-mini: 8/8 correct, 5.8s, $0.0013
+gpt-5.5:     8/8 correct, 7.9s, $0.0009 (tighter reasoning, fewer tokens)
+```
+
+---
+
+## Dataset
+
+- **Source**: r/boston April 1 – May 17, 2026 (3,700 posts + 93,080 comments)
+- **Sampled**: 3,000 items (deterministic seed)
+- **Planted**: 8 backfill signal items + 3 marked as removed
+- **Total seed**: 3,011 items, 15.7MB
+- **Live items**: 7 (case post + brigade + contradiction + pattern match)
 
 ---
 
@@ -146,17 +120,28 @@ Real r/boston item `t3_1te57i7` — "Anyone on Mass Ave 9pm Thursday see this ve
 
 | Operation | Cost |
 |---|---|
-| Initial r/boston 3K ingestion (blind run) | $3.79 |
-| Build seed (8 signal items) | $0.02 |
-| Full dataset validation (8 hypotheses) | $0.01 |
-| Architecture validation tests (earlier) | $0.05 |
-| **Total spend to date** | **~$3.87** |
+| Boston 3K ingestion | $3.79 |
+| Signal items processing | $0.02 |
+| Full validation (8 hypotheses) | $0.01 |
+| Architecture tests | $0.05 |
+| Live E2E (per trigger) | ~$0.01 |
+| **Total development spend** | **~$3.88** |
+
+---
+
+## Known Issues
+
+1. **Author shows as "undefined" in modmail** — trigger payload field name mismatch. Cosmetic fix needed.
+2. **Seed takes ~30s on first load** — decompresses 4.6MB + writes 3K items to Redis. One-time cost.
+3. **No custom panel UI yet** — results shown via modmail only. React iframe panel is next.
 
 ---
 
 ## What's Next
 
-1. Build the Devvit app (`src/server/`) with Surface + Flag menu actions
-2. Seed the dataset into Redis on a test subreddit
-3. Record the 1-minute demo video
-4. Write the submission
+1. Fix author name in trigger payload
+2. Build React panel UI (iframe custom post) showing connections visually
+3. Implement Flag mode (brigade detection, contradiction, precedent match) in triggers
+4. Record 1-minute demo video
+5. Write submission post
+6. Deploy to r/strata_hackathon (public, for judges to test)

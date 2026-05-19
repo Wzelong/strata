@@ -5,7 +5,9 @@ import type { MenuItemRequest, UiResponse, TriggerResponse } from '@devvit/web/s
 import OpenAI from 'openai'
 import { StrataEngine } from '../engine/index.js'
 import { RedisKVStore, type RedisClient } from '../engine/storage/redis.js'
-import type { RawItem, Item, Hit } from '../engine/types.js'
+import type { RawItem, Item, Hit, StoredItem } from '../engine/types.js'
+import { SEED_DATA_B64 } from './seed-data.js'
+import { gunzipSync } from 'node:zlib'
 
 const app = new Hono()
 
@@ -13,6 +15,7 @@ const redisClient: RedisClient = {
   hSet: (key, fieldValues) => redis.hSet(key, fieldValues),
   hGet: (key, field) => redis.hGet(key, field),
   hGetAll: (key) => redis.hGetAll(key),
+  hScan: (key, cursor, pattern, count) => redis.hScan(key, cursor, pattern, count),
   zAdd: (key, ...members) => redis.zAdd(key, ...members),
   zRange: (key, start, stop, options) => redis.zRange(key, start, stop, options),
   zRem: (key, members) => redis.zRem(key, members),
@@ -27,12 +30,12 @@ async function getEngine(): Promise<StrataEngine> {
   return new StrataEngine(store, client)
 }
 
-function formatConnections(hits: Array<{ item: Item; relationship: string }>): string {
+function formatConnections(hits: Array<{ item: Item; relationship: string; weight: number }>): string {
   if (hits.length === 0) return 'No connections found.'
   return hits.map((h, i) => {
     const snippet = h.item.text.replace(/\n/g, ' ').slice(0, 150)
     const date = new Date(h.item.createdAt).toLocaleDateString()
-    return `**${i + 1}. ${h.relationship}** — ${h.item.authorName} (${date})\n> ${snippet}...`
+    return `**${i + 1}. ${h.relationship}** (similarity: ${h.weight.toFixed(3)}) — u/${h.item.authorName} (${date})\n> ${snippet}...`
   }).join('\n\n')
 }
 
@@ -58,30 +61,39 @@ app.post('/internal/triggers/post-submit', async (c) => {
 
   try {
     const engine = await getEngine()
-    const text = post.body ? `${post.title}\n\n${post.body}` : post.title
+
+    const fullPost = await reddit.getPostById(post.id)
+    const text = fullPost.body ? `${fullPost.title}\n\n${fullPost.body}` : fullPost.title
+    const authorName = fullPost.authorName || post.author || 'unknown'
+    const authorId = post.authorId || authorName
+
     const raw: RawItem = {
       id: post.id,
       type: 'post',
       text,
-      authorId: post.authorId || post.author || 'unknown',
-      authorName: post.author || 'unknown',
+      authorId,
+      authorName,
       createdAt: Date.now(),
       threadRootId: post.id,
       parentId: null,
     }
 
-    console.log(`[Strata] Ingesting post ${post.id}: "${text.slice(0, 60)}..."`)
+    console.log(`[Strata] Ingesting post ${post.id} by ${authorName}: "${text.slice(0, 60)}..."`)
+    console.log(`[Strata] Text length: ${text.length}`)
     const item = await engine.ingest(raw)
 
-    const similar = await engine.findSimilar(item.embedding, 10, { excludeIds: new Set([item.id]) })
+    const similar = await engine.findSimilar(item.embedding, 15, { excludeIds: new Set([item.id]) })
     console.log(`[Strata] Found ${similar.length} similar items`)
 
-    const connections: Array<{ item: Item; relationship: string }> = []
-    for (const hit of similar.slice(0, 5)) {
-      if (hit.weight < 0.55) break
-      const rel = await engine.classifyRelationship(item, hit.item)
-      if (rel !== 'UNRELATED') {
-        connections.push({ item: hit.item, relationship: rel })
+    const candidates = similar.filter(h => h.weight >= 0.45).slice(0, 10)
+    const classifications = await engine.classifyBatch(item, candidates.map(h => h.item))
+    const connections: Array<{ item: Item; relationship: string; weight: number }> = []
+    for (const cls of classifications) {
+      const hit = candidates.find(c => c.item.id === cls.id)
+      if (!hit) continue
+      console.log(`[Strata]   ${cls.id} (${hit.weight.toFixed(4)}): ${cls.relationship} — ${cls.reason.slice(0, 60)}`)
+      if (cls.relationship !== 'UNRELATED') {
+        connections.push({ item: hit.item, relationship: cls.relationship, weight: hit.weight })
       }
     }
 
@@ -138,22 +150,14 @@ app.post('/internal/triggers/comment-submit', async (c) => {
 // --- Menu Actions ---
 
 app.post('/internal/menu/seed-data', async (c) => {
-  const existing = await redis.get('strata:seed:complete')
-  if (existing) {
-    const count = await redis.get('strata:seed:item-count')
-    return c.json<UiResponse>({
-      showToast: { text: `Already seeded: ${count} items`, appearance: 'success' },
-    })
-  }
-
   return c.json<UiResponse>({
     showForm: {
       name: 'seedResults',
       form: {
         title: 'Seed Strata Data',
-        acceptLabel: 'Start Seeding',
+        acceptLabel: 'Reset & Seed',
         fields: [
-          { name: 'confirm', label: 'This will fetch and load ~3,000 items into Redis (~16MB). Takes about 30 seconds.', type: 'paragraph' as const, defaultValue: 'Click "Start Seeding" to proceed.' },
+          { name: 'confirm', label: 'This will clear all existing data and load ~3,000 items into Redis. Takes about 30 seconds.', type: 'paragraph' as const, defaultValue: 'Click "Reset & Seed" to proceed.' },
         ],
       },
     },
@@ -161,18 +165,16 @@ app.post('/internal/menu/seed-data', async (c) => {
 })
 
 app.post('/internal/forms/seed-results', async (c) => {
-  const existing = await redis.get('strata:seed:complete')
-  if (existing) {
-    return c.json<UiResponse>({ showToast: 'Already seeded.' })
-  }
-
   try {
-    console.log('[Strata] Fetching seed.json from GitHub...')
-    const url = 'https://raw.githubusercontent.com/Wzelong/strata/main/dataset/seed.json'
-    const resp = await fetch(url)
-    if (!resp.ok) throw new Error(`Fetch failed: ${resp.status}`)
-
-    const seed = await resp.json() as {
+    console.log('[Strata] Resetting Redis...')
+    const keys = ['strata:items', 'strata:embeddings', 'strata:canonicals', 'strata:idx:time', 'strata:seed:complete', 'strata:seed:item-count', 'strata:installed']
+    for (const key of keys) {
+      await redis.del(key)
+    }
+    console.log('[Strata] Reset complete, decompressing bundled seed data...')
+    const compressed = Buffer.from(SEED_DATA_B64, 'base64')
+    const json = gunzipSync(compressed).toString('utf8')
+    const seed = JSON.parse(json) as {
       items: StoredItem[]
       embeddings: Record<string, number[]>
       canonicals: Record<string, string[]>

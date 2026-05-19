@@ -5,6 +5,7 @@ export type RedisClient = {
   hSet(key: string, fieldValues: Record<string, string>): Promise<number>
   hGet(key: string, field: string): Promise<string | undefined>
   hGetAll(key: string): Promise<Record<string, string>>
+  hScan(key: string, cursor: number, pattern?: string | undefined, count?: number): Promise<{ cursor: number; fieldValues: Record<string, string> }>
   zAdd(key: string, ...members: Array<{ member: string; score: number }>): Promise<number>
   zRange(key: string, start: number, stop: number, options?: { by: 'score' }): Promise<Array<{ member: string; score: number }>>
   zRem(key: string, members: string[]): Promise<number>
@@ -63,11 +64,22 @@ export class RedisKVStore implements KVStore {
   }
 
   async getAllEmbeddings(): Promise<Map<string, number[]>> {
-    const raw = await this.redis.hGetAll('strata:embeddings')
     const result = new Map<string, number[]>()
-    for (const [id, val] of Object.entries(raw)) {
-      result.set(id, JSON.parse(val) as number[])
-    }
+    let cursor = 0
+    do {
+      const scan = await this.redis.hScan('strata:embeddings', cursor, undefined, 500)
+      cursor = scan.cursor
+      const entries = scan.fieldValues as any
+      if (Array.isArray(entries)) {
+        for (const entry of entries) {
+          result.set(entry.field, typeof entry.value === 'string' ? JSON.parse(entry.value) : entry.value)
+        }
+      } else {
+        for (const [field, value] of Object.entries(entries)) {
+          result.set(field, typeof value === 'string' ? JSON.parse(value as string) : value as number[])
+        }
+      }
+    } while (cursor !== 0)
     return result
   }
 

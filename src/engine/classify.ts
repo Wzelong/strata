@@ -1,11 +1,72 @@
 import type OpenAI from 'openai'
 import type { Item, Relationship, CostTracker } from './types.js'
-import {
-  CLASSIFICATION_STAGE1_SYSTEM,
-  CLASSIFICATION_STAGE1_SCHEMA,
-  CLASSIFICATION_STAGE2_SYSTEM,
-  CLASSIFICATION_STAGE2_SCHEMA,
-} from './prompts.js'
+
+const BATCH_SYSTEM = `Classify each candidate's relationship to the case post.
+
+Relationships:
+- CONFIRMS: Corroborates the same event from a different angle
+- UPDATES: Adds new facts, evidence, or leads about the same situation
+- TEMPORAL: Describes a prior incident that establishes a pattern
+- CONTRADICTS: Conflicts with claims in the case post
+- UNRELATED: No meaningful connection
+
+Two items are connected when they share a specific identifier — the same person, vehicle, phone number, address, username, or physical description. Shared location or topic alone is not enough; shared specific details are.
+
+A moderator investigating the case post would find a connected item useful as evidence, context, or a lead. That is the test.`
+
+const BATCH_SCHEMA: Record<string, unknown> = {
+  type: 'object',
+  properties: {
+    classifications: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          id: { type: 'string' },
+          relationship: { type: 'string', enum: ['CONFIRMS', 'CONTRADICTS', 'UPDATES', 'TEMPORAL', 'UNRELATED'] },
+          reason: { type: 'string' },
+        },
+        required: ['id', 'relationship', 'reason'],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: ['classifications'],
+  additionalProperties: false,
+}
+
+export type ClassificationResult = {
+  id: string
+  relationship: Relationship
+  reason: string
+}
+
+export async function classifyBatch(
+  client: OpenAI,
+  caseItem: Item,
+  candidates: Array<{ id: string; text: string }>,
+  cost?: CostTracker,
+): Promise<ClassificationResult[]> {
+  if (candidates.length === 0) return []
+
+  const candidateList = candidates.map(c => `[${c.id}]: "${c.text.slice(0, 500)}"`).join('\n\n')
+
+  const userPrompt = `## Case Post (id: ${caseItem.id})\n"${caseItem.text.slice(0, 500)}"\n\n## Candidates\n${candidateList}\n\nClassify each candidate's relationship to the case post.`
+
+  const response = await client.responses.create({
+    model: 'gpt-5.5',
+    reasoning: { effort: 'low' },
+    input: [
+      { role: 'developer', content: BATCH_SYSTEM },
+      { role: 'user', content: userPrompt },
+    ],
+    text: { format: { type: 'json_schema', name: 'batch_classification', schema: BATCH_SCHEMA, strict: true } },
+  })
+  cost?.track(response.usage)
+
+  const parsed = JSON.parse(response.output_text) as { classifications: ClassificationResult[] }
+  return parsed.classifications
+}
 
 export async function classifyRelationship(
   client: OpenAI,
@@ -13,32 +74,6 @@ export async function classifyRelationship(
   b: Item,
   cost?: CostTracker,
 ): Promise<Relationship> {
-  const pairPrompt = `Item A (id: ${a.id}):\n"${a.text}"\n\nItem B (id: ${b.id}):\n"${b.text}"`
-
-  const stage1 = await client.responses.create({
-    model: 'gpt-5.4-mini',
-    temperature: 0,
-    input: [
-      { role: 'developer', content: CLASSIFICATION_STAGE1_SYSTEM },
-      { role: 'user', content: pairPrompt + '\n\nIs B meaningfully connected to A?' },
-    ],
-    text: { format: { type: 'json_schema', name: 'classification_stage1', schema: CLASSIFICATION_STAGE1_SCHEMA, strict: true } },
-  })
-  cost?.track(stage1.usage)
-  const s1 = JSON.parse(stage1.output_text) as { connected: string }
-
-  if (s1.connected === 'UNRELATED') return 'UNRELATED'
-
-  const stage2 = await client.responses.create({
-    model: 'gpt-5.4-mini',
-    temperature: 0,
-    input: [
-      { role: 'developer', content: CLASSIFICATION_STAGE2_SYSTEM },
-      { role: 'user', content: pairPrompt + '\n\nThese items are confirmed to be related. What is the specific relationship of B to A?' },
-    ],
-    text: { format: { type: 'json_schema', name: 'classification_stage2', schema: CLASSIFICATION_STAGE2_SCHEMA, strict: true } },
-  })
-  cost?.track(stage2.usage)
-  const s2 = JSON.parse(stage2.output_text) as { relationship: string }
-  return s2.relationship as Relationship
+  const results = await classifyBatch(client, a, [{ id: b.id, text: b.text }], cost)
+  return results[0]?.relationship ?? 'UNRELATED'
 }

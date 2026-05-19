@@ -11,7 +11,7 @@ import {
   findByIdentifier, findSimilar, findConnections, detectCampaign,
   type IdentifierHit, type Connection, type CampaignOpts, type CampaignResult,
 } from './search.js'
-import { classifyRelationship } from './classify.js'
+import { classifyRelationship, classifyBatch, type ClassificationResult } from './classify.js'
 import { recommendDecision } from './recommend.js'
 
 export class StrataEngine {
@@ -198,6 +198,10 @@ export class StrataEngine {
     return classifyRelationship(this.client, a, b, this.cost)
   }
 
+  async classifyBatch(caseItem: Item, candidates: Item[]): Promise<ClassificationResult[]> {
+    return classifyBatch(this.client, caseItem, candidates.map(c => ({ id: c.id, text: c.text })), this.cost)
+  }
+
   async recommendDecision(item: Item, precedents: Hit[], rules: Rule[]): Promise<Recommendation> {
     return recommendDecision(this.client, item, precedents, rules, this.cost)
   }
@@ -249,4 +253,5 @@ export { isGlobal, isHub, computeHubScores } from './scope.js'
 export { MemoryKVStore } from './storage/memory.js'
 export type { KVStore } from './storage/interface.js'
 export type { IdentifierHit, Connection, CampaignOpts, CampaignResult } from './search.js'
+export type { ClassificationResult } from './classify.js'
 export type * from './types.js'

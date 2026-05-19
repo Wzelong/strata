@@ -61,46 +61,6 @@ export const ENTITY_SCHEMA: Record<string, unknown> = {
   additionalProperties: false,
 }
 
-export const CLASSIFICATION_STAGE1_SYSTEM = `Determine if two community forum items are meaningfully connected.
-
-RELATED: B has a substantive connection to A — same event, same pattern, same ongoing situation, or provides useful context for investigating A.
-UNRELATED: No meaningful connection despite surface similarity (shared location but different topic, coincidental entity overlap).
-
-Rules:
-- Shared location alone does NOT make items related.
-- If B could plausibly help a moderator investigating A's situation, it is RELATED.
-- Default to UNRELATED unless a specific substantive connection exists.`
-
-export const CLASSIFICATION_STAGE1_SCHEMA: Record<string, unknown> = {
-  type: 'object',
-  properties: {
-    connected: { type: 'string', enum: ['RELATED', 'UNRELATED'] },
-    reasoning: { type: 'string' },
-  },
-  required: ['connected', 'reasoning'],
-  additionalProperties: false,
-}
-
-export const CLASSIFICATION_STAGE2_SYSTEM = `Given two related items, classify the specific relationship of B to A.
-
-- CONFIRMS: B corroborates the SAME event in A without adding new facts. Another eyewitness, another victim of the same scam, same story from a different angle.
-- CONTRADICTS: B conflicts with A's claims.
-- UPDATES: B adds NEW information advancing A's situation — new evidence, arrest, investigation progress, expansion to new area. If B contains facts NOT in A that move things forward, this is UPDATES.
-- TEMPORAL: B describes PRIOR or HISTORICAL incidents providing time-based context. "This has happened before," ongoing pattern predating A, separate earlier events at same location.
-
-Tiebreakers:
-- CONFIRMS vs UPDATES: Does B add any new factual detail? New location, new evidence, arrest, sighting expansion → UPDATES. Pure corroboration of existing facts → CONFIRMS.
-- UPDATES vs TEMPORAL: Same ongoing situation evolving → UPDATES. Separate historical precedent → TEMPORAL.`
-
-export const CLASSIFICATION_STAGE2_SCHEMA: Record<string, unknown> = {
-  type: 'object',
-  properties: {
-    relationship: { type: 'string', enum: ['CONFIRMS', 'CONTRADICTS', 'UPDATES', 'TEMPORAL'] },
-    reasoning: { type: 'string' },
-  },
-  required: ['relationship', 'reasoning'],
-  additionalProperties: false,
-}
 
 export const RECOMMENDATION_SYSTEM = `Given a pending item, similar precedents with their moderation decisions, and community rules, recommend a moderation action.
 
