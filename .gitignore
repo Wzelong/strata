@@ -6,3 +6,5 @@ dist/
 tests/cache.json
 tests/real-data/cache/
 tests/real-data/*.jsonl
+dataset/*.jsonl
+dataset/live-items.json

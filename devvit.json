@@ -1,0 +1,58 @@
+{
+  "$schema": "https://developers.reddit.com/schema/config-file.v1.json",
+  "name": "strata",
+  "post": {
+    "dir": "dist/client",
+    "entrypoints": {
+      "default": { "entry": "index.html", "height": "regular" }
+    }
+  },
+  "server": {
+    "dir": "dist/server",
+    "entry": "index.cjs"
+  },
+  "permissions": {
+    "http": { "enable": true, "domains": ["api.openai.com"] },
+    "redis": true,
+    "reddit": { "enable": true, "scope": "moderator" }
+  },
+  "settings": {
+    "global": {
+      "openaiApiKey": { "type": "string", "label": "OpenAI API Key", "isSecret": true }
+    }
+  },
+  "triggers": {
+    "onAppInstall": "/internal/triggers/app-install",
+    "onPostSubmit": "/internal/triggers/post-submit",
+    "onCommentSubmit": "/internal/triggers/comment-submit"
+  },
+  "menu": {
+    "items": [
+      {
+        "label": "Strata: Seed Data",
+        "description": "Load demo dataset into Redis",
+        "location": "subreddit",
+        "forUserType": "moderator",
+        "endpoint": "/internal/menu/seed-data"
+      },
+      {
+        "label": "Strata: Surface",
+        "description": "Find buried connections to this item",
+        "location": ["post", "comment"],
+        "forUserType": "moderator",
+        "endpoint": "/internal/menu/surface"
+      }
+    ]
+  },
+  "forms": {
+    "surfaceResults": "/internal/forms/surface-results",
+    "seedResults": "/internal/forms/seed-results"
+  },
+  "scripts": {
+    "build": "vite build",
+    "dev": "vite build --watch"
+  },
+  "dev": {
+    "subreddit": "strata_hackathon"
+  }
+}
