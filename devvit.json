@@ -1,10 +1,13 @@
 {
   "$schema": "https://developers.reddit.com/schema/config-file.v1.json",
-  "name": "strata",
+  "name": "strata-hackathon",
   "post": {
     "dir": "dist/client",
     "entrypoints": {
-      "default": { "entry": "index.html", "height": "regular" }
+      "default": {
+        "entry": "index.html",
+        "height": "regular"
+      }
     }
   },
   "server": {
@@ -12,13 +15,26 @@
     "entry": "index.cjs"
   },
   "permissions": {
-    "http": { "enable": true, "domains": ["api.openai.com"] },
+    "http": {
+      "enable": true,
+      "domains": [
+        "api.openai.com",
+        "raw.githubusercontent.com"
+      ]
+    },
     "redis": true,
-    "reddit": { "enable": true, "scope": "moderator" }
+    "reddit": {
+      "enable": true,
+      "scope": "moderator"
+    }
   },
   "settings": {
     "global": {
-      "openaiApiKey": { "type": "string", "label": "OpenAI API Key", "isSecret": true }
+      "openaiApiKey": {
+        "type": "string",
+        "label": "OpenAI API Key",
+        "isSecret": true
+      }
     }
   },
   "triggers": {
@@ -38,7 +54,10 @@
       {
         "label": "Strata: Surface",
         "description": "Find buried connections to this item",
-        "location": ["post", "comment"],
+        "location": [
+          "post",
+          "comment"
+        ],
         "forUserType": "moderator",
         "endpoint": "/internal/menu/surface"
       }
@@ -53,6 +72,6 @@
     "dev": "vite build --watch"
   },
   "dev": {
-    "subreddit": "strata_hackathon"
+    "subreddit": "strata_hackathon_dev"
   }
 }

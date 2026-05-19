@@ -138,16 +138,100 @@ app.post('/internal/triggers/comment-submit', async (c) => {
 // --- Menu Actions ---
 
 app.post('/internal/menu/seed-data', async (c) => {
-  const itemCount = await redis.get('strata:seed:item-count')
-  if (itemCount) {
+  const existing = await redis.get('strata:seed:complete')
+  if (existing) {
+    const count = await redis.get('strata:seed:item-count')
     return c.json<UiResponse>({
-      showToast: { text: `Already seeded: ${itemCount} items`, appearance: 'success' },
+      showToast: { text: `Already seeded: ${count} items`, appearance: 'success' },
     })
   }
 
   return c.json<UiResponse>({
-    showToast: 'Seed data not loaded yet. Use the seed script to load data into Redis.',
+    showForm: {
+      name: 'seedResults',
+      form: {
+        title: 'Seed Strata Data',
+        acceptLabel: 'Start Seeding',
+        fields: [
+          { name: 'confirm', label: 'This will fetch and load ~3,000 items into Redis (~16MB). Takes about 30 seconds.', type: 'paragraph' as const, defaultValue: 'Click "Start Seeding" to proceed.' },
+        ],
+      },
+    },
   })
+})
+
+app.post('/internal/forms/seed-results', async (c) => {
+  const existing = await redis.get('strata:seed:complete')
+  if (existing) {
+    return c.json<UiResponse>({ showToast: 'Already seeded.' })
+  }
+
+  try {
+    console.log('[Strata] Fetching seed.json from GitHub...')
+    const url = 'https://raw.githubusercontent.com/Wzelong/strata/main/dataset/seed.json'
+    const resp = await fetch(url)
+    if (!resp.ok) throw new Error(`Fetch failed: ${resp.status}`)
+
+    const seed = await resp.json() as {
+      items: StoredItem[]
+      embeddings: Record<string, number[]>
+      canonicals: Record<string, string[]>
+    }
+
+    console.log(`[Strata] Loaded ${seed.items.length} items, writing to Redis...`)
+
+    const BATCH = 100
+    for (let i = 0; i < seed.items.length; i += BATCH) {
+      const batch = seed.items.slice(i, i + BATCH)
+      const itemFields: Record<string, string> = {}
+      const embFields: Record<string, string> = {}
+
+      for (const item of batch) {
+        itemFields[item.id] = JSON.stringify(item)
+        const emb = seed.embeddings[item.id]
+        if (emb) embFields[item.id] = JSON.stringify(emb)
+      }
+
+      await redis.hSet('strata:items', itemFields)
+      if (Object.keys(embFields).length > 0) {
+        await redis.hSet('strata:embeddings', embFields)
+      }
+
+      for (const item of batch) {
+        await redis.zAdd('strata:idx:time', { member: item.id, score: item.createdAt })
+        await redis.zAdd(`strata:idx:author:${item.authorId}`, { member: item.id, score: item.createdAt })
+        await redis.zAdd(`strata:idx:thread:${item.threadRootId}`, { member: item.id, score: item.createdAt })
+        await redis.zAdd(`strata:idx:decision:${item.decision}`, { member: item.id, score: item.decisionAt ?? item.createdAt })
+
+        for (const e of item.entities) {
+          await redis.zAdd(`strata:idx:entity:${e.type}:${e.canonical}`, { member: item.id, score: item.createdAt })
+        }
+      }
+
+      if ((i + BATCH) % 500 === 0 || i + BATCH >= seed.items.length) {
+        console.log(`[Strata] Seeded ${Math.min(i + BATCH, seed.items.length)}/${seed.items.length}`)
+      }
+    }
+
+    const canonFields: Record<string, string> = {}
+    for (const [type, list] of Object.entries(seed.canonicals)) {
+      canonFields[type] = JSON.stringify(list)
+    }
+    if (Object.keys(canonFields).length > 0) {
+      await redis.hSet('strata:canonicals', canonFields)
+    }
+
+    await redis.set('strata:seed:complete', '1')
+    await redis.set('strata:seed:item-count', String(seed.items.length))
+    console.log(`[Strata] Seed complete: ${seed.items.length} items`)
+
+    return c.json<UiResponse>({
+      showToast: { text: `Seeded ${seed.items.length} items!`, appearance: 'success' },
+    })
+  } catch (err) {
+    console.error('[Strata] Seed error:', err)
+    return c.json<UiResponse>({ showToast: `Seed failed: ${err}` })
+  }
 })
 
 app.post('/internal/menu/surface', async (c) => {
@@ -238,9 +322,6 @@ app.post('/internal/forms/surface-results', async (c) => {
   return c.json<UiResponse>({ showToast: 'Done.' })
 })
 
-app.post('/internal/forms/seed-results', async (c) => {
-  return c.json<UiResponse>({ showToast: 'Done.' })
-})
 
 // --- API ---
 
