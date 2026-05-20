@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync, existsSync } from 'node:fs'
+import { readFileSync, writeFileSync } from 'node:fs'
 import { createReadStream } from 'node:fs'
 import { createInterface } from 'node:readline'
 import { fileURLToPath } from 'node:url'
@@ -11,11 +11,12 @@ import { BACKFILL_ITEMS, LIVE_ITEMS, REMOVED_ITEMS } from './signal-items.js'
 if (!process.env.OPENAI_API_KEY) throw new Error('Set OPENAI_API_KEY')
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
-const CACHE_FILE = resolve(__dirname, '..', 'tests', 'real-data', 'cache', 'boston_98290c99d8d108e9.json')
 const POSTS_FILE = resolve(__dirname, 'r_boston_posts.jsonl')
 const COMMENTS_FILE = resolve(__dirname, 'r_boston_comments.jsonl')
 const SEED_OUTPUT = resolve(__dirname, 'seed.json')
 const LIVE_OUTPUT = resolve(__dirname, 'live-items.json')
+
+const MAX_ITEMS = parseInt(process.env.SEED_LIMIT ?? '3000', 10)
 
 class SimpleCost implements CostTracker {
   total = 0
@@ -26,10 +27,20 @@ class SimpleCost implements CostTracker {
   }
 }
 
-type CachedItem = { id: string; textNormalized: string; entities: Entity[]; embedding: number[] }
-type RawRedditItem = { id: string; author: string; author_fullname?: string; body?: string; selftext?: string; title?: string; created_utc: number; link_id?: string; parent_id?: string; name: string }
+type RawRedditItem = {
+  id: string
+  author: string
+  author_fullname?: string
+  body?: string
+  selftext?: string
+  title?: string
+  created_utc: number
+  link_id?: string
+  parent_id?: string
+  name: string
+}
 
-async function loadNdjsonl(path: string): Promise<RawRedditItem[]> {
+async function loadJsonl(path: string): Promise<RawRedditItem[]> {
   const items: RawRedditItem[] = []
   const stream = createReadStream(path, { encoding: 'utf8' })
   const rl = createInterface({ input: stream, crlfDelay: Infinity })
@@ -47,94 +58,95 @@ function getText(item: RawRedditItem): string {
   return item.body ?? ''
 }
 
+function toRawItem(r: RawRedditItem): RawItem | null {
+  const isPost = (r.name ?? '').startsWith('t3_')
+  const text = getText(r)
+  if (!text || text === '[removed]' || text === '[deleted]') return null
+  if (text.length < 20) return null
+
+  return {
+    id: r.name ?? (isPost ? `t3_${r.id}` : `t1_${r.id}`),
+    type: isPost ? 'post' : 'comment',
+    text,
+    authorId: r.author_fullname ?? r.author,
+    authorName: r.author,
+    createdAt: r.created_utc * 1000,
+    threadRootId: r.link_id ?? r.name,
+    parentId: isPost ? null : (r.parent_id ?? null),
+  }
+}
+
 async function main() {
   const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
   const cost = new SimpleCost()
   const store = new MemoryKVStore()
   const engine = new StrataEngine(store, client, cost)
 
-  console.log('=== Build Seed ===\n')
+  console.log('=== Build Seed (fresh extraction) ===\n')
 
-  // Step 1: Load the boston cache
-  console.log('Loading boston cache...')
-  const cache: { version: string; items: CachedItem[] } = JSON.parse(readFileSync(CACHE_FILE, 'utf8'))
-  console.log(`  ${cache.items.length} cached items loaded`)
-
-  // Step 2: Load raw JSONL for metadata
+  // Step 1: Load raw reddit data
   console.log('Loading raw posts...')
-  const rawPosts = await loadNdjsonl(POSTS_FILE)
+  const rawPosts = await loadJsonl(POSTS_FILE)
   console.log(`  ${rawPosts.length} posts`)
   console.log('Loading raw comments...')
-  const rawComments = await loadNdjsonl(COMMENTS_FILE)
+  const rawComments = await loadJsonl(COMMENTS_FILE)
   console.log(`  ${rawComments.length} comments`)
 
-  const rawById = new Map<string, RawRedditItem>()
-  for (const r of rawPosts) rawById.set(r.name ?? `t3_${r.id}`, r)
-  for (const r of rawComments) rawById.set(r.name ?? `t1_${r.id}`, r)
-  console.log(`  ${rawById.size} items indexed by ID`)
-
-  // Step 3: Join cache + raw → StoredItem and load into store
-  console.log('\nBuilding StoredItems from cache + raw...')
-  let joined = 0
-  let missed = 0
-
-  for (const cached of cache.items) {
-    const raw = rawById.get(cached.id)
-    if (!raw) { missed++; continue }
-
-    const isPost = cached.id.startsWith('t3_')
-    const text = getText(raw)
-    if (!text || text === '[removed]' || text === '[deleted]') { missed++; continue }
-
-    const stored: StoredItem = {
-      id: cached.id,
-      type: isPost ? 'post' : 'comment',
-      text,
-      textNormalized: cached.textNormalized,
-      authorId: raw.author_fullname ?? raw.author,
-      authorName: raw.author,
-      createdAt: raw.created_utc * 1000,
-      threadRootId: raw.link_id ?? raw.name,
-      parentId: isPost ? null : (raw.parent_id ?? null),
-      entities: cached.entities,
-      decision: 'pending',
-      decisionAt: null,
-      decisionBy: null,
-      decisionReason: null,
-    }
-
-    await store.setItem(stored)
-    await store.setEmbedding(cached.id, cached.embedding)
-    await store.addToEntityIndex(cached.entities, cached.id, stored.createdAt)
-    await store.addCanonicals(cached.entities)
-    joined++
+  // Step 2: Convert to RawItems, take up to MAX_ITEMS
+  const allRaw: RawItem[] = []
+  for (const r of rawPosts) {
+    const item = toRawItem(r)
+    if (item) allRaw.push(item)
+  }
+  for (const r of rawComments) {
+    const item = toRawItem(r)
+    if (item) allRaw.push(item)
   }
 
-  console.log(`  Joined: ${joined}, Missed (no raw match): ${missed}`)
+  // Sort by time, take newest MAX_ITEMS
+  allRaw.sort((a, b) => b.createdAt - a.createdAt)
+  const selected = allRaw.slice(0, MAX_ITEMS)
+  console.log(`\n  ${allRaw.length} valid items total, selected ${selected.length}`)
 
-  // Step 4: Ingest BACKFILL signal items through the engine (uses existing registry)
-  console.log(`\nIngesting ${BACKFILL_ITEMS.length} backfill signal items...`)
-  const backfillResults: Array<{ id: string; embedding: number[]; entities: Entity[] }> = []
+  // Step 3: Ingest through the engine (embeds + extracts entities)
+  console.log(`\nIngesting ${selected.length} r/boston items (embed + extract)...`)
+  console.log('  This will take a while for entity extraction...\n')
 
+  const BATCH = 50
+  for (let i = 0; i < selected.length; i += BATCH) {
+    const batch = selected.slice(i, i + BATCH)
+    await engine.ingestBatch(batch)
+    const done = Math.min(i + BATCH, selected.length)
+    if (done % 200 === 0 || done === selected.length) {
+      console.log(`  ${done}/${selected.length} — cost: $${cost.total.toFixed(4)}`)
+    }
+  }
+
+  // Step 4: Ingest backfill signal items
+  console.log(`\nIngesting ${BACKFILL_ITEMS.length} signal items...`)
   for (const raw of BACKFILL_ITEMS) {
     const item = await engine.ingest(raw)
-    backfillResults.push({ id: item.id, embedding: item.embedding, entities: item.entities })
     console.log(`  ${item.id}: ${item.entities.length} entities`)
   }
-  console.log(`  Cost: $${cost.total.toFixed(4)}`)
 
-  // Step 5: Set FLAG-3 items to 'removed'
+  // Step 5: Mark FLAG-3 as removed
   console.log('\nMarking FLAG-3 items as removed...')
   for (const [id, meta] of Object.entries(REMOVED_ITEMS)) {
     const item = await store.getItem(id)
     if (!item) { console.log(`  WARNING: ${id} not found`); continue }
-    const updated: StoredItem = { ...item, decision: meta.decision, decisionAt: item.createdAt + 3600000, decisionBy: meta.decisionBy, decisionReason: meta.decisionReason }
+    const updated: StoredItem = {
+      ...item,
+      decision: meta.decision,
+      decisionAt: item.createdAt + 3600000,
+      decisionBy: meta.decisionBy,
+      decisionReason: meta.decisionReason,
+    }
     await store.setItem(updated)
     await store.moveDecision(id, 'pending', 'removed', updated.decisionAt!)
     console.log(`  ${id} → removed`)
   }
 
-  // Step 6: Assemble seed payload
+  // Step 6: Write seed.json
   console.log('\nAssembling seed.json...')
   const allIds = await store.getItemIds()
   const seedItems: StoredItem[] = []
@@ -149,18 +161,12 @@ async function main() {
     }
   }
 
-  const canonicals = await store.getCanonicals()
-  const canonicalsObj: Record<string, string[]> = {}
-  for (const [type, list] of canonicals) {
-    canonicalsObj[type] = list
-  }
-
-  const seed = { items: seedItems, embeddings: seedEmbeddings, canonicals: canonicalsObj }
+  const seed = { items: seedItems, embeddings: seedEmbeddings }
   writeFileSync(SEED_OUTPUT, JSON.stringify(seed))
   const sizeMB = (Buffer.byteLength(JSON.stringify(seed)) / 1024 / 1024).toFixed(1)
-  console.log(`  Written: ${SEED_OUTPUT} (${sizeMB}MB, ${seedItems.length} items)`)
+  console.log(`  ${SEED_OUTPUT} (${sizeMB}MB, ${seedItems.length} items)`)
 
-  // Step 7: Process LIVE items (pre-compute for demo reliability)
+  // Step 7: Process live items
   console.log(`\nProcessing ${LIVE_ITEMS.length} live items...`)
   const liveResults: Array<{ id: string; textNormalized: string; embedding: number[]; entities: Entity[] }> = []
 
@@ -171,13 +177,12 @@ async function main() {
   }
 
   writeFileSync(LIVE_OUTPUT, JSON.stringify({ items: liveResults }, null, 2))
-  console.log(`  Written: ${LIVE_OUTPUT}`)
+  console.log(`  ${LIVE_OUTPUT}`)
 
-  // Summary
   console.log(`\n=== Done ===`)
-  console.log(`Total items in seed: ${seedItems.length}`)
-  console.log(`Live items pre-computed: ${liveResults.length}`)
-  console.log(`Total cost: $${cost.total.toFixed(4)}`)
+  console.log(`  Seed: ${seedItems.length} items`)
+  console.log(`  Live: ${liveResults.length} items`)
+  console.log(`  Cost: $${cost.total.toFixed(4)}`)
 }
 
 main().catch(err => { console.error('FATAL:', err); process.exit(1) })

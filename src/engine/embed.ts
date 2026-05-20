@@ -7,6 +7,38 @@ export function cosine(a: number[], b: number[]): number {
   return dot
 }
 
+// --- Int8 scalar quantization ---
+
+export function quantize(embedding: number[]): string {
+  let min = Infinity, max = -Infinity
+  for (const v of embedding) {
+    if (v < min) min = v
+    if (v > max) max = v
+  }
+  const range = max - min || 1
+  const bytes = new Uint8Array(embedding.length)
+  for (let i = 0; i < embedding.length; i++) {
+    bytes[i] = Math.round(((embedding[i] - min) / range) * 255)
+  }
+  return `${min.toExponential(6)},${max.toExponential(6)},${Buffer.from(bytes).toString('base64')}`
+}
+
+export function dequantize(encoded: string): number[] {
+  const firstComma = encoded.indexOf(',')
+  const secondComma = encoded.indexOf(',', firstComma + 1)
+  const min = parseFloat(encoded.slice(0, firstComma))
+  const max = parseFloat(encoded.slice(firstComma + 1, secondComma))
+  const bytes = new Uint8Array(Buffer.from(encoded.slice(secondComma + 1), 'base64'))
+  const range = max - min
+  const result = new Array(bytes.length)
+  for (let i = 0; i < bytes.length; i++) {
+    result[i] = (bytes[i] / 255) * range + min
+  }
+  return result
+}
+
+// --- Embedding API ---
+
 const MAX_EMBED_BATCH = 2048
 
 export async function embedBatch(

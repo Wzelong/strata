@@ -83,17 +83,18 @@ Honestly stay off Mass Ave near Central if you can. Last Tuesday around 6pm some
 
 ---
 
-#### SURFACE-2 — The Dashcam Owner
+#### SURFACE-2 — The Dashcam Owner (case number string match)
 
-**Day**: Apr 14 (backfill)  
-**Thread**: Own post, low engagement (4 upvotes, 6 comments)  
+**Day**: Apr 25 (backfill)  
+**Thread**: "How do you actually get Cambridge PD to follow up on anything?" (police bureaucracy rant)  
+**Position**: Comment #6 in a 30-comment thread  
 **Author**: DashcamDave_617  
 
-**Title**: "Dashcam caught a car jump the curb on Mass Ave near Central — should I report this?"
+```
+Three weeks and counting since I submitted dashcam footage to Cambridge PD for case #2026-04891. They told me a detective would follow up within 48 hours. Never heard back. Called twice, got "we'll pass along the message" both times. I have clear HD footage of the car they're looking for but apparently nobody cares. At this point should I just post it publicly? Is there a civilian oversight board or something I can escalate to?
+```
 
-```
-Driving home Tuesday evening around 6:15pm on Mass Ave heading toward Harvard Square. Right near the Prospect St intersection a dark green SUV (looked like a Subaru maybe Outback or Forester) swerved hard into the bike lane, clipped the curb, then accelerated away fast toward Inman. I have clear footage from my dashcam — you can see the car pretty well including what looks like a marathon bumper sticker. Wasn't sure if something happened or the driver was just wasted. Should I bother reporting this to Cambridge PD? I still have the footage saved.
-```
+**Why this works**: The case number `#2026-04891` is an exact identifier. Entity filter finds this via string match — full-text cosine would never connect a police bureaucracy rant to a hit-and-run plea. This is what entity matching uniquely does.
 
 ---
 
@@ -261,12 +262,28 @@ WARNING: dark green SUV has been seen blowing through red lights on Mass Ave nea
 
 ---
 
+## Retrieval Design: Each Signal Tests a Different Path
+
+| Signal | Retrieval Path | Join Key |
+|---|---|---|
+| SURFACE-1 | Entity filter (embedding match) | "dark green Subaru Outback" ↔ "dark green SUV, possibly a Subaru" |
+| SURFACE-2 | Entity filter (string match) | `#2026-04891` exact case number in unrelated thread |
+| SURFACE-3 | Entity filter (embedding match) | Vehicle description in topically distant parking rant |
+| SURFACE-4 | Safety net (full-text cosine) | Pure narrative, no entity overlap — proves safety net needed |
+
+Neither retrieval method alone finds all 4. The hybrid approach does.
+
+---
+
 ## Summary: What Each Item Demonstrates
 
 | Item | Mode | What it proves |
 |---|---|---|
-| SURFACE 1-4 | Surface | Buried witnesses found across unrelated threads |
-| CASE POST | Surface trigger | New post instantly surfaces historical connections |
+| SURFACE-1 (near-miss) | Surface | Entity embedding matches paraphrased vehicle description |
+| SURFACE-2 (dashcam/case#) | Surface | String match on identifier connects unrelated topics |
+| SURFACE-3 (garage) | Surface | Entity match in topically distant thread |
+| SURFACE-4 (earwitness) | Surface | Safety net catches narrative with no shared entities |
+| CASE POST | Surface trigger | New post instantly surfaces all 4 historical connections |
 | FLAG-1 (brigade) | Flag | Coordinated inauthentic behavior detected in real-time |
 | FLAG-2 (contradiction) | Flag | Same user's statements across time contradict — caught |
 | FLAG-3 (removed precedents) | Flag setup | Establishes what mods have already decided is bad |
@@ -277,94 +294,3 @@ WARNING: dark green SUV has been seen blowing through red lights on Mass Ave nea
 All from one story. All exercising the same engine.
 
 ---
-
-## Technical: Loading Strategy
-
-### Offline (before demo)
-
-```
-dataset/
-├── DESIGN.md                 # This file
-├── r_boston_posts.jsonl       # Real data (3,700 posts)
-├── r_boston_comments.jsonl    # Real data (93,080 comments)
-├── signal-items.json         # The 12 planted items (hand-crafted)
-├── build-corpus.ts           # Sample 3K real + inject signals → corpus.json
-├── corpus.json               # Final merged corpus
-├── embed-and-extract.ts      # Run engine pipeline → cache.json  
-├── cache.json                # Cached embeddings + entities (gitignored)
-└── seed.json                 # Ready-to-load Redis payload
-```
-
-### On Devvit (runtime)
-
-1. `onAppInstall` or "Seed Data" menu action loads `seed.json` into Redis
-2. Live items arrive via `onCommentSubmit` / `onPostSubmit` triggers → `ingest()` each one
-3. Mod clicks "Find Connections" → engine runs against the full backfill store
-
-### Redis key patterns (matches `RedisKVStore`)
-
-```
-strata:items              (hSet: id → JSON StoredItem)
-strata:embeddings         (hSet: id → JSON number[256])
-strata:idx:time           (zAdd: member=id, score=createdAt)
-strata:idx:author:{id}    (zAdd: member=itemId, score=createdAt)
-strata:idx:thread:{id}    (zAdd: member=itemId, score=createdAt)
-strata:idx:decision:{d}   (zAdd: member=itemId, score=decisionAt)
-strata:idx:entity:{t}:{c} (zAdd: member=itemId, score=createdAt)
-strata:canonicals          (hSet: type → JSON string[])
-strata:rules               (hSet: id → JSON StoredRule)
-```
-
-### Redis budget
-- 3,000 items × ~2.7KB each = ~8MB total
-- Well within Devvit's 500MB limit
-
----
-
-## The 1-Minute Demo Script
-
-```
-0:00 — "A cyclist was hit on Mass Ave. The driver fled.
-        Her roommate posted this."
-        [Show case post]
-
-0:08 — "Strata has been watching r/boston for 30 days.
-        3,000 posts and comments processed."
-
-0:13 — [Mod clicks "Strata: Surface" on the case post]
-        [Results appear instantly]
-
-0:18 — "33 days ago — buried in a cycling thread — someone
-        was almost hit by the same car at the same intersection."
-
-0:25 — "27 days ago — a post with 4 upvotes — someone has
-        DASHCAM FOOTAGE. They asked if they should report it.
-        Nobody answered."
-
-0:32 — "21 days ago — in a parking rant thread — someone sees
-        this car EVERY MORNING in a garage. Fresh damage."
-
-0:38 — "And that same night — someone heard the crash and
-        found the bike. No one ever connected it."
-
-0:44 — "Four witnesses. Three weeks. Four unrelated threads.
-        The dashcam has footage. The garage neighbor knows where
-        the car parks. Strata found what no human could."
-
-0:55 — "The fragments are already posted. Strata finds them."
-        [Strata logo]
-```
-
----
-
-## How It Works (validated)
-
-The pipeline we tested (`validate-hitrun.ts`, `validate-entity-embed-v2.ts`):
-
-1. **Embedding similarity** finds all 4 fragments in the top 5 out of 3,000 items (proven: H3 PASS)
-2. **Type-isolated entity embedding** catches cross-phrasing: "dark green SUV" ↔ "dark green Subaru Outback" scores 0.76+ within the product type bucket (proven: H1 PASS in v2)
-3. **LLM classification** correctly labels all 4 as UPDATES/CONFIRMS and rejects noise like "selling my Subaru" as UNRELATED (proven: H5 PASS)
-4. **Brigade detection** fires on 4+ items, same thread, 2-hour window, high semantic uniformity
-5. **Contradiction detection** finds same author + shared entities + `classifyRelationship` → CONTRADICTS
-
-Total validation cost: $0.03. All hypotheses pass.

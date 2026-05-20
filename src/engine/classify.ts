@@ -10,6 +10,11 @@ Relationships:
 - CONTRADICTS: Conflicts with claims in the case post
 - UNRELATED: No meaningful connection
 
+Confidence (null for UNRELATED):
+- high: The connection is clear — specific shared details make this obviously related. A mod can act on it immediately.
+- review: Plausibly related but circumstantial — shared location or timing without a specific linking detail. A mod should read carefully before deciding.
+- null: Use for UNRELATED items only.
+
 Two items are connected when they share a specific identifier — the same person, vehicle, phone number, address, username, or physical description. Shared location or topic alone is not enough; shared specific details are.
 
 A moderator investigating the case post would find a connected item useful as evidence, context, or a lead. That is the test.`
@@ -24,9 +29,10 @@ const BATCH_SCHEMA: Record<string, unknown> = {
         properties: {
           id: { type: 'string' },
           relationship: { type: 'string', enum: ['CONFIRMS', 'CONTRADICTS', 'UPDATES', 'TEMPORAL', 'UNRELATED'] },
+          confidence: { type: ['string', 'null'], enum: ['high', 'review', null] },
           reason: { type: 'string' },
         },
-        required: ['id', 'relationship', 'reason'],
+        required: ['id', 'relationship', 'confidence', 'reason'],
         additionalProperties: false,
       },
     },
@@ -38,6 +44,7 @@ const BATCH_SCHEMA: Record<string, unknown> = {
 export type ClassificationResult = {
   id: string
   relationship: Relationship
+  confidence: 'high' | 'review' | null
   reason: string
 }
 

@@ -25,13 +25,13 @@ export const BACKFILL_ITEMS: RawItem[] = [
 
   {
     id: 't3_strata_surface2',
-    type: 'post',
-    text: 'Dashcam caught a car jump the curb on Mass Ave near Central — should I report this?\n\nDriving home Tuesday evening around 6:15pm on Mass Ave heading toward Harvard Square. Right near the Prospect St intersection a dark green SUV (looked like a Subaru maybe Outback or Forester) swerved hard into the bike lane, clipped the curb, then accelerated away fast toward Inman. I have clear footage from my dashcam — you can see the car pretty well including what looks like a marathon bumper sticker. Wasn\'t sure if something happened or the driver was just wasted. Should I bother reporting this to Cambridge PD? I still have the footage saved.',
+    type: 'comment',
+    text: 'Three weeks and counting since I submitted dashcam footage to Cambridge PD for case #2026-04891. They told me a detective would follow up within 48 hours. Never heard back. Called twice, got "we\'ll pass along the message" both times. I have clear HD footage of the car they\'re looking for but apparently nobody cares. At this point should I just post it publicly? Is there a civilian oversight board or something I can escalate to?',
     authorId: 't2_dashcamdave',
     authorName: 'DashcamDave_617',
-    createdAt: day(13, 20),
-    threadRootId: 't3_strata_surface2',
-    parentId: null,
+    createdAt: day(25, 14),
+    threadRootId: 't3_cambridge_pd_rant',
+    parentId: 't3_cambridge_pd_rant',
   },
 
   {

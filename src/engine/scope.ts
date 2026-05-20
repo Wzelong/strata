@@ -16,7 +16,7 @@ export async function computeHubScores(store: KVStore): Promise<Map<string, numb
     if (!item) continue
     const seen = new Set<string>()
     for (const e of item.entities) {
-      const key = `${e.type}:${e.canonical}`
+      const key = `${e.type}:${e.surfaceText}`
       if (seen.has(key)) continue
       seen.add(key)
       entityCounts.set(key, (entityCounts.get(key) ?? 0) + 1)
@@ -33,7 +33,7 @@ export async function computeHubScores(store: KVStore): Promise<Map<string, numb
 
 export function isHub(entity: Entity, hubScores: Map<string, number>): boolean {
   if (ALWAYS_GLOBAL_TYPES.has(entity.type)) return false
-  const key = `${entity.type}:${entity.canonical}`
+  const key = `${entity.type}:${entity.surfaceText}`
   return (hubScores.get(key) ?? 0) > HUB_THRESHOLD
 }
 

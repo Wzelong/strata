@@ -1,44 +1,30 @@
-export const ENTITY_EXTRACTION_SYSTEM = `Extract all named entities from the text. Return each entity's type, the exact surface text, and a normalized canonical form.
+export const ENTITY_EXTRACTION_SYSTEM = `Extract entities specific enough that two unrelated posts both mentioning one would be a meaningful coincidence, not normal conversation.
 
-# Entity types
+Types: person, location, object, organization, phone, email, url, username, quantity
 
-person, location, time, username, url, organization, monetary_amount, quantity, phone, email, product
+The test for each entity: if you removed it from this text and searched for it in a thousand other posts, would finding a match be surprising and potentially meaningful? If yes, extract it. If the match would be unremarkable, skip it.
 
-# What to extract
+surfaceText must be copied verbatim. Fewer specific entities are better than many generic ones.
 
-Any referenced person, place, thing, time, or identifier. Include both specific and general references:
-- People: "Officer Delgado", "my dad", "the landlord", "Karen"
-- Locations: "5th and Main", "Birchwood Ave", "downtown", "the park on Elm"
-- Organizations: "Chase Bank", "the police", "FBI", "CPD"
-- Times: "Tuesday", "3pm yesterday", "last week", "around March"
-- Phone/email/URL: any specific number, address, or domain
-- Products/vehicles: "white Honda Civic", "iPhone", "Zelle", plate "7M3"
-- Quantities: case numbers, report numbers, specific amounts
+Physical descriptions are high-value entities even when qualified with uncertainty ("possibly", "looked like", "I think it was") — they are the details that link witnesses across threads. Combine all details about the same physical thing into one entity rather than splitting them.
 
-# Do NOT extract
+<example>
+Input: "I saw a guy in a red Toyota Camry with a dented rear door cut off a cyclist near the Elm St and 5th Ave intersection"
+Output: [object: "red Toyota Camry with a dented rear door", location: "Elm St and 5th Ave intersection"]
+Not extracted: "guy", "cyclist" (generic), "intersection" (too vague alone)
+</example>
 
-- Pronouns: he, she, they, I, you, we, it
-- Anaphora: the guy, someone, this person, OP, anybody
-- Abstract concepts: scam, fraud, suspicious, dangerous, sketchy
+<example>
+Input: "Dr. Patel at Riverside Clinic misdiagnosed my dog last month. She charged me $400 for nothing."
+Output: [person: "Dr. Patel", organization: "Riverside Clinic"]
+Not extracted: "dog", "last month", "$400" (common, not linking)
+</example>
 
-# Canonical format
-
-Lowercase, underscores between words. Same real-world entity → same canonical.
-- Phone: digits and hyphens → 555-0183
-- URL: domain only → safecityclaims.net
-- Intersections: numbered street first → 5th_and_main
-- Streets: include suffix → birchwood_ave, elm_street
-- Vehicles: color_brand_model → white_honda_civic
-- Plates: confirmed chars → 7m3
-- People: title_lastname when titled → officer_delgado. Relation words when unnamed → dad, mom
-- Organizations: proper name or abbreviation → chase_bank, cpd, fbi. Generic role when unnamed → the_police, the_bank
-- Times: lowercase, underscored → tuesday, 3pm_yesterday, last_week
-
-# Rules
-
-- surfaceText must be copied verbatim from the input.
-- If the same entity appears multiple times in different wording, use the SAME canonical for all.
-- Extract generously — downstream filtering handles noise.`
+<example>
+Input: "The food at Sal's on Main is terrible now. Overpriced pasta, rude staff."
+Output: [organization: "Sal's on Main"]
+Not extracted: "food", "pasta", "staff" (generic nouns)
+</example>`
 
 export const ENTITY_SCHEMA: Record<string, unknown> = {
   type: 'object',
@@ -48,11 +34,10 @@ export const ENTITY_SCHEMA: Record<string, unknown> = {
       items: {
         type: 'object',
         properties: {
-          type: { type: 'string', enum: ['person', 'location', 'time', 'username', 'url', 'organization', 'monetary_amount', 'quantity', 'phone', 'email', 'product'] },
+          type: { type: 'string', enum: ['person', 'location', 'object', 'organization', 'phone', 'email', 'url', 'username', 'quantity'] },
           surfaceText: { type: 'string' },
-          canonical: { type: 'string' },
         },
-        required: ['type', 'surfaceText', 'canonical'],
+        required: ['type', 'surfaceText'],
         additionalProperties: false,
       },
     },

@@ -5,10 +5,13 @@ export type RedisClient = {
   hSet(key: string, fieldValues: Record<string, string>): Promise<number>
   hGet(key: string, field: string): Promise<string | undefined>
   hGetAll(key: string): Promise<Record<string, string>>
+  hIncrBy(key: string, field: string, value: number): Promise<number>
   hScan(key: string, cursor: number, pattern?: string | undefined, count?: number): Promise<{ cursor: number; fieldValues: Record<string, string> }>
+  hDel(key: string, fields: string[]): Promise<number>
   zAdd(key: string, ...members: Array<{ member: string; score: number }>): Promise<number>
-  zRange(key: string, start: number, stop: number, options?: { by: 'score' }): Promise<Array<{ member: string; score: number }>>
+  zRange(key: string, start: number | string, stop: number | string, options?: { by?: 'score'; reverse?: boolean; limit?: { offset: number; count: number } }): Promise<Array<{ member: string; score: number }>>
   zRem(key: string, members: string[]): Promise<number>
+  zCard(key: string): Promise<number>
 }
 
 export class RedisKVStore implements KVStore {
@@ -85,13 +88,13 @@ export class RedisKVStore implements KVStore {
 
   async addToEntityIndex(entities: Entity[], itemId: string, createdAt: number): Promise<void> {
     for (const e of entities) {
-      const key = `strata:idx:entity:${e.type}:${e.canonical}`
+      const key = `strata:idx:entity:${e.type}:${e.surfaceText}`
       await this.redis.zAdd(key, { member: itemId, score: createdAt })
     }
   }
 
-  async getItemIdsByEntity(type: string, canonical: string, timeRange?: [number, number]): Promise<string[]> {
-    const key = `strata:idx:entity:${type}:${canonical}`
+  async getItemIdsByEntity(type: string, surfaceText: string, timeRange?: [number, number]): Promise<string[]> {
+    const key = `strata:idx:entity:${type}:${surfaceText}`
     if (timeRange) {
       const entries = await this.redis.zRange(key, timeRange[0], timeRange[1], { by: 'score' })
       return entries.map(e => e.member)
@@ -100,29 +103,38 @@ export class RedisKVStore implements KVStore {
     return entries.map(e => e.member)
   }
 
-  async getCanonicals(): Promise<Map<string, string[]>> {
-    const raw = await this.redis.hGetAll('strata:canonicals')
-    const result = new Map<string, string[]>()
-    for (const [type, val] of Object.entries(raw)) {
-      result.set(type, JSON.parse(val) as string[])
+  async setEntityEmbeddings(itemId: string, entities: Array<{ type: string; surfaceText: string; embedding: string }>): Promise<void> {
+    for (const e of entities) {
+      const key = `strata:entity-emb:${e.type}`
+      await this.redis.hSet(key, { [`${itemId}:${e.surfaceText}`]: e.embedding })
+      await this.redis.hIncrBy('strata:entity-hub-counts', `${e.type}:${e.surfaceText.toLowerCase()}`, 1)
+    }
+  }
+
+  async getEntityEmbeddingsByType(type: string): Promise<Array<{ itemId: string; surfaceText: string; embedding: string }>> {
+    const key = `strata:entity-emb:${type}`
+    const all = await this.redis.hGetAll(key)
+    const results: Array<{ itemId: string; surfaceText: string; embedding: string }> = []
+    for (const [field, value] of Object.entries(all)) {
+      const colonIdx = field.indexOf(':')
+      const itemId = field.slice(0, colonIdx)
+      const surfaceText = field.slice(colonIdx + 1)
+      results.push({ itemId, surfaceText, embedding: value })
+    }
+    return results
+  }
+
+  async getEntityHubCounts(): Promise<Map<string, number>> {
+    const all = await this.redis.hGetAll('strata:entity-hub-counts')
+    const result = new Map<string, number>()
+    for (const [key, val] of Object.entries(all)) {
+      result.set(key, parseInt(val, 10))
     }
     return result
   }
 
-  async addCanonicals(entities: Entity[]): Promise<void> {
-    const current = await this.getCanonicals()
-    for (const e of entities) {
-      if (!current.has(e.type)) current.set(e.type, [])
-      const list = current.get(e.type)!
-      if (!list.includes(e.canonical)) list.push(e.canonical)
-    }
-    const fields: Record<string, string> = {}
-    for (const [type, canonicals] of current) {
-      fields[type] = JSON.stringify(canonicals)
-    }
-    if (Object.keys(fields).length > 0) {
-      await this.redis.hSet('strata:canonicals', fields)
-    }
+  async incrEntityHubCount(key: string): Promise<void> {
+    await this.redis.hIncrBy('strata:entity-hub-counts', key, 1)
   }
 
   async getItemIdsByDecision(decision: string, timeRange?: [number, number]): Promise<string[]> {
@@ -182,5 +194,30 @@ export class RedisKVStore implements KVStore {
     if (Object.keys(fields).length > 0) {
       await this.redis.hSet('strata:rules', fields)
     }
+  }
+
+  async getItemCount(): Promise<number> {
+    return this.redis.zCard('strata:idx:time')
+  }
+
+  async getOldestItemIds(n: number): Promise<string[]> {
+    const entries = await this.redis.zRange('strata:idx:time', 0, n - 1)
+    return entries.map(e => e.member)
+  }
+
+  async deleteItems(ids: string[]): Promise<void> {
+    if (ids.length === 0) return
+    // Read items first to get their index keys
+    for (const id of ids) {
+      const raw = await this.redis.hGet('strata:items', id)
+      if (!raw) continue
+      const item = JSON.parse(raw) as StoredItem
+      await this.redis.zRem(`strata:idx:author:${item.authorId}`, [id])
+      await this.redis.zRem(`strata:idx:thread:${item.threadRootId}`, [id])
+      await this.redis.zRem(`strata:idx:decision:${item.decision}`, [id])
+    }
+    await this.redis.hDel('strata:items', ids)
+    await this.redis.hDel('strata:embeddings', ids)
+    await this.redis.zRem('strata:idx:time', ids)
   }
 }

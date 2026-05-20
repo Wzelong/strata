@@ -14,7 +14,8 @@ export class MemoryKVStore implements KVStore {
   private embeddings = new Map<string, number[]>()
   private timeline: ZEntry[] = []
   private entityIndex = new Map<string, ZEntry[]>()
-  private canonicals = new Map<string, string[]>()
+  private entityEmbeddings = new Map<string, Array<{ itemId: string; surfaceText: string; embedding: string }>>()
+  private entityHubCounts = new Map<string, number>()
   private decisionIndex = new Map<string, ZEntry[]>()
   private authorIndex = new Map<string, ZEntry[]>()
   private threadIndex = new Map<string, ZEntry[]>()
@@ -71,27 +72,36 @@ export class MemoryKVStore implements KVStore {
 
   async addToEntityIndex(entities: Entity[], itemId: string, createdAt: number): Promise<void> {
     for (const e of entities) {
-      const key = `${e.type}:${e.canonical}`
+      const key = `${e.type}:${e.surfaceText}`
       if (!this.entityIndex.has(key)) this.entityIndex.set(key, [])
       this.entityIndex.get(key)!.push({ member: itemId, score: createdAt })
     }
   }
 
-  async getItemIdsByEntity(type: string, canonical: string, timeRange?: [number, number]): Promise<string[]> {
-    const key = `${type}:${canonical}`
+  async getItemIdsByEntity(type: string, surfaceText: string, timeRange?: [number, number]): Promise<string[]> {
+    const key = `${type}:${surfaceText}`
     return filterByRange(this.entityIndex.get(key) ?? [], timeRange)
   }
 
-  async getCanonicals(): Promise<Map<string, string[]>> {
-    return new Map(this.canonicals)
+  async setEntityEmbeddings(itemId: string, entities: Array<{ type: string; surfaceText: string; embedding: string }>): Promise<void> {
+    for (const e of entities) {
+      if (!this.entityEmbeddings.has(e.type)) this.entityEmbeddings.set(e.type, [])
+      this.entityEmbeddings.get(e.type)!.push({ itemId, surfaceText: e.surfaceText, embedding: e.embedding })
+      const hubKey = `${e.type}:${e.surfaceText.toLowerCase()}`
+      this.entityHubCounts.set(hubKey, (this.entityHubCounts.get(hubKey) ?? 0) + 1)
+    }
   }
 
-  async addCanonicals(entities: Entity[]): Promise<void> {
-    for (const e of entities) {
-      if (!this.canonicals.has(e.type)) this.canonicals.set(e.type, [])
-      const list = this.canonicals.get(e.type)!
-      if (!list.includes(e.canonical)) list.push(e.canonical)
-    }
+  async getEntityEmbeddingsByType(type: string): Promise<Array<{ itemId: string; surfaceText: string; embedding: string }>> {
+    return this.entityEmbeddings.get(type) ?? []
+  }
+
+  async getEntityHubCounts(): Promise<Map<string, number>> {
+    return new Map(this.entityHubCounts)
+  }
+
+  async incrEntityHubCount(key: string): Promise<void> {
+    this.entityHubCounts.set(key, (this.entityHubCounts.get(key) ?? 0) + 1)
   }
 
   async getItemIdsByDecision(decision: string, timeRange?: [number, number]): Promise<string[]> {
@@ -130,5 +140,22 @@ export class MemoryKVStore implements KVStore {
 
   async setRules(rules: StoredRule[]): Promise<void> {
     this.rules = rules
+  }
+
+  async getItemCount(): Promise<number> {
+    return this.items.size
+  }
+
+  async getOldestItemIds(n: number): Promise<string[]> {
+    const sorted = [...this.timeline].sort((a, b) => a.score - b.score)
+    return sorted.slice(0, n).map(e => e.member)
+  }
+
+  async deleteItems(ids: string[]): Promise<void> {
+    for (const id of ids) {
+      this.items.delete(id)
+      this.embeddings.delete(id)
+      this.timeline = this.timeline.filter(e => e.member !== id)
+    }
   }
 }

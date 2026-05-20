@@ -11,10 +11,12 @@ export interface KVStore {
   getAllEmbeddings(): Promise<Map<string, number[]>>
 
   addToEntityIndex(entities: Entity[], itemId: string, createdAt: number): Promise<void>
-  getItemIdsByEntity(type: string, canonical: string, timeRange?: [number, number]): Promise<string[]>
+  getItemIdsByEntity(type: string, surfaceText: string, timeRange?: [number, number]): Promise<string[]>
 
-  getCanonicals(): Promise<Map<string, string[]>>
-  addCanonicals(entities: Entity[]): Promise<void>
+  setEntityEmbeddings(itemId: string, entities: Array<{ type: string; surfaceText: string; embedding: string }>): Promise<void>
+  getEntityEmbeddingsByType(type: string): Promise<Array<{ itemId: string; surfaceText: string; embedding: string }>>
+  getEntityHubCounts(): Promise<Map<string, number>>
+  incrEntityHubCount(key: string): Promise<void>
 
   getItemIdsByDecision(decision: string, timeRange?: [number, number]): Promise<string[]>
   moveDecision(itemId: string, from: string, to: string, at: number): Promise<void>
@@ -27,4 +29,8 @@ export interface KVStore {
 
   getRules(): Promise<StoredRule[]>
   setRules(rules: StoredRule[]): Promise<void>
+
+  getItemCount(): Promise<number>
+  getOldestItemIds(n: number): Promise<string[]>
+  deleteItems(ids: string[]): Promise<void>
 }

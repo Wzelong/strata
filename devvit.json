@@ -42,6 +42,12 @@
     "onPostSubmit": "/internal/triggers/post-submit",
     "onCommentSubmit": "/internal/triggers/comment-submit"
   },
+  "scheduler": {
+    "tasks": {
+      "ingest-batch": { "endpoint": "/internal/scheduler/ingest-batch" },
+      "scan": { "endpoint": "/internal/scheduler/scan" }
+    }
+  },
   "menu": {
     "items": [
       {
@@ -60,12 +66,28 @@
         ],
         "forUserType": "moderator",
         "endpoint": "/internal/menu/surface"
+      },
+      {
+        "label": "Strata: Ingest",
+        "description": "Import subreddit posts and comments into Strata",
+        "location": "subreddit",
+        "forUserType": "moderator",
+        "endpoint": "/internal/menu/ingest"
+      },
+      {
+        "label": "Strata: Scan",
+        "description": "Scan stored items for buried connections",
+        "location": "subreddit",
+        "forUserType": "moderator",
+        "endpoint": "/internal/menu/scan"
       }
     ]
   },
   "forms": {
     "surfaceResults": "/internal/forms/surface-results",
-    "seedResults": "/internal/forms/seed-results"
+    "seedResults": "/internal/forms/seed-results",
+    "ingestDates": "/internal/forms/ingest-dates",
+    "ingestConfirm": "/internal/forms/ingest-confirm"
   },
   "scripts": {
     "build": "vite build",

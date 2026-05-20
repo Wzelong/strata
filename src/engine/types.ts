@@ -6,7 +6,6 @@ export type Relationship = 'CONFIRMS' | 'CONTRADICTS' | 'UPDATES' | 'TEMPORAL' |
 export type Entity = {
   type: string
   surfaceText: string
-  canonical: string
 }
 
 export type Scope = 'global' | 'local'
@@ -86,4 +85,32 @@ export type StoredRule = {
 export type CostTracker = {
   track(usage: { input_tokens?: number; output_tokens?: number } | null | undefined): void
   total: number
+}
+
+export type AlertMode = 'surface' | 'flag'
+export type AlertStatus = 'pending' | 'resolved' | 'dismissed'
+export type AlertConfidence = 'high' | 'review'
+
+export type Alert = {
+  id: string
+  mode: AlertMode
+  status: AlertStatus
+  confidence: AlertConfidence
+  connectionCount: number
+  createdAt: number
+  anchorId: string
+  anchorAuthor: string
+  anchorText: string
+  anchorPermalink: string
+}
+
+export type AlertConnection = {
+  itemId: string
+  author: string
+  text: string
+  permalink: string
+  classification: 'confirms' | 'updates' | 'temporal' | 'contradicts'
+  confidence: 'high' | 'review'
+  entities: string[]
+  reasoning: string
 }
