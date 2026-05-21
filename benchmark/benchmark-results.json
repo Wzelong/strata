@@ -1,0 +1,445 @@
+{
+  "timestamp": "2026-05-21T20:37:56.500Z",
+  "mode": "cheap",
+  "datasetSize": 10015,
+  "sections": [
+    {
+      "name": "Retrieval Quality",
+      "durationMs": 11.467200000000048,
+      "metrics": [
+        {
+          "name": "recall@5",
+          "value": 0.5,
+          "unit": "ratio",
+          "pass": true,
+          "threshold": 0.25
+        },
+        {
+          "name": "recall@10",
+          "value": 1,
+          "unit": "ratio",
+          "pass": true,
+          "threshold": 0.5
+        },
+        {
+          "name": "recall@15",
+          "value": 1,
+          "unit": "ratio",
+          "pass": true,
+          "threshold": 0.75
+        },
+        {
+          "name": "precision@15",
+          "value": 0.2667,
+          "unit": "ratio",
+          "pass": true
+        },
+        {
+          "name": "mrr",
+          "value": 0.5,
+          "unit": "score",
+          "pass": true,
+          "threshold": 0.1
+        },
+        {
+          "name": "signal_noise_separation",
+          "value": 0.0951,
+          "unit": "delta",
+          "pass": true
+        }
+      ],
+      "details": {
+        "signalPositions": {
+          "t1_strata_surface1": 3,
+          "t3_strata_surface2": 10,
+          "t1_strata_surface3": 9,
+          "t3_strata_surface4": 2
+        },
+        "avgSignal": 0.622237160211256,
+        "avgNoise": 0.5271543357303162
+      }
+    },
+    {
+      "name": "Scan Pipeline",
+      "durationMs": 14621.1437,
+      "metrics": [
+        {
+          "name": "signal_found",
+          "value": 0,
+          "unit": "count",
+          "pass": false,
+          "threshold": 1
+        },
+        {
+          "name": "signal_anchors",
+          "value": 0,
+          "unit": "count",
+          "pass": true
+        },
+        {
+          "name": "signal_pair_rank",
+          "value": 99,
+          "unit": "rank",
+          "pass": true
+        },
+        {
+          "name": "total_pairs",
+          "value": 10,
+          "unit": "count",
+          "pass": true,
+          "threshold": 50
+        },
+        {
+          "name": "computation_time_ms",
+          "value": 14621.1437,
+          "unit": "ms",
+          "pass": true
+        }
+      ],
+      "details": {
+        "pairs": [
+          {
+            "anchor": "t1_olyvd39",
+            "connections": [
+              "t1_olkqcw5"
+            ],
+            "entities": [
+              "object:Mike’s Pastry",
+              "object:Regina’s",
+              "url:https://www.google.com/maps/d/u/0/viewer?mid=1gWzVbAOxAHaSOqnF7Dg38jWheS5AVIU&ll=42.359830412017125%2C-71.08777995&z=14",
+              "organization:TD Garden"
+            ],
+            "hasSignal": false
+          },
+          {
+            "anchor": "t1_omd4pzo",
+            "connections": [
+              "t1_omc1f8e",
+              "t1_omc1c8s",
+              "t1_olr4rro",
+              "t1_omd4rfp"
+            ],
+            "entities": [
+              "object:weekly chat thread",
+              "object:weekend events thread",
+              "object:the wiki",
+              "quantity:several subreddits"
+            ],
+            "hasSignal": false
+          },
+          {
+            "anchor": "t1_oma6gam",
+            "connections": [
+              "t1_omcvaaz",
+              "t1_omcu0cn",
+              "t1_om8gf7c",
+              "t1_om5dthl",
+              "t1_om2uoy1",
+              "t1_olz72o0",
+              "t1_olz5l6n",
+              "t1_olz0l39",
+              "t1_olyvd21",
+              "t1_olynkbp",
+              "t1_olwtj2r",
+              "t1_olvzarg",
+              "t1_olvk55n",
+              "t1_olvb71j",
+              "t1_olugtqw",
+              "t1_olu1acr",
+              "t1_oltuyt4",
+              "t1_ols6mwg",
+              "t1_ols3mdx",
+              "t1_oloahwu",
+              "t1_olo34re",
+              "t1_olmd11q",
+              "t1_olkqcux",
+              "t1_olk6lag",
+              "t1_oli8rq8",
+              "t1_om55nlw",
+              "t1_olyyz76",
+              "t1_olyvd45",
+              "t1_olynkda",
+              "t1_olkqcxa"
+            ],
+            "entities": [
+              "url:https://www.reddit.com/r/boston/wiki/experience/",
+              "url:https://www.reddit.com/r/boston/search?q=flair%3Avisiting%2Ftourism&restrict_sr=on&sort=new&t=all",
+              "url:https://i.redd.it/569ireqj06431.jpg",
+              "url:/message/compose/?to=/r/boston",
+              "organization:/r/boston"
+            ],
+            "hasSignal": false
+          },
+          {
+            "anchor": "t1_olt0bqc",
+            "connections": [
+              "t1_olvka0u",
+              "t1_olrehrq",
+              "t1_olnw8kv",
+              "t1_olmxds8",
+              "t1_olkv0ja"
+            ],
+            "entities": [
+              "url:https://www.bpl.org/resources-types/newspapers/",
+              "quantity:Rule 5",
+              "organization:Boston Public Library",
+              "organization:The Boston Globe"
+            ],
+            "hasSignal": false
+          },
+          {
+            "anchor": "t3_1td567v",
+            "connections": [
+              "t3_1td51qb",
+              "t3_1td4ps0",
+              "t1_olt169r"
+            ],
+            "entities": [
+              "object:tree pit flower box",
+              "object:front door cam",
+              "username:keepeastieclean"
+            ],
+            "hasSignal": false
+          },
+          {
+            "anchor": "t1_olkr6yh",
+            "connections": [
+              "t1_olijlxe"
+            ],
+            "entities": [
+              "url:https://www.zillow.com/homedetails/5-Garden-Ct-APT-1-Cambridge-MA-02138/63709986_zpid/",
+              "quantity:$5.29",
+              "quantity:$510k"
+            ],
+            "hasSignal": false
+          },
+          {
+            "anchor": "t1_olz1ivh",
+            "connections": [
+              "t1_oluhx5e",
+              "t1_oltwb7v",
+              "t1_om1fy84",
+              "t1_olueuz1",
+              "t1_oltxcn8",
+              "t1_oltuej4",
+              "t1_olttm0r",
+              "t1_olto1t1",
+              "t1_oluftab",
+              "t1_oltlaw2",
+              "t3_1te67ba",
+              "t1_oltoajm",
+              "t1_oltf8r5"
+            ],
+            "entities": [
+              "organization:Dana Farber",
+              "organization:Beth Israel Deaconess",
+              "organization:Boston Medical Center (BMC)",
+              "organization:New England Baptist",
+              "organization:Mass General Brigham",
+              "organization:Spaudling Rehab",
+              "organization:Cambridge Health Alliance",
+              "organization:Tufts Medical Center"
+            ],
+            "hasSignal": false
+          },
+          {
+            "anchor": "t1_om9a9b7",
+            "connections": [
+              "t1_om9a38s"
+            ],
+            "entities": [
+              "quantity:6 months",
+              "quantity:200 days a year",
+              "quantity:dozens"
+            ],
+            "hasSignal": false
+          },
+          {
+            "anchor": "t1_omdzz4t",
+            "connections": [
+              "t1_om8snul"
+            ],
+            "entities": [
+              "organization:Holy Cross Cathedral",
+              "organization:Saint Leonard’s",
+              "organization:trinity Church"
+            ],
+            "hasSignal": false
+          },
+          {
+            "anchor": "t1_ollr0eo",
+            "connections": [
+              "t1_ollqrb1"
+            ],
+            "entities": [
+              "organization:marksmanship units",
+              "organization:armed services"
+            ],
+            "hasSignal": false
+          }
+        ]
+      }
+    },
+    {
+      "name": "Brigade Detection",
+      "durationMs": 3.4922999999998865,
+      "metrics": [
+        {
+          "name": "detected",
+          "value": 1,
+          "unit": "bool",
+          "pass": true,
+          "threshold": 1
+        },
+        {
+          "name": "cluster_size",
+          "value": 19,
+          "unit": "count",
+          "pass": true
+        },
+        {
+          "name": "author_count",
+          "value": 18,
+          "unit": "count",
+          "pass": true
+        },
+        {
+          "name": "semantic_uniformity",
+          "value": 0.5778,
+          "unit": "cosine",
+          "pass": true
+        },
+        {
+          "name": "false_positive_rate",
+          "value": 0.3,
+          "unit": "ratio",
+          "pass": true,
+          "threshold": 0.35
+        }
+      ],
+      "details": {
+        "detectedEntity": "organization:MGH",
+        "clusterItemIds": [
+          "t3_strata_casepost",
+          "t1_olr15ts",
+          "t1_olrieg6",
+          "t1_oltnhzj",
+          "t1_oltoajm",
+          "t1_oltu9k3",
+          "t1_olu5a9u",
+          "t1_olubibf",
+          "t1_olvroxs",
+          "t1_olvt8tk",
+          "t1_olx4w2t",
+          "t1_om3xltc",
+          "t1_om52rlu",
+          "t1_om6v19x",
+          "t1_om86cka",
+          "t1_om9a38s",
+          "t1_om9a9b7",
+          "t1_omb3zil",
+          "t1_omccz5z"
+        ]
+      }
+    },
+    {
+      "name": "Pattern Match",
+      "durationMs": 12.814400000001115,
+      "metrics": [
+        {
+          "name": "flag3_recall@5",
+          "value": 1,
+          "unit": "ratio",
+          "pass": true,
+          "threshold": 0.67
+        },
+        {
+          "name": "max_similarity",
+          "value": 0.7058,
+          "unit": "cosine",
+          "pass": true,
+          "threshold": 0.5
+        },
+        {
+          "name": "threshold_pass",
+          "value": 1,
+          "unit": "bool",
+          "pass": true,
+          "threshold": 1
+        },
+        {
+          "name": "separation",
+          "value": 0.7058,
+          "unit": "delta",
+          "pass": true
+        }
+      ],
+      "details": {
+        "topResults": [
+          {
+            "id": "t3_strata_flag3a",
+            "score": 0.7057664256044518
+          },
+          {
+            "id": "t3_strata_flag3b",
+            "score": 0.6329008256734596
+          },
+          {
+            "id": "t3_strata_flag3c",
+            "score": 0.6208854172509746
+          }
+        ],
+        "flag3Scores": [
+          0.7057664256044518,
+          0.6329008256734596,
+          0.6208854172509746
+        ]
+      }
+    },
+    {
+      "name": "Performance",
+      "durationMs": 47391.983,
+      "metrics": [
+        {
+          "name": "cosine_scan_p50_ms",
+          "value": 7.9013,
+          "unit": "ms",
+          "pass": true,
+          "threshold": 100
+        },
+        {
+          "name": "cosine_scan_p95_ms",
+          "value": 9.6341,
+          "unit": "ms",
+          "pass": true,
+          "threshold": 200
+        },
+        {
+          "name": "scan_pipeline_p50_ms",
+          "value": 15016.208,
+          "unit": "ms",
+          "pass": true,
+          "threshold": 60000
+        },
+        {
+          "name": "memory_mb",
+          "value": 366.9437,
+          "unit": "MB",
+          "pass": true,
+          "threshold": 2000
+        },
+        {
+          "name": "load_time_ms",
+          "value": 834.1849,
+          "unit": "ms",
+          "pass": true
+        }
+      ]
+    }
+  ],
+  "totalDurationMs": 62043.8503,
+  "summary": {
+    "passed": 14,
+    "failed": 1
+  }
+}
