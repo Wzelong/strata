@@ -51,28 +51,30 @@ async function loadJsonl(path: string): Promise<RawRedditItem[]> {
   return items
 }
 
-function getText(item: RawRedditItem): string {
-  if (item.selftext !== undefined && item.selftext !== '') {
-    return item.title ? `${item.title}\n\n${item.selftext}` : item.selftext
-  }
-  return item.body ?? ''
-}
-
-function toRawItem(r: RawRedditItem): RawItem | null {
+function toRawItem(r: RawRedditItem, postTitles: Map<string, string>): RawItem | null {
   const isPost = (r.name ?? '').startsWith('t3_')
-  const text = getText(r)
-  if (!text || text === '[removed]' || text === '[deleted]') return null
-  if (text.length < 20) return null
+  const id = r.name ?? (isPost ? `t3_${r.id}` : `t1_${r.id}`)
 
-  return {
-    id: r.name ?? (isPost ? `t3_${r.id}` : `t1_${r.id}`),
-    type: isPost ? 'post' : 'comment',
-    text,
-    authorId: r.author_fullname ?? r.author,
-    authorName: r.author,
-    createdAt: r.created_utc * 1000,
-    threadRootId: r.link_id ?? r.name,
-    parentId: isPost ? null : (r.parent_id ?? null),
+  if (isPost) {
+    const text = r.selftext ?? ''
+    if ((!r.title && !text) || text === '[removed]' || text === '[deleted]') return null
+    if ((r.title ?? '').length + text.length < 20) return null
+    return {
+      id, type: 'post', title: r.title, text,
+      authorId: r.author_fullname ?? r.author, authorName: r.author,
+      createdAt: r.created_utc * 1000, threadRootId: id, parentId: null,
+    }
+  } else {
+    const text = r.body ?? ''
+    if (!text || text === '[removed]' || text === '[deleted]') return null
+    if (text.length < 20) return null
+    const threadRootId = r.link_id ?? id
+    const parentTitle = postTitles.get(threadRootId)
+    return {
+      id, type: 'comment', title: parentTitle, text,
+      authorId: r.author_fullname ?? r.author, authorName: r.author,
+      createdAt: r.created_utc * 1000, threadRootId, parentId: r.parent_id ?? null,
+    }
   }
 }
 
@@ -92,14 +94,20 @@ async function main() {
   const rawComments = await loadJsonl(COMMENTS_FILE)
   console.log(`  ${rawComments.length} comments`)
 
-  // Step 2: Convert to RawItems, take up to MAX_ITEMS
+  // Step 2: Build post titles map, then convert to RawItems
+  const postTitles = new Map<string, string>()
+  for (const r of rawPosts) {
+    const id = r.name ?? `t3_${r.id}`
+    if (r.title) postTitles.set(id, r.title)
+  }
+
   const allRaw: RawItem[] = []
   for (const r of rawPosts) {
-    const item = toRawItem(r)
+    const item = toRawItem(r, postTitles)
     if (item) allRaw.push(item)
   }
   for (const r of rawComments) {
-    const item = toRawItem(r)
+    const item = toRawItem(r, postTitles)
     if (item) allRaw.push(item)
   }
 
@@ -161,10 +169,23 @@ async function main() {
     }
   }
 
-  const seed = { items: seedItems, embeddings: seedEmbeddings }
+  // Collect entity embeddings by type
+  const ENTITY_TYPES = ['person', 'location', 'object', 'organization', 'phone', 'email', 'url', 'username', 'quantity']
+  const seedEntityEmbeddings: Record<string, Record<string, string>> = {}
+  for (const type of ENTITY_TYPES) {
+    const entries = await store.getEntityEmbeddingsByType(type)
+    if (entries.length > 0) {
+      seedEntityEmbeddings[type] = {}
+      for (const e of entries) {
+        seedEntityEmbeddings[type][`${e.itemId}:${e.surfaceText}`] = e.embedding
+      }
+    }
+  }
+
+  const seed = { items: seedItems, embeddings: seedEmbeddings, entityEmbeddings: seedEntityEmbeddings }
   writeFileSync(SEED_OUTPUT, JSON.stringify(seed))
   const sizeMB = (Buffer.byteLength(JSON.stringify(seed)) / 1024 / 1024).toFixed(1)
-  console.log(`  ${SEED_OUTPUT} (${sizeMB}MB, ${seedItems.length} items)`)
+  console.log(`  ${SEED_OUTPUT} (${sizeMB}MB, ${seedItems.length} items, ${Object.values(seedEntityEmbeddings).reduce((n, v) => n + Object.keys(v).length, 0)} entity embeddings)`)
 
   // Step 7: Process live items
   console.log(`\nProcessing ${LIVE_ITEMS.length} live items...`)

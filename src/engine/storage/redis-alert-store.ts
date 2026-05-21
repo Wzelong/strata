@@ -19,8 +19,12 @@ export class RedisAlertStore implements AlertStore {
       createdAt: String(alert.createdAt),
       anchorId: alert.anchorId,
       anchorAuthor: alert.anchorAuthor,
+      anchorType: alert.anchorType,
       anchorText: alert.anchorText,
       anchorPermalink: alert.anchorPermalink,
+      ...(alert.anchorTitle && { anchorTitle: alert.anchorTitle }),
+      ...(alert.reasoning && { reasoning: alert.reasoning }),
+      ...(alert.flagType && { flagType: alert.flagType }),
     })
 
     if (connections.length > 0) {
@@ -32,6 +36,7 @@ export class RedisAlertStore implements AlertStore {
     }
 
     await this.redis.zAdd('strata:alerts', { member: alert.id, score: alert.createdAt })
+    await this.redis.zAdd(`strata:idx:alert-anchor:${alert.anchorId}`, { member: alert.id, score: alert.createdAt })
   }
 
   async getAlert(id: string): Promise<Alert | null> {
@@ -46,8 +51,12 @@ export class RedisAlertStore implements AlertStore {
       createdAt: parseInt(raw.createdAt, 10),
       anchorId: raw.anchorId,
       anchorAuthor: raw.anchorAuthor,
+      anchorType: (raw.anchorType || 'post') as Alert['anchorType'],
       anchorText: raw.anchorText,
       anchorPermalink: raw.anchorPermalink,
+      ...(raw.anchorTitle && { anchorTitle: raw.anchorTitle }),
+      ...(raw.reasoning && { reasoning: raw.reasoning }),
+      ...(raw.flagType && { flagType: raw.flagType as Alert['flagType'] }),
     }
   }
 
@@ -83,5 +92,10 @@ export class RedisAlertStore implements AlertStore {
 
   async updateAlertStatus(id: string, status: AlertStatus): Promise<void> {
     await this.redis.hSet(`strata:alert:${id}`, { status })
+  }
+
+  async getAlertIdsByAnchor(anchorId: string): Promise<string[]> {
+    const entries = await this.redis.zRange(`strata:idx:alert-anchor:${anchorId}`, 0, -1)
+    return entries.map(e => e.member)
   }
 }

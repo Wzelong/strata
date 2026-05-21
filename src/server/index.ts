@@ -7,7 +7,7 @@ import { StrataEngine, normalize } from '../engine/index.js'
 import { RedisKVStore, type RedisClient } from '../engine/storage/redis.js'
 import { RedisAlertStore } from '../engine/storage/redis-alert-store.js'
 import type { AlertStore } from '../engine/storage/alert-store.js'
-import type { RawItem, Item, Hit, StoredItem, Entity, Alert, AlertConnection, AlertStatus } from '../engine/types.js'
+import type { RawItem, Item, Hit, StoredItem, Entity, Alert, AlertConnection, AlertStatus, FlagResult } from '../engine/types.js'
 import {
   buildEmbeddingJsonl, buildExtractionJsonl, buildEntityEmbeddingJsonl,
   submitBatch, checkBatch, downloadBatchResults,
@@ -66,8 +66,31 @@ function formatConnections(hits: Array<{ item: Item; relationship: string; weigh
 
 app.post('/internal/triggers/app-install', async (c) => {
   const input = await c.req.json<any>()
-  console.log('[Strata] Installed to r/' + input.subreddit?.name)
+  const subredditName = input.subreddit?.name || context.subredditName
+  console.log('[Strata] Installed to r/' + subredditName)
   await redis.set('strata:installed', '1')
+
+  if (subredditName) {
+    try {
+      const post = await reddit.submitCustomPost({
+        subredditName,
+        title: 'Strata Dashboard',
+        entry: 'default',
+        postData: {},
+        styles: {
+          backgroundColor: '#FFFFFFFF',
+          backgroundColorDark: '#1a1a1bFF',
+          height: 'TALL',
+        },
+      })
+      await redis.set('strata:dashboard-post-id', post.id)
+      await post.sticky()
+      console.log(`[Strata] Dashboard post created: ${post.id}`)
+    } catch (err) {
+      console.error('[Strata] Failed to create dashboard post:', err)
+    }
+  }
+
   return c.json<TriggerResponse>({ status: 'ok' })
 })
 
@@ -75,6 +98,9 @@ app.post('/internal/triggers/post-submit', async (c) => {
   const input = await c.req.json<any>()
   const post = input.post
   if (!post?.title || !post?.id) return c.json<TriggerResponse>({ status: 'ok' })
+
+  const dashboardPostId = await redis.get('strata:dashboard-post-id')
+  if (post.id === dashboardPostId) return c.json<TriggerResponse>({ status: 'ok' })
 
   const seeded = await redis.get('strata:seed:complete')
   if (!seeded) {
@@ -86,13 +112,15 @@ app.post('/internal/triggers/post-submit', async (c) => {
     const engine = await getEngine()
 
     const fullPost = await reddit.getPostById(post.id)
-    const text = fullPost.body ? `${fullPost.title}\n\n${fullPost.body}` : fullPost.title
+    const title = fullPost.title
+    const text = fullPost.body || ''
     const authorName = fullPost.authorName || post.author || 'unknown'
     const authorId = post.authorId || authorName
 
     const raw: RawItem = {
       id: post.id,
       type: 'post',
+      title,
       text,
       authorId,
       authorName,
@@ -104,8 +132,13 @@ app.post('/internal/triggers/post-submit', async (c) => {
     console.log(`[Strata] Ingesting post ${post.id} by ${authorName}: "${text.slice(0, 60)}..."`)
     const item = await engine.ingest(raw)
 
-    const { candidates, entityMatches } = await engine.surface(item)
-    console.log(`[Strata] Found ${candidates.length} candidates after hybrid retrieval`)
+    const [surfaceResult, flagResults] = await Promise.all([
+      engine.surface(item),
+      engine.flag(item),
+    ])
+    const { candidates, entityMatches } = surfaceResult
+    console.log(`[Strata] Found ${candidates.length} candidates, ${flagResults.length} flags`)
+    console.log(`[Strata] entityMatches: ${entityMatches.size} items with entities`, [...entityMatches.entries()].slice(0, 3).map(([id, ents]) => `${id}: [${ents.join(', ')}]`))
 
     const classifications = await engine.classifyBatch(item, candidates.map(h => h.item))
     const connections: Array<{ item: Item; relationship: string; weight: number }> = []
@@ -123,17 +156,26 @@ app.post('/internal/triggers/post-submit', async (c) => {
     if (connections.length > 0 && context.subredditName) {
       const subredditName = context.subredditName
       const related = classifications.filter(c => c.relationship !== 'UNRELATED')
+      const anchorEntityTexts = new Set(item.entities.map(e => e.surfaceText.toLowerCase()))
       const alertConnections: AlertConnection[] = related.map(cls => {
         const hit = candidates.find(c => c.item.id === cls.id)!
+        const fromRetrieval = entityMatches.get(cls.id) ?? []
+        const fromOverlap = hit.item.entities
+          .filter(e => anchorEntityTexts.has(e.surfaceText.toLowerCase()))
+          .map(e => e.surfaceText)
+        const entities = fromRetrieval.length > 0 ? fromRetrieval : fromOverlap
         return {
           itemId: cls.id,
           author: hit.item.authorName,
+          type: hit.item.type,
+          title: hit.item.title,
           text: hit.item.text,
           permalink: buildPermalink(hit.item, subredditName),
           classification: cls.relationship.toLowerCase() as AlertConnection['classification'],
           confidence: cls.confidence ?? 'review',
-          entities: entityMatches.get(cls.id) ?? [],
+          entities,
           reasoning: cls.reason,
+          sameAuthor: hit.item.authorId === item.authorId,
         }
       })
 
@@ -146,6 +188,8 @@ app.post('/internal/triggers/post-submit', async (c) => {
         createdAt: Date.now(),
         anchorId: item.id,
         anchorAuthor: item.authorName,
+        anchorType: item.type,
+        anchorTitle: item.title,
         anchorText: item.text,
         anchorPermalink: buildPermalink(item, subredditName),
       }
@@ -161,6 +205,46 @@ app.post('/internal/triggers/post-submit', async (c) => {
         body,
         to: null as any,
       })
+    }
+
+    // Flag alerts
+    if (flagResults.length > 0 && context.subredditName) {
+      const subredditName = context.subredditName
+      for (const flag of flagResults) {
+        const flagConnections: AlertConnection[] = flag.connectionItems.map(ci => ({
+          itemId: ci.id,
+          author: ci.authorName,
+          type: ci.type,
+          title: ci.title,
+          text: ci.text,
+          permalink: buildPermalink(ci, subredditName),
+          classification: 'confirms' as const,
+          confidence: flag.confidence,
+          entities: [],
+          reasoning: flag.type === 'pattern' ? `Similarity to removed item` : '',
+          sameAuthor: ci.authorId === item.authorId,
+        }))
+
+        const flagAlert: Alert = {
+          id: generateAlertId(),
+          mode: 'flag',
+          status: 'pending',
+          confidence: flag.confidence,
+          connectionCount: flagConnections.length,
+          createdAt: Date.now(),
+          anchorId: item.id,
+          anchorAuthor: item.authorName,
+          anchorType: item.type,
+          anchorTitle: item.title,
+          anchorText: item.text,
+          anchorPermalink: buildPermalink(item, subredditName),
+          reasoning: flag.reasoning,
+          flagType: flag.type,
+        }
+
+        await alertStore.createAlert(flagAlert, flagConnections)
+        console.log(`[Strata] Flag alert ${flagAlert.id} — ${flag.type}${flag.ruleId ? ` (${flag.ruleId})` : ''}`)
+      }
     }
   } catch (err) {
     console.error('[Strata] Error processing post:', err)
@@ -179,19 +263,67 @@ app.post('/internal/triggers/comment-submit', async (c) => {
 
   try {
     const engine = await getEngine()
+    const threadRootId = comment.linkId || comment.id
+    let parentTitle: string | undefined
+    try {
+      const parentPost = await reddit.getPostById(threadRootId as `t3_${string}`)
+      parentTitle = parentPost.title
+    } catch {}
+
     const raw: RawItem = {
       id: comment.id,
       type: 'comment',
+      title: parentTitle,
       text: comment.body,
       authorId: comment.authorId || comment.author || 'unknown',
       authorName: comment.author || 'unknown',
       createdAt: Date.now(),
-      threadRootId: comment.linkId || comment.id,
+      threadRootId,
       parentId: comment.parentId || null,
     }
 
-    await engine.ingest(raw)
+    const item = await engine.ingest(raw)
     console.log(`[Strata] Ingested comment ${comment.id}`)
+
+    const flagResults = await engine.flag(item)
+    if (flagResults.length > 0 && context.subredditName) {
+      const subredditName = context.subredditName
+      for (const flag of flagResults) {
+        const flagConnections: AlertConnection[] = flag.connectionItems.map(ci => ({
+          itemId: ci.id,
+          author: ci.authorName,
+          type: ci.type,
+          title: ci.title,
+          text: ci.text,
+          permalink: buildPermalink(ci, subredditName),
+          classification: 'confirms' as const,
+          confidence: flag.confidence,
+          entities: [],
+          reasoning: flag.type === 'pattern' ? `Similarity to removed item` : '',
+          sameAuthor: ci.authorId === item.authorId,
+        }))
+
+        const flagAlert: Alert = {
+          id: generateAlertId(),
+          mode: 'flag',
+          status: 'pending',
+          confidence: flag.confidence,
+          connectionCount: flagConnections.length,
+          createdAt: Date.now(),
+          anchorId: item.id,
+          anchorAuthor: item.authorName,
+          anchorType: 'comment',
+          anchorTitle: item.title,
+          anchorText: item.text,
+          anchorPermalink: buildPermalink(item, subredditName),
+          reasoning: flag.reasoning,
+          flagType: flag.type,
+        }
+
+        await alertStore.createAlert(flagAlert, flagConnections)
+        console.log(`[Strata] Flag alert ${flagAlert.id} (comment) — ${flag.type}`)
+      }
+    }
   } catch (err) {
     console.error('[Strata] Error processing comment:', err)
   }
@@ -200,6 +332,65 @@ app.post('/internal/triggers/comment-submit', async (c) => {
 })
 
 // --- Menu Actions ---
+
+app.post('/internal/menu/load-rules', async (c) => {
+  const subredditName = context.subredditName
+  if (!subredditName) return c.json<UiResponse>({ showToast: 'No subreddit context.' })
+
+  try {
+    const engine = await getEngine()
+    const subredditRules = await reddit.getSubredditRules(subredditName)
+
+    if (!subredditRules || subredditRules.length === 0) {
+      return c.json<UiResponse>({ showToast: 'No rules found for this subreddit.' })
+    }
+
+    const ruleInputs = subredditRules.map((rule: any, i: number) => ({
+      id: `rule-${i + 1}`,
+      shortName: rule.shortName || rule.violationReason || `Rule ${i + 1}`,
+      description: rule.description || rule.shortName || '',
+      priority: i + 1,
+    }))
+
+    await engine.loadRules(ruleInputs)
+    return c.json<UiResponse>({
+      showToast: { text: `Loaded ${ruleInputs.length} rules.`, appearance: 'success' },
+    })
+  } catch (err) {
+    console.error('[Strata] Load rules error:', err)
+    return c.json<UiResponse>({ showToast: `Failed: ${err}` })
+  }
+})
+
+app.post('/internal/menu/dashboard', async (c) => {
+  const subredditName = context.subredditName
+  if (!subredditName) return c.json<UiResponse>({ showToast: 'No subreddit context.' })
+
+  try {
+    const existing = await redis.get('strata:dashboard-post-id')
+    if (existing) {
+      return c.json<UiResponse>({ showToast: 'Dashboard already exists. Check your stickied posts.' })
+    }
+
+    const post = await reddit.submitCustomPost({
+      subredditName,
+      title: 'Strata Dashboard',
+      entry: 'default',
+      postData: {},
+      styles: {
+        backgroundColor: '#FFFFFFFF',
+        backgroundColorDark: '#1a1a1bFF',
+        height: 'TALL',
+      },
+    })
+    await redis.set('strata:dashboard-post-id', post.id)
+    await post.sticky()
+    return c.json<UiResponse>({ showToast: 'Dashboard post created and stickied.' })
+  } catch (err) {
+    console.error('[Strata] Dashboard creation error:', err)
+    return c.json<UiResponse>({ showToast: `Failed: ${err}` })
+  }
+})
 
 app.post('/internal/menu/seed-data', async (c) => {
   return c.json<UiResponse>({
@@ -243,6 +434,7 @@ app.post('/internal/forms/seed-results', async (c) => {
     const seed = JSON.parse(json) as {
       items: StoredItem[]
       embeddings: Record<string, number[]>
+      entityEmbeddings?: Record<string, Record<string, string>>
     }
 
     console.log(`[Strata] Loaded ${seed.items.length} items, writing to Redis...`)
@@ -278,6 +470,22 @@ app.post('/internal/forms/seed-results', async (c) => {
       if ((i + BATCH) % 500 === 0 || i + BATCH >= seed.items.length) {
         console.log(`[Strata] Seeded ${Math.min(i + BATCH, seed.items.length)}/${seed.items.length}`)
       }
+    }
+
+    // Seed entity embeddings
+    if (seed.entityEmbeddings) {
+      for (const [type, entries] of Object.entries(seed.entityEmbeddings)) {
+        const key = `strata:entity-emb:${type}`
+        const fields: Record<string, string> = {}
+        for (const [field, emb] of Object.entries(entries)) {
+          fields[field] = emb
+        }
+        if (Object.keys(fields).length > 0) {
+          await redis.hSet(key, fields)
+        }
+      }
+      const totalEntEmbs = Object.values(seed.entityEmbeddings).reduce((n, v) => n + Object.keys(v).length, 0)
+      console.log(`[Strata] Seeded ${totalEntEmbs} entity embeddings`)
     }
 
     await redis.set('strata:seed:complete', '1')
@@ -461,9 +669,8 @@ app.post('/internal/forms/ingest-confirm', async (c) => {
         if (post.createdAt.getTime() < start) break
         if (post.createdAt.getTime() > end) continue
 
-        const text = post.body ? `${post.title}\n\n${post.body}` : post.title
         rawItems.push({
-          id: post.id, type: 'post', text,
+          id: post.id, type: 'post', title: post.title, text: post.body || '',
           authorId: post.authorId || post.authorName || 'unknown',
           authorName: post.authorName || 'unknown',
           createdAt: post.createdAt.getTime(),
@@ -475,7 +682,7 @@ app.post('/internal/forms/ingest-confirm', async (c) => {
           for await (const comment of comments) {
             if (comment.createdAt.getTime() < start || comment.createdAt.getTime() > end) continue
             rawItems.push({
-              id: comment.id, type: 'comment', text: comment.body,
+              id: comment.id, type: 'comment', title: post.title, text: comment.body,
               authorId: comment.authorId || comment.authorName || 'unknown',
               authorName: comment.authorName || 'unknown',
               createdAt: comment.createdAt.getTime(),
@@ -489,16 +696,16 @@ app.post('/internal/forms/ingest-confirm', async (c) => {
     // Fallback: demo items
     if (rawItems.length === 0) {
       const demoData: RawItem[] = [
-        { id: 'demo-1', type: 'post', text: 'Honestly stay off Mass Ave near Central if you can. Last Tuesday around 6pm some asshole in a dark green Subaru Outback blew through the crosswalk at Prospect while I was mid-crossing. Had to jump back onto the curb. Cracked taillight and one of those "26.2" marathon stickers on the back window. Reported it to Cambridge PD non-emergency but they said without a plate there\'s nothing they can do.', authorId: 'u1', authorName: 'ThursdayCommuter', createdAt: start + 7 * 86400000, threadRootId: 'demo-1', parentId: null },
-        { id: 'demo-2', type: 'comment', text: 'Three weeks and counting since I submitted dashcam footage to Cambridge PD for case #2026-04891. They told me a detective would follow up within 48 hours. Never heard back. Called twice, got "we\'ll pass along the message" both times. I have clear HD footage of the car they\'re looking for but apparently nobody cares.', authorId: 'u2', authorName: 'DashcamDave_617', createdAt: start + 14 * 86400000, threadRootId: 'thread-pd', parentId: 'thread-pd' },
-        { id: 'demo-3', type: 'comment', text: 'Not exactly a rant but something that\'s been bugging me — someone on P3 of the Cambridgeside garage has a dark green Subaru Outback that suddenly has gnarly front bumper damage and a cracked passenger headlight. Showed up maybe 2 weeks ago. They park in the same spot every weekday morning. Part of me wonders if they hit something.', authorId: 'u3', authorName: 'CambridgeSide_Resident', createdAt: start + 19 * 86400000, threadRootId: 'thread-parking', parentId: 'thread-parking' },
-        { id: 'demo-4', type: 'post', text: 'Was walking down Prospect toward Central around 6pm and heard a loud crash followed by tires screeching. By the time I got to Mass Ave there was a bicycle on the ground with the front wheel bent in half but no car. A couple people were looking around confused. Ambulance showed up maybe 8 minutes later.', authorId: 'u4', authorName: 'InmanSq_Walker', createdAt: start + 7 * 86400000, threadRootId: 'demo-4', parentId: null },
-        { id: 'demo-5', type: 'post', text: 'Best pizza in Davis Square? Just moved here from NYC and looking for decent slices. Budget is like $4-5 a slice max.', authorId: 'u5', authorName: 'PizzaFan', createdAt: start + 10 * 86400000, threadRootId: 'demo-5', parentId: null },
-        { id: 'demo-6', type: 'comment', text: 'The bike lanes on Mass Ave are a joke. They just painted lines and called it done. No physical barrier means cars swerve in constantly. Someone is going to get killed.', authorId: 'u6', authorName: 'BikerBoston', createdAt: start + 12 * 86400000, threadRootId: 'thread-transit', parentId: 'thread-transit' },
-        { id: 'demo-7', type: 'post', text: 'Is it just me or has rent in Cambridge gone completely insane? $3200 for a 1BR in Porter Square with no laundry or parking.', authorId: 'u7', authorName: 'RentRanter', createdAt: start + 5 * 86400000, threadRootId: 'demo-7', parentId: null },
-        { id: 'demo-8', type: 'comment', text: 'I live right above the Cambridgeside garage, can vouch for Night Shift Brewing. My roommate and I usually hit it on Tuesdays after his shift ends around 7. He drives so I can drink. We park on P3, never had issues finding a spot in the evening.', authorId: 'u8', authorName: 'TKfromCambridge', createdAt: start + 20 * 86400000, threadRootId: 'thread-bars', parentId: 'thread-bars' },
-        { id: 'demo-9', type: 'post', text: 'Cash-only auto body recommendations? Need discreet bumper and headlight repair on a dark green Subaru. Front driver side. My buddy doesn\'t want to go through insurance. Needs it done fast, like this week.', authorId: 'u9', authorName: 'QuickFixNeeded', createdAt: start + 16 * 86400000, threadRootId: 'demo-9', parentId: null },
-        { id: 'demo-10', type: 'comment', text: 'Just moved to Somerville, what are the best running routes? I usually do 5-10K in the morning before work. Prefer paved paths.', authorId: 'u10', authorName: 'RunnerGuy', createdAt: start + 3 * 86400000, threadRootId: 'thread-running', parentId: 'thread-running' },
+        { id: 'demo-1', type: 'post', title: 'Near-miss on Mass Ave crosswalk — dark green Subaru', text: 'Honestly stay off Mass Ave near Central if you can. Last Tuesday around 6pm some asshole in a dark green Subaru Outback blew through the crosswalk at Prospect while I was mid-crossing. Had to jump back onto the curb. Cracked taillight and one of those "26.2" marathon stickers on the back window. Reported it to Cambridge PD non-emergency but they said without a plate there\'s nothing they can do.', authorId: 'u1', authorName: 'ThursdayCommuter', createdAt: start + 7 * 86400000, threadRootId: 'demo-1', parentId: null },
+        { id: 'demo-2', type: 'comment', title: 'Cambridge PD complaint thread', text: 'Three weeks and counting since I submitted dashcam footage to Cambridge PD for case #2026-04891. They told me a detective would follow up within 48 hours. Never heard back. Called twice, got "we\'ll pass along the message" both times. I have clear HD footage of the car they\'re looking for but apparently nobody cares.', authorId: 'u2', authorName: 'DashcamDave_617', createdAt: start + 14 * 86400000, threadRootId: 'thread-pd', parentId: 'thread-pd' },
+        { id: 'demo-3', type: 'comment', title: 'Cambridgeside garage observations', text: 'Not exactly a rant but something that\'s been bugging me — someone on P3 of the Cambridgeside garage has a dark green Subaru Outback that suddenly has gnarly front bumper damage and a cracked passenger headlight. Showed up maybe 2 weeks ago. They park in the same spot every weekday morning. Part of me wonders if they hit something.', authorId: 'u3', authorName: 'CambridgeSide_Resident', createdAt: start + 19 * 86400000, threadRootId: 'thread-parking', parentId: 'thread-parking' },
+        { id: 'demo-4', type: 'post', title: 'Crash at Prospect & Mass Ave — bicycle hit', text: 'Was walking down Prospect toward Central around 6pm and heard a loud crash followed by tires screeching. By the time I got to Mass Ave there was a bicycle on the ground with the front wheel bent in half but no car. A couple people were looking around confused. Ambulance showed up maybe 8 minutes later.', authorId: 'u4', authorName: 'InmanSq_Walker', createdAt: start + 7 * 86400000, threadRootId: 'demo-4', parentId: null },
+        { id: 'demo-5', type: 'post', title: 'Best pizza in Davis Square?', text: 'Just moved here from NYC and looking for decent slices. Budget is like $4-5 a slice max.', authorId: 'u5', authorName: 'PizzaFan', createdAt: start + 10 * 86400000, threadRootId: 'demo-5', parentId: null },
+        { id: 'demo-6', type: 'comment', title: 'Mass Ave bike infrastructure', text: 'The bike lanes on Mass Ave are a joke. They just painted lines and called it done. No physical barrier means cars swerve in constantly. Someone is going to get killed.', authorId: 'u6', authorName: 'BikerBoston', createdAt: start + 12 * 86400000, threadRootId: 'thread-transit', parentId: 'thread-transit' },
+        { id: 'demo-7', type: 'post', title: 'Cambridge rent is insane', text: 'Is it just me or has rent in Cambridge gone completely insane? $3200 for a 1BR in Porter Square with no laundry or parking.', authorId: 'u7', authorName: 'RentRanter', createdAt: start + 5 * 86400000, threadRootId: 'demo-7', parentId: null },
+        { id: 'demo-8', type: 'comment', title: 'Best bars near Cambridgeside?', text: 'I live right above the Cambridgeside garage, can vouch for Night Shift Brewing. My roommate and I usually hit it on Tuesdays after his shift ends around 7. He drives so I can drink. We park on P3, never had issues finding a spot in the evening.', authorId: 'u8', authorName: 'TKfromCambridge', createdAt: start + 20 * 86400000, threadRootId: 'thread-bars', parentId: 'thread-bars' },
+        { id: 'demo-9', type: 'post', title: 'Cash-only auto body shop recommendations?', text: 'Need discreet bumper and headlight repair on a dark green Subaru. Front driver side. My buddy doesn\'t want to go through insurance. Needs it done fast, like this week.', authorId: 'u9', authorName: 'QuickFixNeeded', createdAt: start + 16 * 86400000, threadRootId: 'demo-9', parentId: null },
+        { id: 'demo-10', type: 'comment', title: 'Running routes in Somerville', text: 'Just moved to Somerville, what are the best running routes? I usually do 5-10K in the morning before work. Prefer paved paths.', authorId: 'u10', authorName: 'RunnerGuy', createdAt: start + 3 * 86400000, threadRootId: 'thread-running', parentId: 'thread-running' },
       ]
       rawItems.push(...demoData.filter(d => d.createdAt >= start && d.createdAt <= end))
     }
@@ -511,6 +718,24 @@ app.post('/internal/forms/ingest-confirm', async (c) => {
       })
     }
 
+    // Load subreddit rules for flag detection
+    try {
+      const engine = await getEngine()
+      const subredditRules = await reddit.getSubredditRules(context.subredditName)
+      if (subredditRules && subredditRules.length > 0) {
+        const ruleInputs = subredditRules.map((rule: any, i: number) => ({
+          id: `rule-${i + 1}`,
+          shortName: rule.shortName || rule.violationReason || `Rule ${i + 1}`,
+          description: rule.description || rule.shortName || '',
+          priority: i + 1,
+        }))
+        await engine.loadRules(ruleInputs)
+        console.log(`[Strata] Loaded ${ruleInputs.length} subreddit rules`)
+      }
+    } catch (err) {
+      console.log('[Strata] Could not load subreddit rules:', err)
+    }
+
     // Store raw items in Redis for the batch processor
     await redis.hSet('strata:ingest:raw', Object.fromEntries(
       rawItems.map(item => [item.id, JSON.stringify(item)])
@@ -520,7 +745,7 @@ app.post('/internal/forms/ingest-confirm', async (c) => {
     const apiKey = await settings.get('openaiApiKey') as string
     const openai = new OpenAI({ apiKey })
 
-    const normalizedItems = rawItems.map(r => ({ id: r.id, text: normalize(r.text) }))
+    const normalizedItems = rawItems.map(r => ({ id: r.id, text: normalize(r.title ? `${r.title}\n\n${r.text}` : r.text) }))
 
     // Submit embedding batch + extraction batch in parallel
     const [embBatchId, extractBatchId] = await Promise.all([
@@ -799,6 +1024,12 @@ app.get('/api/ingest/status', async (c) => {
   })
 })
 
+app.get('/api/viewer', async (c) => {
+  const userId = context.userId
+  if (!userId) return c.json({ isMod: false })
+  return c.json({ isMod: true })
+})
+
 app.get('/api/alerts', async (c) => {
   const status = c.req.query('status') as AlertStatus | undefined
   const limit = parseInt(c.req.query('limit') || '20', 10)
@@ -830,6 +1061,42 @@ app.post('/api/alerts/:id/action', async (c) => {
   if (!alert) return c.json({ error: 'Not found' }, 404)
   await alertStore.updateAlertStatus(id, action)
   return c.json({ ok: true })
+})
+
+app.get('/api/items', async (c) => {
+  const limit = Math.min(parseInt(c.req.query('limit') || '50', 10), 100)
+  const cursor = c.req.query('cursor') ? parseInt(c.req.query('cursor')!, 10) : null
+  const type = c.req.query('type') as 'post' | 'comment' | undefined
+  const search = c.req.query('search') || ''
+
+  const maxScore = cursor !== null ? cursor - 1 : '+inf'
+  const entries = await redis.zRange('strata:idx:time', '-inf', maxScore as any, {
+    by: 'score',
+    reverse: true,
+    limit: { offset: 0, count: limit + 20 },
+  })
+
+  const items: any[] = []
+  for (const entry of entries) {
+    if (items.length >= limit) break
+    const raw = await redis.hGet('strata:items', entry.member)
+    if (!raw) continue
+    const item = JSON.parse(raw) as StoredItem
+    if (type && item.type !== type) continue
+    if (search && !item.text.toLowerCase().includes(search.toLowerCase()) && !item.authorName.toLowerCase().includes(search.toLowerCase())) continue
+    items.push({
+      id: item.id,
+      type: item.type,
+      text: item.text.slice(0, 200),
+      authorName: item.authorName,
+      createdAt: item.createdAt,
+      entityCount: item.entities.length,
+    })
+  }
+
+  const nextCursor = items.length > 0 ? items[items.length - 1].createdAt : null
+  const total = await redis.zCard('strata:idx:time')
+  return c.json({ items, nextCursor, total })
 })
 
 // --- Server ---

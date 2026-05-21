@@ -6,7 +6,7 @@
     "entrypoints": {
       "default": {
         "entry": "index.html",
-        "height": "regular"
+        "height": "tall"
       }
     }
   },
@@ -50,6 +50,20 @@
   },
   "menu": {
     "items": [
+      {
+        "label": "Strata: Dashboard",
+        "description": "Create the Strata dashboard post",
+        "location": "subreddit",
+        "forUserType": "moderator",
+        "endpoint": "/internal/menu/dashboard"
+      },
+      {
+        "label": "Strata: Load Rules",
+        "description": "Import subreddit rules for flag detection",
+        "location": "subreddit",
+        "forUserType": "moderator",
+        "endpoint": "/internal/menu/load-rules"
+      },
       {
         "label": "Strata: Seed Data",
         "description": "Load demo dataset into Redis",

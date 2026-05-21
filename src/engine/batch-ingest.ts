@@ -130,11 +130,13 @@ export async function storeResults(
     const ents = entities.get(raw.id) ?? []
     if (!emb) continue
 
+    const fullText = raw.title ? `${raw.title}\n\n${raw.text}` : raw.text
     const item: StoredItem = {
       id: raw.id,
       type: raw.type,
+      ...(raw.title && { title: raw.title }),
       text: raw.text,
-      textNormalized: normalize(raw.text),
+      textNormalized: normalize(fullText),
       authorId: raw.authorId,
       authorName: raw.authorName,
       createdAt: raw.createdAt,
@@ -151,7 +153,6 @@ export async function storeResults(
     await store.setEmbedding(raw.id, emb)
     await store.addToEntityIndex(ents, raw.id, raw.createdAt)
 
-    // Store quantized entity embeddings
     const quantizedEntities: Array<{ type: string; surfaceText: string; embedding: string }> = []
     for (const e of ents) {
       const entEmb = entityEmbeddings.get(`${raw.id}:${e.surfaceText}`)

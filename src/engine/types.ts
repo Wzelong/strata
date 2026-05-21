@@ -13,6 +13,7 @@ export type Scope = 'global' | 'local'
 export type Item = {
   id: string
   type: 'post' | 'comment'
+  title?: string
   text: string
   textNormalized: string
   authorId: string
@@ -31,6 +32,7 @@ export type Item = {
 export type RawItem = {
   id: string
   type: 'post' | 'comment'
+  title?: string
   text: string
   authorId: string
   authorName: string
@@ -90,6 +92,7 @@ export type CostTracker = {
 export type AlertMode = 'surface' | 'flag'
 export type AlertStatus = 'pending' | 'resolved' | 'dismissed'
 export type AlertConfidence = 'high' | 'review'
+export type FlagType = 'rule' | 'pattern' | 'brigade'
 
 export type Alert = {
   id: string
@@ -100,17 +103,33 @@ export type Alert = {
   createdAt: number
   anchorId: string
   anchorAuthor: string
+  anchorType: 'post' | 'comment'
+  anchorTitle?: string
   anchorText: string
   anchorPermalink: string
+  reasoning?: string
+  flagType?: FlagType
 }
 
 export type AlertConnection = {
   itemId: string
   author: string
+  type: 'post' | 'comment'
+  title?: string
   text: string
   permalink: string
   classification: 'confirms' | 'updates' | 'temporal' | 'contradicts'
   confidence: 'high' | 'review'
   entities: string[]
   reasoning: string
+  sameAuthor?: boolean
+}
+
+export type FlagResult = {
+  type: FlagType
+  confidence: AlertConfidence
+  reasoning: string
+  anchorId: string
+  connectionItems: Item[]
+  ruleId?: string
 }

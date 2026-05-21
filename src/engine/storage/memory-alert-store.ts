@@ -48,4 +48,10 @@ export class MemoryAlertStore implements AlertStore {
     const alert = this.alerts.get(id)
     if (alert) alert.status = status
   }
+
+  async getAlertIdsByAnchor(anchorId: string): Promise<string[]> {
+    return [...this.alerts.values()]
+      .filter(a => a.anchorId === anchorId)
+      .map(a => a.id)
+  }
 }

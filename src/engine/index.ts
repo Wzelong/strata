@@ -2,7 +2,7 @@ import type OpenAI from 'openai'
 import type { KVStore } from './storage/interface.js'
 import type {
   Item, RawItem, RuleInput, Rule, Hit, Decision,
-  Relationship, Recommendation, SearchFilter, CostTracker, StoredItem,
+  Relationship, Recommendation, SearchFilter, CostTracker, StoredItem, FlagResult,
 } from './types.js'
 import { normalize } from './normalize.js'
 import { embedBatch, embedSingle, cosine, quantize } from './embed.js'
@@ -32,7 +32,8 @@ export class StrataEngine {
       return { ...existing, embedding: emb ?? [] }
     }
 
-    const textNormalized = normalize(raw.text)
+    const fullText = raw.title ? `${raw.title}\n\n${raw.text}` : raw.text
+    const textNormalized = normalize(fullText)
 
     // Parallel: embed full text + extract entities
     const [embedding, entities] = await Promise.all([
@@ -40,15 +41,17 @@ export class StrataEngine {
       extractEntities(this.client, textNormalized, this.cost),
     ])
 
-    // Embed entity surfaceTexts (batch, sequential after extract)
-    const entityTexts = entities.map(e => e.surfaceText)
-    const entityEmbeddings = entityTexts.length > 0
-      ? await embedBatch(this.client, entityTexts, this.cost)
+    // Embed only descriptive entity types (identifiers match by string only)
+    const EMBED_TYPES = new Set(['object', 'person', 'location', 'organization'])
+    const embeddableEntities = entities.filter(e => EMBED_TYPES.has(e.type))
+    const entityEmbeddings = embeddableEntities.length > 0
+      ? await embedBatch(this.client, embeddableEntities.map(e => e.surfaceText), this.cost)
       : []
 
     const stored: StoredItem = {
       id: raw.id,
       type: raw.type,
+      ...(raw.title && { title: raw.title }),
       text: raw.text,
       textNormalized,
       authorId: raw.authorId,
@@ -67,24 +70,24 @@ export class StrataEngine {
     await this.store.setEmbedding(raw.id, embedding)
     await this.store.addToEntityIndex(entities, raw.id, raw.createdAt)
 
-    // Store quantized entity embeddings
     if (entityEmbeddings.length > 0) {
-      const quantizedEntities = entities.map((e, i) => ({
+      await this.store.setEntityEmbeddings(raw.id, embeddableEntities.map((e, i) => ({
         type: e.type,
         surfaceText: e.surfaceText,
         embedding: quantize(entityEmbeddings[i]),
-      }))
-      await this.store.setEntityEmbeddings(raw.id, quantizedEntities)
+      })))
     }
 
     return { ...stored, embedding }
   }
 
   async ingestBatch(raws: RawItem[]): Promise<Item[]> {
-    const normalized = raws.map(raw => ({
-      raw,
-      textNormalized: normalize(raw.text),
-    }))
+    const normalized = raws
+      .map(raw => ({
+        raw,
+        textNormalized: normalize(raw.title ? `${raw.title}\n\n${raw.text}` : raw.text),
+      }))
+      .filter(n => n.textNormalized.length > 0)
 
     // Batch embed all texts
     const embeddings = await embedBatch(
@@ -107,11 +110,13 @@ export class StrataEngine {
       }
     }
 
-    // Batch embed all entity surfaceTexts
+    // Batch embed only descriptive entity types
+    const EMBED_TYPES = new Set(['object', 'person', 'location', 'organization'])
     const entityMeta: Array<{ itemIdx: number; entityIdx: number }> = []
     const entityTexts: string[] = []
     for (let i = 0; i < allEntities.length; i++) {
       for (let j = 0; j < allEntities[i].length; j++) {
+        if (!EMBED_TYPES.has(allEntities[i][j].type)) continue
         entityMeta.push({ itemIdx: i, entityIdx: j })
         entityTexts.push(allEntities[i][j].surfaceText)
       }
@@ -130,6 +135,7 @@ export class StrataEngine {
       const stored: StoredItem = {
         id: raw.id,
         type: raw.type,
+        ...(raw.title && { title: raw.title }),
         text: raw.text,
         textNormalized,
         authorId: raw.authorId,
@@ -148,17 +154,15 @@ export class StrataEngine {
       await this.store.setEmbedding(raw.id, embedding)
       await this.store.addToEntityIndex(entities, raw.id, raw.createdAt)
 
-      // Store quantized entity embeddings
       const itemEntityEmbs = entityMeta
         .map((m, idx) => ({ ...m, idx }))
         .filter(m => m.itemIdx === i)
       if (itemEntityEmbs.length > 0) {
-        const quantizedEntities = itemEntityEmbs.map(m => ({
+        await this.store.setEntityEmbeddings(raw.id, itemEntityEmbs.map(m => ({
           type: entities[m.entityIdx].type,
           surfaceText: entities[m.entityIdx].surfaceText,
           embedding: quantize(entityEmbeddings[m.idx]),
-        }))
-        await this.store.setEntityEmbeddings(raw.id, quantizedEntities)
+        })))
       }
 
       items.push({ ...stored, embedding })
@@ -189,6 +193,104 @@ export class StrataEngine {
     )
 
     return { candidates: candidates.slice(0, topK), entityMatches }
+  }
+
+  // --- Flag Pipeline ---
+
+  async flag(item: Item): Promise<FlagResult[]> {
+    const results = await Promise.all([
+      this.checkRuleViolation(item),
+      this.checkPatternMatch(item),
+      this.checkBrigade(item),
+    ])
+    return results.filter((r): r is FlagResult => r !== null)
+  }
+
+  private async checkRuleViolation(item: Item): Promise<FlagResult | null> {
+    const rules = await this.store.getRules()
+    if (rules.length === 0) return null
+
+    const recommendation = await recommendDecision(this.client, item, [], rules, this.cost)
+    if (recommendation.recommendation !== 'remove') return null
+
+    return {
+      type: 'rule',
+      confidence: 'high',
+      reasoning: recommendation.rationale,
+      anchorId: item.id,
+      connectionItems: [],
+      ruleId: recommendation.ruleId ?? undefined,
+    }
+  }
+
+  private async checkPatternMatch(item: Item): Promise<FlagResult | null> {
+    const precedents = await findSimilar(this.store, item.embedding, 5, {
+      decision: ['removed'],
+      excludeIds: new Set([item.id]),
+    })
+    const strong = precedents.filter(p => p.weight >= 0.5)
+    if (strong.length === 0) return null
+
+    const rules = await this.store.getRules()
+    const recommendation = await recommendDecision(this.client, item, strong, rules, this.cost)
+    if (recommendation.recommendation !== 'remove') return null
+
+    return {
+      type: 'pattern',
+      confidence: strong[0].weight >= 0.75 ? 'high' : 'review',
+      reasoning: recommendation.rationale,
+      anchorId: item.id,
+      connectionItems: strong.map(h => h.item),
+    }
+  }
+
+  private async checkBrigade(item: Item): Promise<FlagResult | null> {
+    if (item.type !== 'comment') return null
+
+    const threadItems = await this.getItemsInThread(item.threadRootId)
+    if (threadItems.length < 4) return null
+
+    // Sliding window: find densest cluster of comments around this item
+    const WINDOW_MS = 4 * 60 * 60 * 1000
+    const recentInThread = threadItems.filter(t =>
+      t.id !== item.id &&
+      Math.abs(t.createdAt - item.createdAt) <= WINDOW_MS
+    )
+
+    const authors = new Set(recentInThread.map(t => t.authorId))
+    authors.add(item.authorId)
+
+    // Need meaningful cluster: multiple distinct authors posting in a burst
+    if (authors.size < 3 || recentInThread.length < 3) return null
+
+    // Semantic uniformity: are they pushing the same narrative?
+    const embeddings = recentInThread.slice(0, 10).map(t => t.embedding).filter(e => e.length > 0)
+    if (embeddings.length < 3) return null
+
+    let pairCount = 0, simSum = 0
+    for (let i = 0; i < embeddings.length; i++) {
+      for (let j = i + 1; j < embeddings.length; j++) {
+        simSum += cosine(embeddings[i], embeddings[j])
+        pairCount++
+      }
+    }
+    const avgSim = simSum / pairCount
+
+    // Score combines density (authors/time) with uniformity (cosine)
+    // A natural thread has diverse opinions (avg cosine ~0.3-0.4)
+    // A brigade has coordinated messaging (avg cosine > 0.45)
+    const densityScore = authors.size / (recentInThread.length + 1)
+    const isBrigade = avgSim >= 0.45 && densityScore >= 0.5
+
+    if (!isBrigade) return null
+
+    return {
+      type: 'brigade',
+      confidence: avgSim >= 0.6 ? 'high' : 'review',
+      reasoning: `${authors.size} distinct authors, ${recentInThread.length + 1} comments within ${WINDOW_MS / 3600000}h window, semantic uniformity ${avgSim.toFixed(2)}, density ${densityScore.toFixed(2)}`,
+      anchorId: item.id,
+      connectionItems: recentInThread.slice(0, 10),
+    }
   }
 
   // --- Accessors ---
@@ -281,6 +383,7 @@ export class StrataEngine {
 
 export { normalize } from './normalize.js'
 export { cosine, quantize, dequantize } from './embed.js'
+
 export { MemoryKVStore } from './storage/memory.js'
 export { MemoryAlertStore } from './storage/memory-alert-store.js'
 export type { KVStore } from './storage/interface.js'

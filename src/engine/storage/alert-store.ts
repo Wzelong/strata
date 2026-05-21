@@ -6,4 +6,5 @@ export interface AlertStore {
   getAlertConnections(id: string): Promise<AlertConnection[]>
   listAlerts(opts?: { status?: AlertStatus; limit?: number; cursor?: number }): Promise<{ alerts: Alert[]; nextCursor: number | null }>
   updateAlertStatus(id: string, status: AlertStatus): Promise<void>
+  getAlertIdsByAnchor(anchorId: string): Promise<string[]>
 }
