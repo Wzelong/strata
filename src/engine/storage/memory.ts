@@ -75,6 +75,8 @@ export class MemoryKVStore implements KVStore {
       const key = `${e.type}:${e.surfaceText}`
       if (!this.entityIndex.has(key)) this.entityIndex.set(key, [])
       this.entityIndex.get(key)!.push({ member: itemId, score: createdAt })
+      const hubKey = `${e.type}:${e.surfaceText.toLowerCase()}`
+      this.entityHubCounts.set(hubKey, (this.entityHubCounts.get(hubKey) ?? 0) + 1)
     }
   }
 
@@ -83,12 +85,19 @@ export class MemoryKVStore implements KVStore {
     return filterByRange(this.entityIndex.get(key) ?? [], timeRange)
   }
 
+  async getEntityIndexEntries(type: string): Promise<string[]> {
+    const prefix = `${type}:`
+    const result: string[] = []
+    for (const key of this.entityIndex.keys()) {
+      if (key.startsWith(prefix)) result.push(key.slice(prefix.length))
+    }
+    return result
+  }
+
   async setEntityEmbeddings(itemId: string, entities: Array<{ type: string; surfaceText: string; embedding: string }>): Promise<void> {
     for (const e of entities) {
       if (!this.entityEmbeddings.has(e.type)) this.entityEmbeddings.set(e.type, [])
       this.entityEmbeddings.get(e.type)!.push({ itemId, surfaceText: e.surfaceText, embedding: e.embedding })
-      const hubKey = `${e.type}:${e.surfaceText.toLowerCase()}`
-      this.entityHubCounts.set(hubKey, (this.entityHubCounts.get(hubKey) ?? 0) + 1)
     }
   }
 

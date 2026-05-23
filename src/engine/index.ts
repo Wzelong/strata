@@ -7,11 +7,8 @@ import type {
 import { normalize } from './normalize.js'
 import { embedBatch, embedSingle, cosine, quantize } from './embed.js'
 import { extractEntities } from './extract.js'
-import {
-  hybridRetrieve, findSimilar, detectCampaign,
-  type HybridResult, type CampaignOpts, type CampaignResult,
-} from './search.js'
-import { classifyRelationship, classifyBatch, type ClassificationResult } from './classify.js'
+import { hybridRetrieve, findSimilar, type HybridResult } from './search.js'
+import { classifyRelationship, classifyBatch, classifyContradictions, type ClassificationResult } from './classify.js'
 import { recommendDecision } from './recommend.js'
 
 export class StrataEngine {
@@ -189,7 +186,7 @@ export class StrataEngine {
       this.store,
       item.embedding,
       queryEntityEmbeddings,
-      { excludeIds: new Set([item.id]) },
+      { excludeIds: new Set([item.id]), queryThreadRootId: item.threadRootId },
     )
 
     return { candidates: candidates.slice(0, topK), entityMatches }
@@ -202,6 +199,7 @@ export class StrataEngine {
       this.checkRuleViolation(item),
       this.checkPatternMatch(item),
       this.checkBrigade(item),
+      this.checkContradiction(item),
     ])
     return results.filter((r): r is FlagResult => r !== null)
   }
@@ -293,6 +291,48 @@ export class StrataEngine {
     }
   }
 
+  // Same author posting opposing statements across time. One batched
+  // classifyBatch call (not N serial classifyRelationship calls) checks up
+  // to 5 prefiltered priors and flags the first CONTRADICTS hit.
+  private async checkContradiction(item: Item): Promise<FlagResult | null> {
+    const WINDOW_MS = 30 * 24 * 60 * 60 * 1000
+    const since = item.createdAt - WINDOW_MS
+    const ids = await this.store.getItemIdsByAuthor(item.authorId, [since, item.createdAt])
+    const priorIds = ids.filter(id => id !== item.id)
+    if (priorIds.length === 0) return null
+
+    const priors: Item[] = []
+    for (const id of priorIds) {
+      const p = await this.getItem(id)
+      if (p && p.embedding.length > 0) priors.push(p)
+    }
+    if (priors.length === 0) return null
+
+    // Prefilter by cosine distance from 0.5 — paraphrases and totally unrelated
+    // chitchat are unlikely to be the contradiction; the ambiguous middle is.
+    priors.sort((a, b) => Math.abs(cosine(item.embedding, b.embedding) - 0.5) - Math.abs(cosine(item.embedding, a.embedding) - 0.5))
+    const candidates = priors.slice(0, 5)
+
+    const results = await classifyContradictions(
+      this.client,
+      item,
+      candidates.map(c => ({ id: c.id, text: c.text, createdAt: c.createdAt })),
+      this.cost,
+    )
+    const hit = results.find(r => r.relationship === 'CONTRADICTS')
+    if (!hit) return null
+    const prior = candidates.find(c => c.id === hit.id)
+    if (!prior) return null
+
+    return {
+      type: 'contradiction',
+      confidence: hit.confidence ?? 'review',
+      reasoning: `Same author (${item.authorName}) posted contradictory statement on ${new Date(prior.createdAt).toISOString().slice(0, 10)}: ${hit.reason}`,
+      anchorId: item.id,
+      connectionItems: [prior],
+    }
+  }
+
   // --- Accessors ---
 
   async getItem(id: string): Promise<Item | null> {
@@ -313,10 +353,6 @@ export class StrataEngine {
 
   async findSimilar(emb: number[], k?: number, filter?: SearchFilter): Promise<Hit[]> {
     return findSimilar(this.store, emb, k, filter)
-  }
-
-  async detectCampaign(type: string, surfaceText: string, opts?: CampaignOpts): Promise<CampaignResult> {
-    return detectCampaign(this.store, type, surfaceText, opts)
   }
 
   async getItemsByDecision(d: Decision, timeRange?: [number, number]): Promise<Item[]> {
@@ -388,6 +424,6 @@ export { MemoryKVStore } from './storage/memory.js'
 export { MemoryAlertStore } from './storage/memory-alert-store.js'
 export type { KVStore } from './storage/interface.js'
 export type { AlertStore } from './storage/alert-store.js'
-export type { HybridResult, CampaignOpts, CampaignResult } from './search.js'
+export type { HybridResult } from './search.js'
 export type { ClassificationResult } from './classify.js'
 export type * from './types.js'

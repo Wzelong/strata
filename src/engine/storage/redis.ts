@@ -90,6 +90,8 @@ export class RedisKVStore implements KVStore {
     for (const e of entities) {
       const key = `strata:idx:entity:${e.type}:${e.surfaceText}`
       await this.redis.zAdd(key, { member: itemId, score: createdAt })
+      await this.redis.hSet(`strata:idx:entity-surfaces:${e.type}`, { [e.surfaceText]: '1' })
+      await this.redis.hIncrBy('strata:entity-hub-counts', `${e.type}:${e.surfaceText.toLowerCase()}`, 1)
     }
   }
 
@@ -103,11 +105,15 @@ export class RedisKVStore implements KVStore {
     return entries.map(e => e.member)
   }
 
+  async getEntityIndexEntries(type: string): Promise<string[]> {
+    const all = await this.redis.hGetAll(`strata:idx:entity-surfaces:${type}`)
+    return Object.keys(all)
+  }
+
   async setEntityEmbeddings(itemId: string, entities: Array<{ type: string; surfaceText: string; embedding: string }>): Promise<void> {
     for (const e of entities) {
       const key = `strata:entity-emb:${e.type}`
       await this.redis.hSet(key, { [`${itemId}:${e.surfaceText}`]: e.embedding })
-      await this.redis.hIncrBy('strata:entity-hub-counts', `${e.type}:${e.surfaceText.toLowerCase()}`, 1)
     }
   }
 

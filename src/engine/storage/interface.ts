@@ -12,6 +12,7 @@ export interface KVStore {
 
   addToEntityIndex(entities: Entity[], itemId: string, createdAt: number): Promise<void>
   getItemIdsByEntity(type: string, surfaceText: string, timeRange?: [number, number]): Promise<string[]>
+  getEntityIndexEntries(type: string): Promise<string[]>
 
   setEntityEmbeddings(itemId: string, entities: Array<{ type: string; surfaceText: string; embedding: string }>): Promise<void>
   getEntityEmbeddingsByType(type: string): Promise<Array<{ itemId: string; surfaceText: string; embedding: string }>>

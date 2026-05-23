@@ -7,8 +7,8 @@
     "build": "vite build",
     "dev": "vite build --watch",
     "seed": "tsx dataset/build-seed.ts",
-    "benchmark": "tsx benchmark/benchmark.ts",
-    "benchmark:full": "tsx benchmark/benchmark.ts --full"
+    "benchmark": "tsx benchmark/stability-10x.ts",
+    "benchmark:viz": "python3 benchmark/viz.py"
   },
   "engines": {
     "node": ">=22.2.0"

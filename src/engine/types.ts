@@ -92,7 +92,7 @@ export type CostTracker = {
 export type AlertMode = 'surface' | 'flag'
 export type AlertStatus = 'pending' | 'resolved' | 'dismissed'
 export type AlertConfidence = 'high' | 'review'
-export type FlagType = 'rule' | 'pattern' | 'brigade'
+export type FlagType = 'rule' | 'pattern' | 'brigade' | 'contradiction'
 
 export type Alert = {
   id: string

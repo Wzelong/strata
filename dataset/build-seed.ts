@@ -7,14 +7,19 @@ import OpenAI from 'openai'
 import { StrataEngine, MemoryKVStore } from '../src/engine/index.js'
 import type { RawItem, StoredItem, Entity, CostTracker } from '../src/engine/types.js'
 import { BACKFILL_ITEMS, LIVE_ITEMS, REMOVED_ITEMS } from './signal-items.js'
+import { LABELED_CASE_ITEMS } from './labeled-cases.js'
 
 if (!process.env.OPENAI_API_KEY) throw new Error('Set OPENAI_API_KEY')
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const POSTS_FILE = resolve(__dirname, 'r_boston_posts.jsonl')
 const COMMENTS_FILE = resolve(__dirname, 'r_boston_comments.jsonl')
-const SEED_OUTPUT = resolve(__dirname, 'seed.json')
-const LIVE_OUTPUT = resolve(__dirname, 'live-items.json')
+const SEED_OUTPUT = process.env.SEED_OUTPUT
+  ? resolve(process.cwd(), process.env.SEED_OUTPUT)
+  : resolve(__dirname, 'seed.json')
+const LIVE_OUTPUT = process.env.LIVE_OUTPUT
+  ? resolve(process.cwd(), process.env.LIVE_OUTPUT)
+  : resolve(__dirname, 'live-items.json')
 
 const MAX_ITEMS = parseInt(process.env.SEED_LIMIT ?? '3000', 10)
 
@@ -130,9 +135,15 @@ async function main() {
     }
   }
 
-  // Step 4: Ingest backfill signal items
+  // Step 4: Ingest backfill signal items + labeled-case items
   console.log(`\nIngesting ${BACKFILL_ITEMS.length} signal items...`)
   for (const raw of BACKFILL_ITEMS) {
+    const item = await engine.ingest(raw)
+    console.log(`  ${item.id}: ${item.entities.length} entities`)
+  }
+
+  console.log(`\nIngesting ${LABELED_CASE_ITEMS.length} labeled-case items (case-thread + buried witnesses + decoys)...`)
+  for (const raw of LABELED_CASE_ITEMS) {
     const item = await engine.ingest(raw)
     console.log(`  ${item.id}: ${item.entities.length} entities`)
   }
@@ -154,7 +165,21 @@ async function main() {
     console.log(`  ${id} → removed`)
   }
 
-  // Step 6: Write seed.json
+  // Step 6: Process live items FIRST so their entity embeddings end up in the seed.
+  // (Loaders pull entity embeddings from seed.json keyed by itemId — including for live items.)
+  console.log(`\nProcessing ${LIVE_ITEMS.length} live items...`)
+  const liveResults: Array<{ id: string; textNormalized: string; embedding: number[]; entities: Entity[] }> = []
+
+  for (const raw of LIVE_ITEMS) {
+    const item = await engine.ingest(raw)
+    liveResults.push({ id: item.id, textNormalized: item.textNormalized, embedding: item.embedding, entities: item.entities })
+    console.log(`  ${item.id}: ${item.entities.length} entities`)
+  }
+
+  writeFileSync(LIVE_OUTPUT, JSON.stringify({ items: liveResults }, null, 2))
+  console.log(`  ${LIVE_OUTPUT}`)
+
+  // Step 7: Assemble seed.json with all items + all entity embeddings (including live items)
   console.log('\nAssembling seed.json...')
   const allIds = await store.getItemIds()
   const seedItems: StoredItem[] = []
@@ -186,19 +211,6 @@ async function main() {
   writeFileSync(SEED_OUTPUT, JSON.stringify(seed))
   const sizeMB = (Buffer.byteLength(JSON.stringify(seed)) / 1024 / 1024).toFixed(1)
   console.log(`  ${SEED_OUTPUT} (${sizeMB}MB, ${seedItems.length} items, ${Object.values(seedEntityEmbeddings).reduce((n, v) => n + Object.keys(v).length, 0)} entity embeddings)`)
-
-  // Step 7: Process live items
-  console.log(`\nProcessing ${LIVE_ITEMS.length} live items...`)
-  const liveResults: Array<{ id: string; textNormalized: string; embedding: number[]; entities: Entity[] }> = []
-
-  for (const raw of LIVE_ITEMS) {
-    const item = await engine.ingest(raw)
-    liveResults.push({ id: item.id, textNormalized: item.textNormalized, embedding: item.embedding, entities: item.entities })
-    console.log(`  ${item.id}: ${item.entities.length} entities`)
-  }
-
-  writeFileSync(LIVE_OUTPUT, JSON.stringify({ items: liveResults }, null, 2))
-  console.log(`  ${LIVE_OUTPUT}`)
 
   console.log(`\n=== Done ===`)
   console.log(`  Seed: ${seedItems.length} items`)

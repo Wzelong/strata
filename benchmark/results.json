@@ -1,0 +1,6874 @@
+{
+  "config": {
+    "corpus_size": 10044,
+    "trials": 10,
+    "seed_path": "/Users/zelong/Documents/GitHub/strata/benchmark/benchmark-seed.json",
+    "timestamp": "2026-05-23T01:02:58.449Z"
+  },
+  "summary": {
+    "surface_pass": 10,
+    "scan_pass": 10,
+    "flag_contradiction_pass": 10,
+    "flag_pattern_pass": 10,
+    "flag_brigade_pass": 10
+  },
+  "trials": [
+    {
+      "trial": 1,
+      "surface": {
+        "ok": true,
+        "ms": 558.164541,
+        "candidates": [
+          {
+            "id": "t3_strata_flag4",
+            "score": 0.031544957774465976,
+            "role": "pattern",
+            "label": "flag4 (pattern)"
+          },
+          {
+            "id": "t1_strata_surface1",
+            "score": 0.027500922849760058,
+            "role": "buried",
+            "label": "S1 near-miss"
+          },
+          {
+            "id": "t3_strata_surface2",
+            "score": 0.02512945476698142,
+            "role": "buried",
+            "label": "S2 case#"
+          },
+          {
+            "id": "t3_1te5ph4",
+            "score": 0.023563218390804597,
+            "role": "corpus",
+            "label": "t3_1te5ph4"
+          },
+          {
+            "id": "t1_strata_decoy2",
+            "score": 0.022862309480754326,
+            "role": "decoy",
+            "label": "D2 bike case#"
+          },
+          {
+            "id": "t1_om04nt5",
+            "score": 0.02266725352112676,
+            "role": "corpus",
+            "label": "t1_om04nt5"
+          },
+          {
+            "id": "t1_om08qlb",
+            "score": 0.022397891963109356,
+            "role": "corpus",
+            "label": "t1_om08qlb"
+          },
+          {
+            "id": "t3_1te57i7",
+            "score": 0.021920563097033687,
+            "role": "corpus",
+            "label": "t3_1te57i7"
+          },
+          {
+            "id": "t1_om013gi",
+            "score": 0.02177468820282151,
+            "role": "corpus",
+            "label": "t1_om013gi"
+          },
+          {
+            "id": "t1_om07x6z",
+            "score": 0.021083133493205435,
+            "role": "corpus",
+            "label": "t1_om07x6z"
+          },
+          {
+            "id": "t1_strata_surface3",
+            "score": 0.02061333719079994,
+            "role": "buried",
+            "label": "S3 garage -K77"
+          },
+          {
+            "id": "t1_om066aa",
+            "score": 0.020425531914893616,
+            "role": "corpus",
+            "label": "t1_om066aa"
+          },
+          {
+            "id": "t1_om07nmh",
+            "score": 0.020300751879699246,
+            "role": "corpus",
+            "label": "t1_om07nmh"
+          },
+          {
+            "id": "t1_om03luy",
+            "score": 0.018849206349206348,
+            "role": "corpus",
+            "label": "t1_om03luy"
+          },
+          {
+            "id": "t1_olzzy25",
+            "score": 0.018294573643410854,
+            "role": "corpus",
+            "label": "t1_olzzy25"
+          },
+          {
+            "id": "t1_om0034v",
+            "score": 0.01807504575960952,
+            "role": "corpus",
+            "label": "t1_om0034v"
+          },
+          {
+            "id": "t1_om0400l",
+            "score": 0.017862572210398296,
+            "role": "corpus",
+            "label": "t1_om0400l"
+          },
+          {
+            "id": "t1_olzzan9",
+            "score": 0.017858471612471165,
+            "role": "corpus",
+            "label": "t1_olzzan9"
+          },
+          {
+            "id": "t1_olzz3ht",
+            "score": 0.017331635540464064,
+            "role": "corpus",
+            "label": "t1_olzz3ht"
+          },
+          {
+            "id": "t1_om7pkbr",
+            "score": 0.015873015873015872,
+            "role": "corpus",
+            "label": "t1_om7pkbr"
+          },
+          {
+            "id": "t1_olvex2s",
+            "score": 0.015625,
+            "role": "corpus",
+            "label": "t1_olvex2s"
+          },
+          {
+            "id": "t1_om00vb9",
+            "score": 0.015498373262348417,
+            "role": "corpus",
+            "label": "t1_om00vb9"
+          },
+          {
+            "id": "t1_olzzlku",
+            "score": 0.0153276955602537,
+            "role": "corpus",
+            "label": "t1_olzzlku"
+          },
+          {
+            "id": "t1_olvroxs",
+            "score": 0.014896434313818216,
+            "role": "corpus",
+            "label": "t1_olvroxs"
+          },
+          {
+            "id": "t3_1tfc01q",
+            "score": 0.014705882352941176,
+            "role": "corpus",
+            "label": "t3_1tfc01q"
+          },
+          {
+            "id": "t1_olksumu",
+            "score": 0.014492753623188406,
+            "role": "corpus",
+            "label": "t1_olksumu"
+          },
+          {
+            "id": "t1_olmzqgt",
+            "score": 0.014492753623188406,
+            "role": "corpus",
+            "label": "t1_olmzqgt"
+          },
+          {
+            "id": "t3_strata_flag3b",
+            "score": 0.014285714285714285,
+            "role": "removed",
+            "label": "flag3b (removed)"
+          },
+          {
+            "id": "t3_strata_decoy1",
+            "score": 0.014084507042253521,
+            "role": "decoy",
+            "label": "D1 cat (vehicle)"
+          },
+          {
+            "id": "t1_olpq4jx",
+            "score": 0.0136986301369863,
+            "role": "corpus",
+            "label": "t1_olpq4jx"
+          },
+          {
+            "id": "t1_olx4w2t",
+            "score": 0.013631448872412728,
+            "role": "corpus",
+            "label": "t1_olx4w2t"
+          },
+          {
+            "id": "t1_olyf3vn",
+            "score": 0.013513513513513514,
+            "role": "corpus",
+            "label": "t1_olyf3vn"
+          },
+          {
+            "id": "t1_om00miq",
+            "score": 0.013085870680807389,
+            "role": "corpus",
+            "label": "t1_om00miq"
+          },
+          {
+            "id": "t1_olrehrq",
+            "score": 0.012987012987012988,
+            "role": "corpus",
+            "label": "t1_olrehrq"
+          },
+          {
+            "id": "t1_olhlfcs",
+            "score": 0.01282051282051282,
+            "role": "corpus",
+            "label": "t1_olhlfcs"
+          },
+          {
+            "id": "t1_olud9hx",
+            "score": 0.0125,
+            "role": "corpus",
+            "label": "t1_olud9hx"
+          },
+          {
+            "id": "t3_1tfrst1",
+            "score": 0.012345679012345678,
+            "role": "corpus",
+            "label": "t3_1tfrst1"
+          },
+          {
+            "id": "t3_1td8q2a",
+            "score": 0.012232716778171324,
+            "role": "corpus",
+            "label": "t3_1td8q2a"
+          },
+          {
+            "id": "t1_ombop6x",
+            "score": 0.012195121951219513,
+            "role": "corpus",
+            "label": "t1_ombop6x"
+          },
+          {
+            "id": "t1_ome2a6h",
+            "score": 0.012195121951219513,
+            "role": "corpus",
+            "label": "t1_ome2a6h"
+          }
+        ],
+        "buried_at_K": [
+          0,
+          1,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3
+        ]
+      },
+      "scan": {
+        "ok": true,
+        "ms": 9327.484417,
+        "first_signal_rank": 12,
+        "groups": [
+          {
+            "rank": 1,
+            "anchor": "t1_olrg7ob",
+            "anchor_label": "t1_olrg7ob",
+            "size": 48,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 2,
+            "anchor": "t1_om86wzg",
+            "anchor_label": "t1_om86wzg",
+            "size": 24,
+            "buried": 0,
+            "decoy": 1,
+            "in_thread": 0
+          },
+          {
+            "rank": 3,
+            "anchor": "t1_olowml8",
+            "anchor_label": "t1_olowml8",
+            "size": 11,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 4,
+            "anchor": "t1_olrbjje",
+            "anchor_label": "t1_olrbjje",
+            "size": 50,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 5,
+            "anchor": "t1_olz1ivh",
+            "anchor_label": "t1_olz1ivh",
+            "size": 137,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 6,
+            "anchor": "t1_olo8f81",
+            "anchor_label": "t1_olo8f81",
+            "size": 24,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 7,
+            "anchor": "t1_om0jkts",
+            "anchor_label": "t1_om0jkts",
+            "size": 10,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 8,
+            "anchor": "t1_olxbboj",
+            "anchor_label": "t1_olxbboj",
+            "size": 18,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 9,
+            "anchor": "t1_om2ahrv",
+            "anchor_label": "t1_om2ahrv",
+            "size": 21,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 10,
+            "anchor": "t1_oli29jq",
+            "anchor_label": "t1_oli29jq",
+            "size": 20,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 11,
+            "anchor": "t1_ome16o9",
+            "anchor_label": "t1_ome16o9",
+            "size": 19,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 12,
+            "anchor": "t1_strata_brigade2",
+            "anchor_label": "Brigade 2",
+            "size": 27,
+            "buried": 3,
+            "decoy": 2,
+            "in_thread": 17
+          },
+          {
+            "rank": 13,
+            "anchor": "t1_olifozc",
+            "anchor_label": "t1_olifozc",
+            "size": 15,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 14,
+            "anchor": "t1_olrscu6",
+            "anchor_label": "t1_olrscu6",
+            "size": 13,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 15,
+            "anchor": "t1_olk45st",
+            "anchor_label": "t1_olk45st",
+            "size": 36,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 16,
+            "anchor": "t1_om2826l",
+            "anchor_label": "t1_om2826l",
+            "size": 28,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 17,
+            "anchor": "t1_om4rhw9",
+            "anchor_label": "t1_om4rhw9",
+            "size": 19,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 18,
+            "anchor": "t1_olzm1kv",
+            "anchor_label": "t1_olzm1kv",
+            "size": 8,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 19,
+            "anchor": "t1_olwun40",
+            "anchor_label": "t1_olwun40",
+            "size": 26,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 20,
+            "anchor": "t1_olhbf24",
+            "anchor_label": "t1_olhbf24",
+            "size": 48,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 21,
+            "anchor": "t1_ols90a4",
+            "anchor_label": "t1_ols90a4",
+            "size": 16,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 22,
+            "anchor": "t1_olnw8kv",
+            "anchor_label": "t1_olnw8kv",
+            "size": 14,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 23,
+            "anchor": "t1_omdpu78",
+            "anchor_label": "t1_omdpu78",
+            "size": 9,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 24,
+            "anchor": "t1_olyu120",
+            "anchor_label": "t1_olyu120",
+            "size": 19,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 25,
+            "anchor": "t1_oltlhiu",
+            "anchor_label": "t1_oltlhiu",
+            "size": 9,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 26,
+            "anchor": "t1_omc1c8s",
+            "anchor_label": "t1_omc1c8s",
+            "size": 7,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 27,
+            "anchor": "t1_olz73u3",
+            "anchor_label": "t1_olz73u3",
+            "size": 23,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 28,
+            "anchor": "t1_olnylk8",
+            "anchor_label": "t1_olnylk8",
+            "size": 13,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 29,
+            "anchor": "t1_olm9s4j",
+            "anchor_label": "t1_olm9s4j",
+            "size": 5,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 30,
+            "anchor": "t1_oll0ccx",
+            "anchor_label": "t1_oll0ccx",
+            "size": 4,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          }
+        ],
+        "buried_in_anchors_unique": 3
+      },
+      "flag_contradiction": {
+        "ok": true,
+        "ms": 8832.053791999999,
+        "refs_flag2a": true,
+        "reasoning": "Same author (TKfromCambridge) posted contradictory statement on 2026-04-25: The prior item says the roommate regularly drives on Tuesdays after work to Night Shift and parks at Cambridgeside. The new item says that Tuesday night the roommate was home with the author and now takes the Green Line rather than driving to work. These are factually incompatible about the roommate’s Tuesday-night whereabouts/driving pattern."
+      },
+      "flag_pattern": {
+        "ok": true,
+        "ms": 1124.2720829999998,
+        "fired": true,
+        "precedents": [
+          "t3_strata_flag3a",
+          "t3_strata_flag3b",
+          "t3_strata_flag3c"
+        ],
+        "reasoning": "This post is effectively a call for community identification/surveillance of a specific vehicle and driver based on alleged repeated wrongdoing, which matches the removed precedent pattern for witch-hunting / no evidence. It asks for eyes on the car and a plate, encouraging targeted monitoring rather than providing verifiable evidence."
+      },
+      "flag_brigade": {
+        "ok": true,
+        "ms": 1128.4672499999979,
+        "fired": true,
+        "authors": 6,
+        "reasoning": "6 distinct authors, 11 comments within 4h window, semantic uniformity 0.78, density 0.55"
+      }
+    },
+    {
+      "trial": 2,
+      "surface": {
+        "ok": true,
+        "ms": 323.294291000002,
+        "candidates": [
+          {
+            "id": "t3_strata_flag4",
+            "score": 0.031544957774465976,
+            "role": "pattern",
+            "label": "flag4 (pattern)"
+          },
+          {
+            "id": "t1_strata_surface1",
+            "score": 0.027500922849760058,
+            "role": "buried",
+            "label": "S1 near-miss"
+          },
+          {
+            "id": "t3_strata_surface2",
+            "score": 0.02512945476698142,
+            "role": "buried",
+            "label": "S2 case#"
+          },
+          {
+            "id": "t3_1te5ph4",
+            "score": 0.023563218390804597,
+            "role": "corpus",
+            "label": "t3_1te5ph4"
+          },
+          {
+            "id": "t1_strata_decoy2",
+            "score": 0.022862309480754326,
+            "role": "decoy",
+            "label": "D2 bike case#"
+          },
+          {
+            "id": "t1_om04nt5",
+            "score": 0.02266725352112676,
+            "role": "corpus",
+            "label": "t1_om04nt5"
+          },
+          {
+            "id": "t1_om08qlb",
+            "score": 0.022397891963109356,
+            "role": "corpus",
+            "label": "t1_om08qlb"
+          },
+          {
+            "id": "t3_1te57i7",
+            "score": 0.021920563097033687,
+            "role": "corpus",
+            "label": "t3_1te57i7"
+          },
+          {
+            "id": "t1_om013gi",
+            "score": 0.02177468820282151,
+            "role": "corpus",
+            "label": "t1_om013gi"
+          },
+          {
+            "id": "t1_om07x6z",
+            "score": 0.021083133493205435,
+            "role": "corpus",
+            "label": "t1_om07x6z"
+          },
+          {
+            "id": "t1_strata_surface3",
+            "score": 0.02061333719079994,
+            "role": "buried",
+            "label": "S3 garage -K77"
+          },
+          {
+            "id": "t1_om066aa",
+            "score": 0.020425531914893616,
+            "role": "corpus",
+            "label": "t1_om066aa"
+          },
+          {
+            "id": "t1_om07nmh",
+            "score": 0.020300751879699246,
+            "role": "corpus",
+            "label": "t1_om07nmh"
+          },
+          {
+            "id": "t1_om03luy",
+            "score": 0.018849206349206348,
+            "role": "corpus",
+            "label": "t1_om03luy"
+          },
+          {
+            "id": "t1_olzzy25",
+            "score": 0.018294573643410854,
+            "role": "corpus",
+            "label": "t1_olzzy25"
+          },
+          {
+            "id": "t1_om0034v",
+            "score": 0.01807504575960952,
+            "role": "corpus",
+            "label": "t1_om0034v"
+          },
+          {
+            "id": "t1_om0400l",
+            "score": 0.017862572210398296,
+            "role": "corpus",
+            "label": "t1_om0400l"
+          },
+          {
+            "id": "t1_olzzan9",
+            "score": 0.017858471612471165,
+            "role": "corpus",
+            "label": "t1_olzzan9"
+          },
+          {
+            "id": "t1_olzz3ht",
+            "score": 0.017331635540464064,
+            "role": "corpus",
+            "label": "t1_olzz3ht"
+          },
+          {
+            "id": "t1_om7pkbr",
+            "score": 0.015873015873015872,
+            "role": "corpus",
+            "label": "t1_om7pkbr"
+          },
+          {
+            "id": "t1_olvex2s",
+            "score": 0.015625,
+            "role": "corpus",
+            "label": "t1_olvex2s"
+          },
+          {
+            "id": "t1_om00vb9",
+            "score": 0.015498373262348417,
+            "role": "corpus",
+            "label": "t1_om00vb9"
+          },
+          {
+            "id": "t1_olzzlku",
+            "score": 0.0153276955602537,
+            "role": "corpus",
+            "label": "t1_olzzlku"
+          },
+          {
+            "id": "t1_olvroxs",
+            "score": 0.014896434313818216,
+            "role": "corpus",
+            "label": "t1_olvroxs"
+          },
+          {
+            "id": "t3_1tfc01q",
+            "score": 0.014705882352941176,
+            "role": "corpus",
+            "label": "t3_1tfc01q"
+          },
+          {
+            "id": "t1_olksumu",
+            "score": 0.014492753623188406,
+            "role": "corpus",
+            "label": "t1_olksumu"
+          },
+          {
+            "id": "t1_olmzqgt",
+            "score": 0.014492753623188406,
+            "role": "corpus",
+            "label": "t1_olmzqgt"
+          },
+          {
+            "id": "t3_strata_flag3b",
+            "score": 0.014285714285714285,
+            "role": "removed",
+            "label": "flag3b (removed)"
+          },
+          {
+            "id": "t3_strata_decoy1",
+            "score": 0.014084507042253521,
+            "role": "decoy",
+            "label": "D1 cat (vehicle)"
+          },
+          {
+            "id": "t1_olpq4jx",
+            "score": 0.0136986301369863,
+            "role": "corpus",
+            "label": "t1_olpq4jx"
+          },
+          {
+            "id": "t1_olx4w2t",
+            "score": 0.013631448872412728,
+            "role": "corpus",
+            "label": "t1_olx4w2t"
+          },
+          {
+            "id": "t1_olyf3vn",
+            "score": 0.013513513513513514,
+            "role": "corpus",
+            "label": "t1_olyf3vn"
+          },
+          {
+            "id": "t1_om00miq",
+            "score": 0.013085870680807389,
+            "role": "corpus",
+            "label": "t1_om00miq"
+          },
+          {
+            "id": "t1_olrehrq",
+            "score": 0.012987012987012988,
+            "role": "corpus",
+            "label": "t1_olrehrq"
+          },
+          {
+            "id": "t1_olhlfcs",
+            "score": 0.01282051282051282,
+            "role": "corpus",
+            "label": "t1_olhlfcs"
+          },
+          {
+            "id": "t1_olud9hx",
+            "score": 0.0125,
+            "role": "corpus",
+            "label": "t1_olud9hx"
+          },
+          {
+            "id": "t3_1tfrst1",
+            "score": 0.012345679012345678,
+            "role": "corpus",
+            "label": "t3_1tfrst1"
+          },
+          {
+            "id": "t3_1td8q2a",
+            "score": 0.012232716778171324,
+            "role": "corpus",
+            "label": "t3_1td8q2a"
+          },
+          {
+            "id": "t1_ombop6x",
+            "score": 0.012195121951219513,
+            "role": "corpus",
+            "label": "t1_ombop6x"
+          },
+          {
+            "id": "t1_ome2a6h",
+            "score": 0.012195121951219513,
+            "role": "corpus",
+            "label": "t1_ome2a6h"
+          }
+        ],
+        "buried_at_K": [
+          0,
+          1,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3
+        ]
+      },
+      "scan": {
+        "ok": true,
+        "ms": 9447.927542000001,
+        "first_signal_rank": 12,
+        "groups": [
+          {
+            "rank": 1,
+            "anchor": "t1_olrg7ob",
+            "anchor_label": "t1_olrg7ob",
+            "size": 48,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 2,
+            "anchor": "t1_om86wzg",
+            "anchor_label": "t1_om86wzg",
+            "size": 24,
+            "buried": 0,
+            "decoy": 1,
+            "in_thread": 0
+          },
+          {
+            "rank": 3,
+            "anchor": "t1_olowml8",
+            "anchor_label": "t1_olowml8",
+            "size": 11,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 4,
+            "anchor": "t1_olrbjje",
+            "anchor_label": "t1_olrbjje",
+            "size": 50,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 5,
+            "anchor": "t1_olz1ivh",
+            "anchor_label": "t1_olz1ivh",
+            "size": 137,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 6,
+            "anchor": "t1_olo8f81",
+            "anchor_label": "t1_olo8f81",
+            "size": 24,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 7,
+            "anchor": "t1_om0jkts",
+            "anchor_label": "t1_om0jkts",
+            "size": 10,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 8,
+            "anchor": "t1_olxbboj",
+            "anchor_label": "t1_olxbboj",
+            "size": 18,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 9,
+            "anchor": "t1_om2ahrv",
+            "anchor_label": "t1_om2ahrv",
+            "size": 21,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 10,
+            "anchor": "t1_oli29jq",
+            "anchor_label": "t1_oli29jq",
+            "size": 20,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 11,
+            "anchor": "t1_ome16o9",
+            "anchor_label": "t1_ome16o9",
+            "size": 19,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 12,
+            "anchor": "t1_strata_brigade2",
+            "anchor_label": "Brigade 2",
+            "size": 27,
+            "buried": 3,
+            "decoy": 2,
+            "in_thread": 17
+          },
+          {
+            "rank": 13,
+            "anchor": "t1_olifozc",
+            "anchor_label": "t1_olifozc",
+            "size": 15,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 14,
+            "anchor": "t1_olrscu6",
+            "anchor_label": "t1_olrscu6",
+            "size": 13,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 15,
+            "anchor": "t1_olk45st",
+            "anchor_label": "t1_olk45st",
+            "size": 36,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 16,
+            "anchor": "t1_om2826l",
+            "anchor_label": "t1_om2826l",
+            "size": 28,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 17,
+            "anchor": "t1_om4rhw9",
+            "anchor_label": "t1_om4rhw9",
+            "size": 19,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 18,
+            "anchor": "t1_olzm1kv",
+            "anchor_label": "t1_olzm1kv",
+            "size": 8,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 19,
+            "anchor": "t1_olwun40",
+            "anchor_label": "t1_olwun40",
+            "size": 26,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 20,
+            "anchor": "t1_olhbf24",
+            "anchor_label": "t1_olhbf24",
+            "size": 48,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 21,
+            "anchor": "t1_ols90a4",
+            "anchor_label": "t1_ols90a4",
+            "size": 16,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 22,
+            "anchor": "t1_olnw8kv",
+            "anchor_label": "t1_olnw8kv",
+            "size": 14,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 23,
+            "anchor": "t1_omdpu78",
+            "anchor_label": "t1_omdpu78",
+            "size": 9,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 24,
+            "anchor": "t1_olyu120",
+            "anchor_label": "t1_olyu120",
+            "size": 19,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 25,
+            "anchor": "t1_oltlhiu",
+            "anchor_label": "t1_oltlhiu",
+            "size": 9,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 26,
+            "anchor": "t1_omc1c8s",
+            "anchor_label": "t1_omc1c8s",
+            "size": 7,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 27,
+            "anchor": "t1_olz73u3",
+            "anchor_label": "t1_olz73u3",
+            "size": 23,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 28,
+            "anchor": "t1_olnylk8",
+            "anchor_label": "t1_olnylk8",
+            "size": 13,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 29,
+            "anchor": "t1_olm9s4j",
+            "anchor_label": "t1_olm9s4j",
+            "size": 5,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 30,
+            "anchor": "t1_oll0ccx",
+            "anchor_label": "t1_oll0ccx",
+            "size": 4,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          }
+        ],
+        "buried_in_anchors_unique": 3
+      },
+      "flag_contradiction": {
+        "ok": true,
+        "ms": 12460.870208999997,
+        "refs_flag2a": true,
+        "reasoning": "Same author (TKfromCambridge) posted contradictory statement on 2026-04-25: The new item says the roommate does not drive to work anymore and takes the Green Line, and that he was home Tuesday night. The prior item says the roommate drives after his Tuesday shift and they regularly park at Cambridgeside. These are factually incompatible accounts of the roommate’s driving/Tuesday-night routine."
+      },
+      "flag_pattern": {
+        "ok": true,
+        "ms": 1288.5014169999995,
+        "fired": true,
+        "precedents": [
+          "t3_strata_flag3a",
+          "t3_strata_flag3b",
+          "t3_strata_flag3c"
+        ],
+        "reasoning": "This post is effectively a call to identify and track a specific vehicle/driver based on alleged wrongdoing, asking for community help to pin it and get a plate. That matches the removed precedent pattern for witch-hunting / no evidence, where users solicit community surveillance and targeting without substantiated evidence."
+      },
+      "flag_brigade": {
+        "ok": true,
+        "ms": 1359.9716249999983,
+        "fired": true,
+        "authors": 6,
+        "reasoning": "6 distinct authors, 11 comments within 4h window, semantic uniformity 0.78, density 0.55"
+      }
+    },
+    {
+      "trial": 3,
+      "surface": {
+        "ok": true,
+        "ms": 358.34491600000183,
+        "candidates": [
+          {
+            "id": "t3_strata_flag4",
+            "score": 0.031544957774465976,
+            "role": "pattern",
+            "label": "flag4 (pattern)"
+          },
+          {
+            "id": "t1_strata_surface1",
+            "score": 0.027500922849760058,
+            "role": "buried",
+            "label": "S1 near-miss"
+          },
+          {
+            "id": "t3_strata_surface2",
+            "score": 0.02512945476698142,
+            "role": "buried",
+            "label": "S2 case#"
+          },
+          {
+            "id": "t3_1te5ph4",
+            "score": 0.023563218390804597,
+            "role": "corpus",
+            "label": "t3_1te5ph4"
+          },
+          {
+            "id": "t1_strata_decoy2",
+            "score": 0.022862309480754326,
+            "role": "decoy",
+            "label": "D2 bike case#"
+          },
+          {
+            "id": "t1_om04nt5",
+            "score": 0.02266725352112676,
+            "role": "corpus",
+            "label": "t1_om04nt5"
+          },
+          {
+            "id": "t1_om08qlb",
+            "score": 0.022397891963109356,
+            "role": "corpus",
+            "label": "t1_om08qlb"
+          },
+          {
+            "id": "t3_1te57i7",
+            "score": 0.021920563097033687,
+            "role": "corpus",
+            "label": "t3_1te57i7"
+          },
+          {
+            "id": "t1_om013gi",
+            "score": 0.02177468820282151,
+            "role": "corpus",
+            "label": "t1_om013gi"
+          },
+          {
+            "id": "t1_om07x6z",
+            "score": 0.021083133493205435,
+            "role": "corpus",
+            "label": "t1_om07x6z"
+          },
+          {
+            "id": "t1_strata_surface3",
+            "score": 0.02061333719079994,
+            "role": "buried",
+            "label": "S3 garage -K77"
+          },
+          {
+            "id": "t1_om066aa",
+            "score": 0.020425531914893616,
+            "role": "corpus",
+            "label": "t1_om066aa"
+          },
+          {
+            "id": "t1_om07nmh",
+            "score": 0.020300751879699246,
+            "role": "corpus",
+            "label": "t1_om07nmh"
+          },
+          {
+            "id": "t1_om03luy",
+            "score": 0.018849206349206348,
+            "role": "corpus",
+            "label": "t1_om03luy"
+          },
+          {
+            "id": "t1_olzzy25",
+            "score": 0.018294573643410854,
+            "role": "corpus",
+            "label": "t1_olzzy25"
+          },
+          {
+            "id": "t1_om0034v",
+            "score": 0.01807504575960952,
+            "role": "corpus",
+            "label": "t1_om0034v"
+          },
+          {
+            "id": "t1_om0400l",
+            "score": 0.017862572210398296,
+            "role": "corpus",
+            "label": "t1_om0400l"
+          },
+          {
+            "id": "t1_olzzan9",
+            "score": 0.017858471612471165,
+            "role": "corpus",
+            "label": "t1_olzzan9"
+          },
+          {
+            "id": "t1_olzz3ht",
+            "score": 0.017331635540464064,
+            "role": "corpus",
+            "label": "t1_olzz3ht"
+          },
+          {
+            "id": "t1_om7pkbr",
+            "score": 0.015873015873015872,
+            "role": "corpus",
+            "label": "t1_om7pkbr"
+          },
+          {
+            "id": "t1_olvex2s",
+            "score": 0.015625,
+            "role": "corpus",
+            "label": "t1_olvex2s"
+          },
+          {
+            "id": "t1_om00vb9",
+            "score": 0.015498373262348417,
+            "role": "corpus",
+            "label": "t1_om00vb9"
+          },
+          {
+            "id": "t1_olzzlku",
+            "score": 0.0153276955602537,
+            "role": "corpus",
+            "label": "t1_olzzlku"
+          },
+          {
+            "id": "t1_olvroxs",
+            "score": 0.014896434313818216,
+            "role": "corpus",
+            "label": "t1_olvroxs"
+          },
+          {
+            "id": "t3_1tfc01q",
+            "score": 0.014705882352941176,
+            "role": "corpus",
+            "label": "t3_1tfc01q"
+          },
+          {
+            "id": "t1_olksumu",
+            "score": 0.014492753623188406,
+            "role": "corpus",
+            "label": "t1_olksumu"
+          },
+          {
+            "id": "t1_olmzqgt",
+            "score": 0.014492753623188406,
+            "role": "corpus",
+            "label": "t1_olmzqgt"
+          },
+          {
+            "id": "t3_strata_flag3b",
+            "score": 0.014285714285714285,
+            "role": "removed",
+            "label": "flag3b (removed)"
+          },
+          {
+            "id": "t3_strata_decoy1",
+            "score": 0.014084507042253521,
+            "role": "decoy",
+            "label": "D1 cat (vehicle)"
+          },
+          {
+            "id": "t1_olpq4jx",
+            "score": 0.0136986301369863,
+            "role": "corpus",
+            "label": "t1_olpq4jx"
+          },
+          {
+            "id": "t1_olx4w2t",
+            "score": 0.013631448872412728,
+            "role": "corpus",
+            "label": "t1_olx4w2t"
+          },
+          {
+            "id": "t1_olyf3vn",
+            "score": 0.013513513513513514,
+            "role": "corpus",
+            "label": "t1_olyf3vn"
+          },
+          {
+            "id": "t1_om00miq",
+            "score": 0.013085870680807389,
+            "role": "corpus",
+            "label": "t1_om00miq"
+          },
+          {
+            "id": "t1_olrehrq",
+            "score": 0.012987012987012988,
+            "role": "corpus",
+            "label": "t1_olrehrq"
+          },
+          {
+            "id": "t1_olhlfcs",
+            "score": 0.01282051282051282,
+            "role": "corpus",
+            "label": "t1_olhlfcs"
+          },
+          {
+            "id": "t1_olud9hx",
+            "score": 0.0125,
+            "role": "corpus",
+            "label": "t1_olud9hx"
+          },
+          {
+            "id": "t3_1tfrst1",
+            "score": 0.012345679012345678,
+            "role": "corpus",
+            "label": "t3_1tfrst1"
+          },
+          {
+            "id": "t3_1td8q2a",
+            "score": 0.012232716778171324,
+            "role": "corpus",
+            "label": "t3_1td8q2a"
+          },
+          {
+            "id": "t1_ombop6x",
+            "score": 0.012195121951219513,
+            "role": "corpus",
+            "label": "t1_ombop6x"
+          },
+          {
+            "id": "t1_ome2a6h",
+            "score": 0.012195121951219513,
+            "role": "corpus",
+            "label": "t1_ome2a6h"
+          }
+        ],
+        "buried_at_K": [
+          0,
+          1,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3
+        ]
+      },
+      "scan": {
+        "ok": true,
+        "ms": 9438.078207999999,
+        "first_signal_rank": 12,
+        "groups": [
+          {
+            "rank": 1,
+            "anchor": "t1_olrg7ob",
+            "anchor_label": "t1_olrg7ob",
+            "size": 48,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 2,
+            "anchor": "t1_om86wzg",
+            "anchor_label": "t1_om86wzg",
+            "size": 24,
+            "buried": 0,
+            "decoy": 1,
+            "in_thread": 0
+          },
+          {
+            "rank": 3,
+            "anchor": "t1_olowml8",
+            "anchor_label": "t1_olowml8",
+            "size": 11,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 4,
+            "anchor": "t1_olrbjje",
+            "anchor_label": "t1_olrbjje",
+            "size": 50,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 5,
+            "anchor": "t1_olz1ivh",
+            "anchor_label": "t1_olz1ivh",
+            "size": 137,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 6,
+            "anchor": "t1_olo8f81",
+            "anchor_label": "t1_olo8f81",
+            "size": 24,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 7,
+            "anchor": "t1_om0jkts",
+            "anchor_label": "t1_om0jkts",
+            "size": 10,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 8,
+            "anchor": "t1_olxbboj",
+            "anchor_label": "t1_olxbboj",
+            "size": 18,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 9,
+            "anchor": "t1_om2ahrv",
+            "anchor_label": "t1_om2ahrv",
+            "size": 21,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 10,
+            "anchor": "t1_oli29jq",
+            "anchor_label": "t1_oli29jq",
+            "size": 20,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 11,
+            "anchor": "t1_ome16o9",
+            "anchor_label": "t1_ome16o9",
+            "size": 19,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 12,
+            "anchor": "t1_strata_brigade2",
+            "anchor_label": "Brigade 2",
+            "size": 27,
+            "buried": 3,
+            "decoy": 2,
+            "in_thread": 17
+          },
+          {
+            "rank": 13,
+            "anchor": "t1_olifozc",
+            "anchor_label": "t1_olifozc",
+            "size": 15,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 14,
+            "anchor": "t1_olrscu6",
+            "anchor_label": "t1_olrscu6",
+            "size": 13,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 15,
+            "anchor": "t1_olk45st",
+            "anchor_label": "t1_olk45st",
+            "size": 36,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 16,
+            "anchor": "t1_om2826l",
+            "anchor_label": "t1_om2826l",
+            "size": 28,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 17,
+            "anchor": "t1_om4rhw9",
+            "anchor_label": "t1_om4rhw9",
+            "size": 19,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 18,
+            "anchor": "t1_olzm1kv",
+            "anchor_label": "t1_olzm1kv",
+            "size": 8,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 19,
+            "anchor": "t1_olwun40",
+            "anchor_label": "t1_olwun40",
+            "size": 26,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 20,
+            "anchor": "t1_olhbf24",
+            "anchor_label": "t1_olhbf24",
+            "size": 48,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 21,
+            "anchor": "t1_ols90a4",
+            "anchor_label": "t1_ols90a4",
+            "size": 16,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 22,
+            "anchor": "t1_olnw8kv",
+            "anchor_label": "t1_olnw8kv",
+            "size": 14,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 23,
+            "anchor": "t1_omdpu78",
+            "anchor_label": "t1_omdpu78",
+            "size": 9,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 24,
+            "anchor": "t1_olyu120",
+            "anchor_label": "t1_olyu120",
+            "size": 19,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 25,
+            "anchor": "t1_oltlhiu",
+            "anchor_label": "t1_oltlhiu",
+            "size": 9,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 26,
+            "anchor": "t1_omc1c8s",
+            "anchor_label": "t1_omc1c8s",
+            "size": 7,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 27,
+            "anchor": "t1_olz73u3",
+            "anchor_label": "t1_olz73u3",
+            "size": 23,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 28,
+            "anchor": "t1_olnylk8",
+            "anchor_label": "t1_olnylk8",
+            "size": 13,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 29,
+            "anchor": "t1_olm9s4j",
+            "anchor_label": "t1_olm9s4j",
+            "size": 5,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 30,
+            "anchor": "t1_oll0ccx",
+            "anchor_label": "t1_oll0ccx",
+            "size": 4,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          }
+        ],
+        "buried_in_anchors_unique": 3
+      },
+      "flag_contradiction": {
+        "ok": true,
+        "ms": 6581.842334000001,
+        "refs_flag2a": true,
+        "reasoning": "Same author (TKfromCambridge) posted contradictory statement on 2026-04-25: The prior says the roommate habitually drives on Tuesdays after work and they go out to Night Shift, while the new item says the roommate was home with the author Tuesday night and does not drive to work anymore, taking the Green Line instead. These are factually incompatible in the context of the same Tuesday/commute-driving claims."
+      },
+      "flag_pattern": {
+        "ok": true,
+        "ms": 1852.7836670000033,
+        "fired": true,
+        "precedents": [
+          "t3_strata_flag3a",
+          "t3_strata_flag3b",
+          "t3_strata_flag3c"
+        ],
+        "reasoning": "The post is a community callout about a specific vehicle and driver, asking for identification/plate information and encouraging others to focus attention on them. This matches the precedent pattern removed for witch-hunting / no evidence, even though it frames the concern as traffic safety."
+      },
+      "flag_brigade": {
+        "ok": true,
+        "ms": 1273.0566249999902,
+        "fired": true,
+        "authors": 6,
+        "reasoning": "6 distinct authors, 11 comments within 4h window, semantic uniformity 0.78, density 0.55"
+      }
+    },
+    {
+      "trial": 4,
+      "surface": {
+        "ok": true,
+        "ms": 321.590750000003,
+        "candidates": [
+          {
+            "id": "t3_strata_flag4",
+            "score": 0.031544957774465976,
+            "role": "pattern",
+            "label": "flag4 (pattern)"
+          },
+          {
+            "id": "t1_strata_surface1",
+            "score": 0.027500922849760058,
+            "role": "buried",
+            "label": "S1 near-miss"
+          },
+          {
+            "id": "t3_strata_surface2",
+            "score": 0.02512945476698142,
+            "role": "buried",
+            "label": "S2 case#"
+          },
+          {
+            "id": "t3_1te5ph4",
+            "score": 0.023563218390804597,
+            "role": "corpus",
+            "label": "t3_1te5ph4"
+          },
+          {
+            "id": "t1_strata_decoy2",
+            "score": 0.022862309480754326,
+            "role": "decoy",
+            "label": "D2 bike case#"
+          },
+          {
+            "id": "t1_om04nt5",
+            "score": 0.02266725352112676,
+            "role": "corpus",
+            "label": "t1_om04nt5"
+          },
+          {
+            "id": "t1_om08qlb",
+            "score": 0.022397891963109356,
+            "role": "corpus",
+            "label": "t1_om08qlb"
+          },
+          {
+            "id": "t3_1te57i7",
+            "score": 0.021920563097033687,
+            "role": "corpus",
+            "label": "t3_1te57i7"
+          },
+          {
+            "id": "t1_om013gi",
+            "score": 0.02177468820282151,
+            "role": "corpus",
+            "label": "t1_om013gi"
+          },
+          {
+            "id": "t1_om07x6z",
+            "score": 0.021083133493205435,
+            "role": "corpus",
+            "label": "t1_om07x6z"
+          },
+          {
+            "id": "t1_strata_surface3",
+            "score": 0.02061333719079994,
+            "role": "buried",
+            "label": "S3 garage -K77"
+          },
+          {
+            "id": "t1_om066aa",
+            "score": 0.020425531914893616,
+            "role": "corpus",
+            "label": "t1_om066aa"
+          },
+          {
+            "id": "t1_om07nmh",
+            "score": 0.020300751879699246,
+            "role": "corpus",
+            "label": "t1_om07nmh"
+          },
+          {
+            "id": "t1_om03luy",
+            "score": 0.018849206349206348,
+            "role": "corpus",
+            "label": "t1_om03luy"
+          },
+          {
+            "id": "t1_olzzy25",
+            "score": 0.018294573643410854,
+            "role": "corpus",
+            "label": "t1_olzzy25"
+          },
+          {
+            "id": "t1_om0034v",
+            "score": 0.01807504575960952,
+            "role": "corpus",
+            "label": "t1_om0034v"
+          },
+          {
+            "id": "t1_om0400l",
+            "score": 0.017862572210398296,
+            "role": "corpus",
+            "label": "t1_om0400l"
+          },
+          {
+            "id": "t1_olzzan9",
+            "score": 0.017858471612471165,
+            "role": "corpus",
+            "label": "t1_olzzan9"
+          },
+          {
+            "id": "t1_olzz3ht",
+            "score": 0.017331635540464064,
+            "role": "corpus",
+            "label": "t1_olzz3ht"
+          },
+          {
+            "id": "t1_om7pkbr",
+            "score": 0.015873015873015872,
+            "role": "corpus",
+            "label": "t1_om7pkbr"
+          },
+          {
+            "id": "t1_olvex2s",
+            "score": 0.015625,
+            "role": "corpus",
+            "label": "t1_olvex2s"
+          },
+          {
+            "id": "t1_om00vb9",
+            "score": 0.015498373262348417,
+            "role": "corpus",
+            "label": "t1_om00vb9"
+          },
+          {
+            "id": "t1_olzzlku",
+            "score": 0.0153276955602537,
+            "role": "corpus",
+            "label": "t1_olzzlku"
+          },
+          {
+            "id": "t1_olvroxs",
+            "score": 0.014896434313818216,
+            "role": "corpus",
+            "label": "t1_olvroxs"
+          },
+          {
+            "id": "t3_1tfc01q",
+            "score": 0.014705882352941176,
+            "role": "corpus",
+            "label": "t3_1tfc01q"
+          },
+          {
+            "id": "t1_olksumu",
+            "score": 0.014492753623188406,
+            "role": "corpus",
+            "label": "t1_olksumu"
+          },
+          {
+            "id": "t1_olmzqgt",
+            "score": 0.014492753623188406,
+            "role": "corpus",
+            "label": "t1_olmzqgt"
+          },
+          {
+            "id": "t3_strata_flag3b",
+            "score": 0.014285714285714285,
+            "role": "removed",
+            "label": "flag3b (removed)"
+          },
+          {
+            "id": "t3_strata_decoy1",
+            "score": 0.014084507042253521,
+            "role": "decoy",
+            "label": "D1 cat (vehicle)"
+          },
+          {
+            "id": "t1_olpq4jx",
+            "score": 0.0136986301369863,
+            "role": "corpus",
+            "label": "t1_olpq4jx"
+          },
+          {
+            "id": "t1_olx4w2t",
+            "score": 0.013631448872412728,
+            "role": "corpus",
+            "label": "t1_olx4w2t"
+          },
+          {
+            "id": "t1_olyf3vn",
+            "score": 0.013513513513513514,
+            "role": "corpus",
+            "label": "t1_olyf3vn"
+          },
+          {
+            "id": "t1_om00miq",
+            "score": 0.013085870680807389,
+            "role": "corpus",
+            "label": "t1_om00miq"
+          },
+          {
+            "id": "t1_olrehrq",
+            "score": 0.012987012987012988,
+            "role": "corpus",
+            "label": "t1_olrehrq"
+          },
+          {
+            "id": "t1_olhlfcs",
+            "score": 0.01282051282051282,
+            "role": "corpus",
+            "label": "t1_olhlfcs"
+          },
+          {
+            "id": "t1_olud9hx",
+            "score": 0.0125,
+            "role": "corpus",
+            "label": "t1_olud9hx"
+          },
+          {
+            "id": "t3_1tfrst1",
+            "score": 0.012345679012345678,
+            "role": "corpus",
+            "label": "t3_1tfrst1"
+          },
+          {
+            "id": "t3_1td8q2a",
+            "score": 0.012232716778171324,
+            "role": "corpus",
+            "label": "t3_1td8q2a"
+          },
+          {
+            "id": "t1_ombop6x",
+            "score": 0.012195121951219513,
+            "role": "corpus",
+            "label": "t1_ombop6x"
+          },
+          {
+            "id": "t1_ome2a6h",
+            "score": 0.012195121951219513,
+            "role": "corpus",
+            "label": "t1_ome2a6h"
+          }
+        ],
+        "buried_at_K": [
+          0,
+          1,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3
+        ]
+      },
+      "scan": {
+        "ok": true,
+        "ms": 9516.952917000002,
+        "first_signal_rank": 12,
+        "groups": [
+          {
+            "rank": 1,
+            "anchor": "t1_olrg7ob",
+            "anchor_label": "t1_olrg7ob",
+            "size": 48,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 2,
+            "anchor": "t1_om86wzg",
+            "anchor_label": "t1_om86wzg",
+            "size": 24,
+            "buried": 0,
+            "decoy": 1,
+            "in_thread": 0
+          },
+          {
+            "rank": 3,
+            "anchor": "t1_olowml8",
+            "anchor_label": "t1_olowml8",
+            "size": 11,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 4,
+            "anchor": "t1_olrbjje",
+            "anchor_label": "t1_olrbjje",
+            "size": 50,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 5,
+            "anchor": "t1_olz1ivh",
+            "anchor_label": "t1_olz1ivh",
+            "size": 137,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 6,
+            "anchor": "t1_olo8f81",
+            "anchor_label": "t1_olo8f81",
+            "size": 24,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 7,
+            "anchor": "t1_om0jkts",
+            "anchor_label": "t1_om0jkts",
+            "size": 10,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 8,
+            "anchor": "t1_olxbboj",
+            "anchor_label": "t1_olxbboj",
+            "size": 18,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 9,
+            "anchor": "t1_om2ahrv",
+            "anchor_label": "t1_om2ahrv",
+            "size": 21,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 10,
+            "anchor": "t1_oli29jq",
+            "anchor_label": "t1_oli29jq",
+            "size": 20,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 11,
+            "anchor": "t1_ome16o9",
+            "anchor_label": "t1_ome16o9",
+            "size": 19,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 12,
+            "anchor": "t1_strata_brigade2",
+            "anchor_label": "Brigade 2",
+            "size": 27,
+            "buried": 3,
+            "decoy": 2,
+            "in_thread": 17
+          },
+          {
+            "rank": 13,
+            "anchor": "t1_olifozc",
+            "anchor_label": "t1_olifozc",
+            "size": 15,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 14,
+            "anchor": "t1_olrscu6",
+            "anchor_label": "t1_olrscu6",
+            "size": 13,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 15,
+            "anchor": "t1_olk45st",
+            "anchor_label": "t1_olk45st",
+            "size": 36,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 16,
+            "anchor": "t1_om2826l",
+            "anchor_label": "t1_om2826l",
+            "size": 28,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 17,
+            "anchor": "t1_om4rhw9",
+            "anchor_label": "t1_om4rhw9",
+            "size": 19,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 18,
+            "anchor": "t1_olzm1kv",
+            "anchor_label": "t1_olzm1kv",
+            "size": 8,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 19,
+            "anchor": "t1_olwun40",
+            "anchor_label": "t1_olwun40",
+            "size": 26,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 20,
+            "anchor": "t1_olhbf24",
+            "anchor_label": "t1_olhbf24",
+            "size": 48,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 21,
+            "anchor": "t1_ols90a4",
+            "anchor_label": "t1_ols90a4",
+            "size": 16,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 22,
+            "anchor": "t1_olnw8kv",
+            "anchor_label": "t1_olnw8kv",
+            "size": 14,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 23,
+            "anchor": "t1_omdpu78",
+            "anchor_label": "t1_omdpu78",
+            "size": 9,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 24,
+            "anchor": "t1_olyu120",
+            "anchor_label": "t1_olyu120",
+            "size": 19,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 25,
+            "anchor": "t1_oltlhiu",
+            "anchor_label": "t1_oltlhiu",
+            "size": 9,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 26,
+            "anchor": "t1_omc1c8s",
+            "anchor_label": "t1_omc1c8s",
+            "size": 7,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 27,
+            "anchor": "t1_olz73u3",
+            "anchor_label": "t1_olz73u3",
+            "size": 23,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 28,
+            "anchor": "t1_olnylk8",
+            "anchor_label": "t1_olnylk8",
+            "size": 13,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 29,
+            "anchor": "t1_olm9s4j",
+            "anchor_label": "t1_olm9s4j",
+            "size": 5,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 30,
+            "anchor": "t1_oll0ccx",
+            "anchor_label": "t1_oll0ccx",
+            "size": 4,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          }
+        ],
+        "buried_in_anchors_unique": 3
+      },
+      "flag_contradiction": {
+        "ok": true,
+        "ms": 2607.5763749999896,
+        "refs_flag2a": true,
+        "reasoning": "Same author (TKfromCambridge) posted contradictory statement on 2026-04-25: The new item says the roommate was home with the author Tuesday night and does not drive to work anymore, taking the Green Line. The prior item says they always go out Tuesdays after the roommate's shift, and that the roommate drives and parks at Cambridgeside. These are factually incompatible regarding the roommate's Tuesday routine and whether he drives."
+      },
+      "flag_pattern": {
+        "ok": true,
+        "ms": 1287.2746670000051,
+        "fired": true,
+        "precedents": [
+          "t3_strata_flag3a",
+          "t3_strata_flag3b",
+          "t3_strata_flag3c"
+        ],
+        "reasoning": "This post matches the removed pattern for witch-hunting / no evidence: it identifies a specific vehicle and location, alleges repeated dangerous behavior, and solicits community identification ('Has anyone gotten a plate?') without providing verifiable evidence. It encourages targeting a suspected driver rather than reporting a concrete incident."
+      },
+      "flag_brigade": {
+        "ok": true,
+        "ms": 1158.948166999995,
+        "fired": true,
+        "authors": 6,
+        "reasoning": "6 distinct authors, 11 comments within 4h window, semantic uniformity 0.78, density 0.55"
+      }
+    },
+    {
+      "trial": 5,
+      "surface": {
+        "ok": true,
+        "ms": 445.0351249999949,
+        "candidates": [
+          {
+            "id": "t3_strata_flag4",
+            "score": 0.031544957774465976,
+            "role": "pattern",
+            "label": "flag4 (pattern)"
+          },
+          {
+            "id": "t1_strata_surface1",
+            "score": 0.027500922849760058,
+            "role": "buried",
+            "label": "S1 near-miss"
+          },
+          {
+            "id": "t3_strata_surface2",
+            "score": 0.02512945476698142,
+            "role": "buried",
+            "label": "S2 case#"
+          },
+          {
+            "id": "t3_1te5ph4",
+            "score": 0.023563218390804597,
+            "role": "corpus",
+            "label": "t3_1te5ph4"
+          },
+          {
+            "id": "t1_strata_decoy2",
+            "score": 0.022862309480754326,
+            "role": "decoy",
+            "label": "D2 bike case#"
+          },
+          {
+            "id": "t1_om04nt5",
+            "score": 0.02266725352112676,
+            "role": "corpus",
+            "label": "t1_om04nt5"
+          },
+          {
+            "id": "t1_om08qlb",
+            "score": 0.022397891963109356,
+            "role": "corpus",
+            "label": "t1_om08qlb"
+          },
+          {
+            "id": "t3_1te57i7",
+            "score": 0.021920563097033687,
+            "role": "corpus",
+            "label": "t3_1te57i7"
+          },
+          {
+            "id": "t1_om013gi",
+            "score": 0.02177468820282151,
+            "role": "corpus",
+            "label": "t1_om013gi"
+          },
+          {
+            "id": "t1_om07x6z",
+            "score": 0.021083133493205435,
+            "role": "corpus",
+            "label": "t1_om07x6z"
+          },
+          {
+            "id": "t1_strata_surface3",
+            "score": 0.02061333719079994,
+            "role": "buried",
+            "label": "S3 garage -K77"
+          },
+          {
+            "id": "t1_om066aa",
+            "score": 0.020425531914893616,
+            "role": "corpus",
+            "label": "t1_om066aa"
+          },
+          {
+            "id": "t1_om07nmh",
+            "score": 0.020300751879699246,
+            "role": "corpus",
+            "label": "t1_om07nmh"
+          },
+          {
+            "id": "t1_om03luy",
+            "score": 0.018849206349206348,
+            "role": "corpus",
+            "label": "t1_om03luy"
+          },
+          {
+            "id": "t1_olzzy25",
+            "score": 0.018294573643410854,
+            "role": "corpus",
+            "label": "t1_olzzy25"
+          },
+          {
+            "id": "t1_om0034v",
+            "score": 0.01807504575960952,
+            "role": "corpus",
+            "label": "t1_om0034v"
+          },
+          {
+            "id": "t1_om0400l",
+            "score": 0.017862572210398296,
+            "role": "corpus",
+            "label": "t1_om0400l"
+          },
+          {
+            "id": "t1_olzzan9",
+            "score": 0.017858471612471165,
+            "role": "corpus",
+            "label": "t1_olzzan9"
+          },
+          {
+            "id": "t1_olzz3ht",
+            "score": 0.017331635540464064,
+            "role": "corpus",
+            "label": "t1_olzz3ht"
+          },
+          {
+            "id": "t1_om7pkbr",
+            "score": 0.015873015873015872,
+            "role": "corpus",
+            "label": "t1_om7pkbr"
+          },
+          {
+            "id": "t1_olvex2s",
+            "score": 0.015625,
+            "role": "corpus",
+            "label": "t1_olvex2s"
+          },
+          {
+            "id": "t1_om00vb9",
+            "score": 0.015498373262348417,
+            "role": "corpus",
+            "label": "t1_om00vb9"
+          },
+          {
+            "id": "t1_olzzlku",
+            "score": 0.0153276955602537,
+            "role": "corpus",
+            "label": "t1_olzzlku"
+          },
+          {
+            "id": "t1_olvroxs",
+            "score": 0.014896434313818216,
+            "role": "corpus",
+            "label": "t1_olvroxs"
+          },
+          {
+            "id": "t3_1tfc01q",
+            "score": 0.014705882352941176,
+            "role": "corpus",
+            "label": "t3_1tfc01q"
+          },
+          {
+            "id": "t1_olksumu",
+            "score": 0.014492753623188406,
+            "role": "corpus",
+            "label": "t1_olksumu"
+          },
+          {
+            "id": "t1_olmzqgt",
+            "score": 0.014492753623188406,
+            "role": "corpus",
+            "label": "t1_olmzqgt"
+          },
+          {
+            "id": "t3_strata_flag3b",
+            "score": 0.014285714285714285,
+            "role": "removed",
+            "label": "flag3b (removed)"
+          },
+          {
+            "id": "t3_strata_decoy1",
+            "score": 0.014084507042253521,
+            "role": "decoy",
+            "label": "D1 cat (vehicle)"
+          },
+          {
+            "id": "t1_olpq4jx",
+            "score": 0.0136986301369863,
+            "role": "corpus",
+            "label": "t1_olpq4jx"
+          },
+          {
+            "id": "t1_olx4w2t",
+            "score": 0.013631448872412728,
+            "role": "corpus",
+            "label": "t1_olx4w2t"
+          },
+          {
+            "id": "t1_olyf3vn",
+            "score": 0.013513513513513514,
+            "role": "corpus",
+            "label": "t1_olyf3vn"
+          },
+          {
+            "id": "t1_om00miq",
+            "score": 0.013085870680807389,
+            "role": "corpus",
+            "label": "t1_om00miq"
+          },
+          {
+            "id": "t1_olrehrq",
+            "score": 0.012987012987012988,
+            "role": "corpus",
+            "label": "t1_olrehrq"
+          },
+          {
+            "id": "t1_olhlfcs",
+            "score": 0.01282051282051282,
+            "role": "corpus",
+            "label": "t1_olhlfcs"
+          },
+          {
+            "id": "t1_olud9hx",
+            "score": 0.0125,
+            "role": "corpus",
+            "label": "t1_olud9hx"
+          },
+          {
+            "id": "t3_1tfrst1",
+            "score": 0.012345679012345678,
+            "role": "corpus",
+            "label": "t3_1tfrst1"
+          },
+          {
+            "id": "t3_1td8q2a",
+            "score": 0.012232716778171324,
+            "role": "corpus",
+            "label": "t3_1td8q2a"
+          },
+          {
+            "id": "t1_ombop6x",
+            "score": 0.012195121951219513,
+            "role": "corpus",
+            "label": "t1_ombop6x"
+          },
+          {
+            "id": "t1_ome2a6h",
+            "score": 0.012195121951219513,
+            "role": "corpus",
+            "label": "t1_ome2a6h"
+          }
+        ],
+        "buried_at_K": [
+          0,
+          1,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3
+        ]
+      },
+      "scan": {
+        "ok": true,
+        "ms": 9532.082249999992,
+        "first_signal_rank": 12,
+        "groups": [
+          {
+            "rank": 1,
+            "anchor": "t1_olrg7ob",
+            "anchor_label": "t1_olrg7ob",
+            "size": 48,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 2,
+            "anchor": "t1_om86wzg",
+            "anchor_label": "t1_om86wzg",
+            "size": 24,
+            "buried": 0,
+            "decoy": 1,
+            "in_thread": 0
+          },
+          {
+            "rank": 3,
+            "anchor": "t1_olowml8",
+            "anchor_label": "t1_olowml8",
+            "size": 11,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 4,
+            "anchor": "t1_olrbjje",
+            "anchor_label": "t1_olrbjje",
+            "size": 50,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 5,
+            "anchor": "t1_olz1ivh",
+            "anchor_label": "t1_olz1ivh",
+            "size": 137,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 6,
+            "anchor": "t1_olo8f81",
+            "anchor_label": "t1_olo8f81",
+            "size": 24,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 7,
+            "anchor": "t1_om0jkts",
+            "anchor_label": "t1_om0jkts",
+            "size": 10,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 8,
+            "anchor": "t1_olxbboj",
+            "anchor_label": "t1_olxbboj",
+            "size": 18,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 9,
+            "anchor": "t1_om2ahrv",
+            "anchor_label": "t1_om2ahrv",
+            "size": 21,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 10,
+            "anchor": "t1_oli29jq",
+            "anchor_label": "t1_oli29jq",
+            "size": 20,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 11,
+            "anchor": "t1_ome16o9",
+            "anchor_label": "t1_ome16o9",
+            "size": 19,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 12,
+            "anchor": "t1_strata_brigade2",
+            "anchor_label": "Brigade 2",
+            "size": 27,
+            "buried": 3,
+            "decoy": 2,
+            "in_thread": 17
+          },
+          {
+            "rank": 13,
+            "anchor": "t1_olifozc",
+            "anchor_label": "t1_olifozc",
+            "size": 15,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 14,
+            "anchor": "t1_olrscu6",
+            "anchor_label": "t1_olrscu6",
+            "size": 13,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 15,
+            "anchor": "t1_olk45st",
+            "anchor_label": "t1_olk45st",
+            "size": 36,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 16,
+            "anchor": "t1_om2826l",
+            "anchor_label": "t1_om2826l",
+            "size": 28,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 17,
+            "anchor": "t1_om4rhw9",
+            "anchor_label": "t1_om4rhw9",
+            "size": 19,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 18,
+            "anchor": "t1_olzm1kv",
+            "anchor_label": "t1_olzm1kv",
+            "size": 8,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 19,
+            "anchor": "t1_olwun40",
+            "anchor_label": "t1_olwun40",
+            "size": 26,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 20,
+            "anchor": "t1_olhbf24",
+            "anchor_label": "t1_olhbf24",
+            "size": 48,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 21,
+            "anchor": "t1_ols90a4",
+            "anchor_label": "t1_ols90a4",
+            "size": 16,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 22,
+            "anchor": "t1_olnw8kv",
+            "anchor_label": "t1_olnw8kv",
+            "size": 14,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 23,
+            "anchor": "t1_omdpu78",
+            "anchor_label": "t1_omdpu78",
+            "size": 9,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 24,
+            "anchor": "t1_olyu120",
+            "anchor_label": "t1_olyu120",
+            "size": 19,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 25,
+            "anchor": "t1_oltlhiu",
+            "anchor_label": "t1_oltlhiu",
+            "size": 9,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 26,
+            "anchor": "t1_omc1c8s",
+            "anchor_label": "t1_omc1c8s",
+            "size": 7,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 27,
+            "anchor": "t1_olz73u3",
+            "anchor_label": "t1_olz73u3",
+            "size": 23,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 28,
+            "anchor": "t1_olnylk8",
+            "anchor_label": "t1_olnylk8",
+            "size": 13,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 29,
+            "anchor": "t1_olm9s4j",
+            "anchor_label": "t1_olm9s4j",
+            "size": 5,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 30,
+            "anchor": "t1_oll0ccx",
+            "anchor_label": "t1_oll0ccx",
+            "size": 4,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          }
+        ],
+        "buried_in_anchors_unique": 3
+      },
+      "flag_contradiction": {
+        "ok": true,
+        "ms": 2530.4792920000036,
+        "refs_flag2a": true,
+        "reasoning": "Same author (TKfromCambridge) posted contradictory statement on 2026-04-25: The new item says the roommate was home with the author Tuesday night and doesn't drive to work anymore, taking the Green Line. The prior item says they routinely go out Tuesdays after the roommate's shift, and that the roommate drives while the author drinks. These are factually incompatible about the roommate's Tuesday-night whereabouts/driving habits."
+      },
+      "flag_pattern": {
+        "ok": true,
+        "ms": 1437.7921670000069,
+        "fired": true,
+        "precedents": [
+          "t3_strata_flag3a",
+          "t3_strata_flag3b",
+          "t3_strata_flag3c"
+        ],
+        "reasoning": "The post is a community callout about a specific vehicle and asks for identifying details ('Has anyone gotten a plate?') based on alleged repeated wrongdoing, which matches the removed witch-hunting / no evidence pattern in the precedents. It encourages targeting a suspected driver without substantiated evidence."
+      },
+      "flag_brigade": {
+        "ok": true,
+        "ms": 1124.8860419999983,
+        "fired": true,
+        "authors": 6,
+        "reasoning": "6 distinct authors, 11 comments within 4h window, semantic uniformity 0.78, density 0.55"
+      }
+    },
+    {
+      "trial": 6,
+      "surface": {
+        "ok": true,
+        "ms": 344.56995799999277,
+        "candidates": [
+          {
+            "id": "t3_strata_flag4",
+            "score": 0.031544957774465976,
+            "role": "pattern",
+            "label": "flag4 (pattern)"
+          },
+          {
+            "id": "t1_strata_surface1",
+            "score": 0.027500922849760058,
+            "role": "buried",
+            "label": "S1 near-miss"
+          },
+          {
+            "id": "t3_strata_surface2",
+            "score": 0.02512945476698142,
+            "role": "buried",
+            "label": "S2 case#"
+          },
+          {
+            "id": "t3_1te5ph4",
+            "score": 0.023563218390804597,
+            "role": "corpus",
+            "label": "t3_1te5ph4"
+          },
+          {
+            "id": "t1_strata_decoy2",
+            "score": 0.022862309480754326,
+            "role": "decoy",
+            "label": "D2 bike case#"
+          },
+          {
+            "id": "t1_om04nt5",
+            "score": 0.02266725352112676,
+            "role": "corpus",
+            "label": "t1_om04nt5"
+          },
+          {
+            "id": "t1_om08qlb",
+            "score": 0.022397891963109356,
+            "role": "corpus",
+            "label": "t1_om08qlb"
+          },
+          {
+            "id": "t3_1te57i7",
+            "score": 0.021920563097033687,
+            "role": "corpus",
+            "label": "t3_1te57i7"
+          },
+          {
+            "id": "t1_om013gi",
+            "score": 0.02177468820282151,
+            "role": "corpus",
+            "label": "t1_om013gi"
+          },
+          {
+            "id": "t1_om07x6z",
+            "score": 0.021083133493205435,
+            "role": "corpus",
+            "label": "t1_om07x6z"
+          },
+          {
+            "id": "t1_strata_surface3",
+            "score": 0.02061333719079994,
+            "role": "buried",
+            "label": "S3 garage -K77"
+          },
+          {
+            "id": "t1_om066aa",
+            "score": 0.020425531914893616,
+            "role": "corpus",
+            "label": "t1_om066aa"
+          },
+          {
+            "id": "t1_om07nmh",
+            "score": 0.020300751879699246,
+            "role": "corpus",
+            "label": "t1_om07nmh"
+          },
+          {
+            "id": "t1_om03luy",
+            "score": 0.018849206349206348,
+            "role": "corpus",
+            "label": "t1_om03luy"
+          },
+          {
+            "id": "t1_olzzy25",
+            "score": 0.018294573643410854,
+            "role": "corpus",
+            "label": "t1_olzzy25"
+          },
+          {
+            "id": "t1_om0034v",
+            "score": 0.01807504575960952,
+            "role": "corpus",
+            "label": "t1_om0034v"
+          },
+          {
+            "id": "t1_om0400l",
+            "score": 0.017862572210398296,
+            "role": "corpus",
+            "label": "t1_om0400l"
+          },
+          {
+            "id": "t1_olzzan9",
+            "score": 0.017858471612471165,
+            "role": "corpus",
+            "label": "t1_olzzan9"
+          },
+          {
+            "id": "t1_olzz3ht",
+            "score": 0.017331635540464064,
+            "role": "corpus",
+            "label": "t1_olzz3ht"
+          },
+          {
+            "id": "t1_om7pkbr",
+            "score": 0.015873015873015872,
+            "role": "corpus",
+            "label": "t1_om7pkbr"
+          },
+          {
+            "id": "t1_olvex2s",
+            "score": 0.015625,
+            "role": "corpus",
+            "label": "t1_olvex2s"
+          },
+          {
+            "id": "t1_om00vb9",
+            "score": 0.015498373262348417,
+            "role": "corpus",
+            "label": "t1_om00vb9"
+          },
+          {
+            "id": "t1_olzzlku",
+            "score": 0.0153276955602537,
+            "role": "corpus",
+            "label": "t1_olzzlku"
+          },
+          {
+            "id": "t1_olvroxs",
+            "score": 0.014896434313818216,
+            "role": "corpus",
+            "label": "t1_olvroxs"
+          },
+          {
+            "id": "t3_1tfc01q",
+            "score": 0.014705882352941176,
+            "role": "corpus",
+            "label": "t3_1tfc01q"
+          },
+          {
+            "id": "t1_olksumu",
+            "score": 0.014492753623188406,
+            "role": "corpus",
+            "label": "t1_olksumu"
+          },
+          {
+            "id": "t1_olmzqgt",
+            "score": 0.014492753623188406,
+            "role": "corpus",
+            "label": "t1_olmzqgt"
+          },
+          {
+            "id": "t3_strata_flag3b",
+            "score": 0.014285714285714285,
+            "role": "removed",
+            "label": "flag3b (removed)"
+          },
+          {
+            "id": "t3_strata_decoy1",
+            "score": 0.014084507042253521,
+            "role": "decoy",
+            "label": "D1 cat (vehicle)"
+          },
+          {
+            "id": "t1_olpq4jx",
+            "score": 0.0136986301369863,
+            "role": "corpus",
+            "label": "t1_olpq4jx"
+          },
+          {
+            "id": "t1_olx4w2t",
+            "score": 0.013631448872412728,
+            "role": "corpus",
+            "label": "t1_olx4w2t"
+          },
+          {
+            "id": "t1_olyf3vn",
+            "score": 0.013513513513513514,
+            "role": "corpus",
+            "label": "t1_olyf3vn"
+          },
+          {
+            "id": "t1_om00miq",
+            "score": 0.013085870680807389,
+            "role": "corpus",
+            "label": "t1_om00miq"
+          },
+          {
+            "id": "t1_olrehrq",
+            "score": 0.012987012987012988,
+            "role": "corpus",
+            "label": "t1_olrehrq"
+          },
+          {
+            "id": "t1_olhlfcs",
+            "score": 0.01282051282051282,
+            "role": "corpus",
+            "label": "t1_olhlfcs"
+          },
+          {
+            "id": "t1_olud9hx",
+            "score": 0.0125,
+            "role": "corpus",
+            "label": "t1_olud9hx"
+          },
+          {
+            "id": "t3_1tfrst1",
+            "score": 0.012345679012345678,
+            "role": "corpus",
+            "label": "t3_1tfrst1"
+          },
+          {
+            "id": "t3_1td8q2a",
+            "score": 0.012232716778171324,
+            "role": "corpus",
+            "label": "t3_1td8q2a"
+          },
+          {
+            "id": "t1_ombop6x",
+            "score": 0.012195121951219513,
+            "role": "corpus",
+            "label": "t1_ombop6x"
+          },
+          {
+            "id": "t1_ome2a6h",
+            "score": 0.012195121951219513,
+            "role": "corpus",
+            "label": "t1_ome2a6h"
+          }
+        ],
+        "buried_at_K": [
+          0,
+          1,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3
+        ]
+      },
+      "scan": {
+        "ok": true,
+        "ms": 9615.114417000004,
+        "first_signal_rank": 12,
+        "groups": [
+          {
+            "rank": 1,
+            "anchor": "t1_olrg7ob",
+            "anchor_label": "t1_olrg7ob",
+            "size": 48,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 2,
+            "anchor": "t1_om86wzg",
+            "anchor_label": "t1_om86wzg",
+            "size": 24,
+            "buried": 0,
+            "decoy": 1,
+            "in_thread": 0
+          },
+          {
+            "rank": 3,
+            "anchor": "t1_olowml8",
+            "anchor_label": "t1_olowml8",
+            "size": 11,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 4,
+            "anchor": "t1_olrbjje",
+            "anchor_label": "t1_olrbjje",
+            "size": 50,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 5,
+            "anchor": "t1_olz1ivh",
+            "anchor_label": "t1_olz1ivh",
+            "size": 137,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 6,
+            "anchor": "t1_olo8f81",
+            "anchor_label": "t1_olo8f81",
+            "size": 24,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 7,
+            "anchor": "t1_om0jkts",
+            "anchor_label": "t1_om0jkts",
+            "size": 10,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 8,
+            "anchor": "t1_olxbboj",
+            "anchor_label": "t1_olxbboj",
+            "size": 18,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 9,
+            "anchor": "t1_om2ahrv",
+            "anchor_label": "t1_om2ahrv",
+            "size": 21,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 10,
+            "anchor": "t1_oli29jq",
+            "anchor_label": "t1_oli29jq",
+            "size": 20,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 11,
+            "anchor": "t1_ome16o9",
+            "anchor_label": "t1_ome16o9",
+            "size": 19,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 12,
+            "anchor": "t1_strata_brigade2",
+            "anchor_label": "Brigade 2",
+            "size": 27,
+            "buried": 3,
+            "decoy": 2,
+            "in_thread": 17
+          },
+          {
+            "rank": 13,
+            "anchor": "t1_olifozc",
+            "anchor_label": "t1_olifozc",
+            "size": 15,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 14,
+            "anchor": "t1_olrscu6",
+            "anchor_label": "t1_olrscu6",
+            "size": 13,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 15,
+            "anchor": "t1_olk45st",
+            "anchor_label": "t1_olk45st",
+            "size": 36,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 16,
+            "anchor": "t1_om2826l",
+            "anchor_label": "t1_om2826l",
+            "size": 28,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 17,
+            "anchor": "t1_om4rhw9",
+            "anchor_label": "t1_om4rhw9",
+            "size": 19,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 18,
+            "anchor": "t1_olzm1kv",
+            "anchor_label": "t1_olzm1kv",
+            "size": 8,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 19,
+            "anchor": "t1_olwun40",
+            "anchor_label": "t1_olwun40",
+            "size": 26,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 20,
+            "anchor": "t1_olhbf24",
+            "anchor_label": "t1_olhbf24",
+            "size": 48,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 21,
+            "anchor": "t1_ols90a4",
+            "anchor_label": "t1_ols90a4",
+            "size": 16,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 22,
+            "anchor": "t1_olnw8kv",
+            "anchor_label": "t1_olnw8kv",
+            "size": 14,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 23,
+            "anchor": "t1_omdpu78",
+            "anchor_label": "t1_omdpu78",
+            "size": 9,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 24,
+            "anchor": "t1_olyu120",
+            "anchor_label": "t1_olyu120",
+            "size": 19,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 25,
+            "anchor": "t1_oltlhiu",
+            "anchor_label": "t1_oltlhiu",
+            "size": 9,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 26,
+            "anchor": "t1_omc1c8s",
+            "anchor_label": "t1_omc1c8s",
+            "size": 7,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 27,
+            "anchor": "t1_olz73u3",
+            "anchor_label": "t1_olz73u3",
+            "size": 23,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 28,
+            "anchor": "t1_olnylk8",
+            "anchor_label": "t1_olnylk8",
+            "size": 13,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 29,
+            "anchor": "t1_olm9s4j",
+            "anchor_label": "t1_olm9s4j",
+            "size": 5,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 30,
+            "anchor": "t1_oll0ccx",
+            "anchor_label": "t1_oll0ccx",
+            "size": 4,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          }
+        ],
+        "buried_in_anchors_unique": 3
+      },
+      "flag_contradiction": {
+        "ok": true,
+        "ms": 11458.323875000002,
+        "refs_flag2a": true,
+        "reasoning": "Same author (TKfromCambridge) posted contradictory statement on 2026-04-25: The prior says the roommate drives and that they regularly go out Tuesdays after his shift, with him driving and parking at Cambridgeside. The new item says the roommate doesn’t drive to work anymore, takes the Green Line, and was home with the author Tuesday night. These are factually incompatible as stated about the roommate’s driving and Tuesday-night whereabouts."
+      },
+      "flag_pattern": {
+        "ok": true,
+        "ms": 1133.042207999999,
+        "fired": true,
+        "precedents": [
+          "t3_strata_flag3a",
+          "t3_strata_flag3b",
+          "t3_strata_flag3c"
+        ],
+        "reasoning": "This post is a community callout about a specific vehicle and driver, asking for identification/plate information and encouraging others to focus on the person. That matches the removed precedent pattern for witch-hunting / no evidence."
+      },
+      "flag_brigade": {
+        "ok": true,
+        "ms": 1489.4082079999935,
+        "fired": true,
+        "authors": 6,
+        "reasoning": "6 distinct authors, 11 comments within 4h window, semantic uniformity 0.78, density 0.55"
+      }
+    },
+    {
+      "trial": 7,
+      "surface": {
+        "ok": true,
+        "ms": 474.77108299999963,
+        "candidates": [
+          {
+            "id": "t3_strata_flag4",
+            "score": 0.031544957774465976,
+            "role": "pattern",
+            "label": "flag4 (pattern)"
+          },
+          {
+            "id": "t1_strata_surface1",
+            "score": 0.027500922849760058,
+            "role": "buried",
+            "label": "S1 near-miss"
+          },
+          {
+            "id": "t3_strata_surface2",
+            "score": 0.02512945476698142,
+            "role": "buried",
+            "label": "S2 case#"
+          },
+          {
+            "id": "t3_1te5ph4",
+            "score": 0.023563218390804597,
+            "role": "corpus",
+            "label": "t3_1te5ph4"
+          },
+          {
+            "id": "t1_strata_decoy2",
+            "score": 0.022862309480754326,
+            "role": "decoy",
+            "label": "D2 bike case#"
+          },
+          {
+            "id": "t1_om04nt5",
+            "score": 0.02266725352112676,
+            "role": "corpus",
+            "label": "t1_om04nt5"
+          },
+          {
+            "id": "t1_om08qlb",
+            "score": 0.022397891963109356,
+            "role": "corpus",
+            "label": "t1_om08qlb"
+          },
+          {
+            "id": "t3_1te57i7",
+            "score": 0.021920563097033687,
+            "role": "corpus",
+            "label": "t3_1te57i7"
+          },
+          {
+            "id": "t1_om013gi",
+            "score": 0.02177468820282151,
+            "role": "corpus",
+            "label": "t1_om013gi"
+          },
+          {
+            "id": "t1_om07x6z",
+            "score": 0.021083133493205435,
+            "role": "corpus",
+            "label": "t1_om07x6z"
+          },
+          {
+            "id": "t1_strata_surface3",
+            "score": 0.02061333719079994,
+            "role": "buried",
+            "label": "S3 garage -K77"
+          },
+          {
+            "id": "t1_om066aa",
+            "score": 0.020425531914893616,
+            "role": "corpus",
+            "label": "t1_om066aa"
+          },
+          {
+            "id": "t1_om07nmh",
+            "score": 0.020300751879699246,
+            "role": "corpus",
+            "label": "t1_om07nmh"
+          },
+          {
+            "id": "t1_om03luy",
+            "score": 0.018849206349206348,
+            "role": "corpus",
+            "label": "t1_om03luy"
+          },
+          {
+            "id": "t1_olzzy25",
+            "score": 0.018294573643410854,
+            "role": "corpus",
+            "label": "t1_olzzy25"
+          },
+          {
+            "id": "t1_om0034v",
+            "score": 0.01807504575960952,
+            "role": "corpus",
+            "label": "t1_om0034v"
+          },
+          {
+            "id": "t1_om0400l",
+            "score": 0.017862572210398296,
+            "role": "corpus",
+            "label": "t1_om0400l"
+          },
+          {
+            "id": "t1_olzzan9",
+            "score": 0.017858471612471165,
+            "role": "corpus",
+            "label": "t1_olzzan9"
+          },
+          {
+            "id": "t1_olzz3ht",
+            "score": 0.017331635540464064,
+            "role": "corpus",
+            "label": "t1_olzz3ht"
+          },
+          {
+            "id": "t1_om7pkbr",
+            "score": 0.015873015873015872,
+            "role": "corpus",
+            "label": "t1_om7pkbr"
+          },
+          {
+            "id": "t1_olvex2s",
+            "score": 0.015625,
+            "role": "corpus",
+            "label": "t1_olvex2s"
+          },
+          {
+            "id": "t1_om00vb9",
+            "score": 0.015498373262348417,
+            "role": "corpus",
+            "label": "t1_om00vb9"
+          },
+          {
+            "id": "t1_olzzlku",
+            "score": 0.0153276955602537,
+            "role": "corpus",
+            "label": "t1_olzzlku"
+          },
+          {
+            "id": "t1_olvroxs",
+            "score": 0.014896434313818216,
+            "role": "corpus",
+            "label": "t1_olvroxs"
+          },
+          {
+            "id": "t3_1tfc01q",
+            "score": 0.014705882352941176,
+            "role": "corpus",
+            "label": "t3_1tfc01q"
+          },
+          {
+            "id": "t1_olksumu",
+            "score": 0.014492753623188406,
+            "role": "corpus",
+            "label": "t1_olksumu"
+          },
+          {
+            "id": "t1_olmzqgt",
+            "score": 0.014492753623188406,
+            "role": "corpus",
+            "label": "t1_olmzqgt"
+          },
+          {
+            "id": "t3_strata_flag3b",
+            "score": 0.014285714285714285,
+            "role": "removed",
+            "label": "flag3b (removed)"
+          },
+          {
+            "id": "t3_strata_decoy1",
+            "score": 0.014084507042253521,
+            "role": "decoy",
+            "label": "D1 cat (vehicle)"
+          },
+          {
+            "id": "t1_olpq4jx",
+            "score": 0.0136986301369863,
+            "role": "corpus",
+            "label": "t1_olpq4jx"
+          },
+          {
+            "id": "t1_olx4w2t",
+            "score": 0.013631448872412728,
+            "role": "corpus",
+            "label": "t1_olx4w2t"
+          },
+          {
+            "id": "t1_olyf3vn",
+            "score": 0.013513513513513514,
+            "role": "corpus",
+            "label": "t1_olyf3vn"
+          },
+          {
+            "id": "t1_om00miq",
+            "score": 0.013085870680807389,
+            "role": "corpus",
+            "label": "t1_om00miq"
+          },
+          {
+            "id": "t1_olrehrq",
+            "score": 0.012987012987012988,
+            "role": "corpus",
+            "label": "t1_olrehrq"
+          },
+          {
+            "id": "t1_olhlfcs",
+            "score": 0.01282051282051282,
+            "role": "corpus",
+            "label": "t1_olhlfcs"
+          },
+          {
+            "id": "t1_olud9hx",
+            "score": 0.0125,
+            "role": "corpus",
+            "label": "t1_olud9hx"
+          },
+          {
+            "id": "t3_1tfrst1",
+            "score": 0.012345679012345678,
+            "role": "corpus",
+            "label": "t3_1tfrst1"
+          },
+          {
+            "id": "t3_1td8q2a",
+            "score": 0.012232716778171324,
+            "role": "corpus",
+            "label": "t3_1td8q2a"
+          },
+          {
+            "id": "t1_ombop6x",
+            "score": 0.012195121951219513,
+            "role": "corpus",
+            "label": "t1_ombop6x"
+          },
+          {
+            "id": "t1_ome2a6h",
+            "score": 0.012195121951219513,
+            "role": "corpus",
+            "label": "t1_ome2a6h"
+          }
+        ],
+        "buried_at_K": [
+          0,
+          1,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3
+        ]
+      },
+      "scan": {
+        "ok": true,
+        "ms": 9462.277667000002,
+        "first_signal_rank": 12,
+        "groups": [
+          {
+            "rank": 1,
+            "anchor": "t1_olrg7ob",
+            "anchor_label": "t1_olrg7ob",
+            "size": 48,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 2,
+            "anchor": "t1_om86wzg",
+            "anchor_label": "t1_om86wzg",
+            "size": 24,
+            "buried": 0,
+            "decoy": 1,
+            "in_thread": 0
+          },
+          {
+            "rank": 3,
+            "anchor": "t1_olowml8",
+            "anchor_label": "t1_olowml8",
+            "size": 11,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 4,
+            "anchor": "t1_olrbjje",
+            "anchor_label": "t1_olrbjje",
+            "size": 50,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 5,
+            "anchor": "t1_olz1ivh",
+            "anchor_label": "t1_olz1ivh",
+            "size": 137,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 6,
+            "anchor": "t1_olo8f81",
+            "anchor_label": "t1_olo8f81",
+            "size": 24,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 7,
+            "anchor": "t1_om0jkts",
+            "anchor_label": "t1_om0jkts",
+            "size": 10,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 8,
+            "anchor": "t1_olxbboj",
+            "anchor_label": "t1_olxbboj",
+            "size": 18,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 9,
+            "anchor": "t1_om2ahrv",
+            "anchor_label": "t1_om2ahrv",
+            "size": 21,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 10,
+            "anchor": "t1_oli29jq",
+            "anchor_label": "t1_oli29jq",
+            "size": 20,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 11,
+            "anchor": "t1_ome16o9",
+            "anchor_label": "t1_ome16o9",
+            "size": 19,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 12,
+            "anchor": "t1_strata_brigade2",
+            "anchor_label": "Brigade 2",
+            "size": 27,
+            "buried": 3,
+            "decoy": 2,
+            "in_thread": 17
+          },
+          {
+            "rank": 13,
+            "anchor": "t1_olifozc",
+            "anchor_label": "t1_olifozc",
+            "size": 15,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 14,
+            "anchor": "t1_olrscu6",
+            "anchor_label": "t1_olrscu6",
+            "size": 13,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 15,
+            "anchor": "t1_olk45st",
+            "anchor_label": "t1_olk45st",
+            "size": 36,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 16,
+            "anchor": "t1_om2826l",
+            "anchor_label": "t1_om2826l",
+            "size": 28,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 17,
+            "anchor": "t1_om4rhw9",
+            "anchor_label": "t1_om4rhw9",
+            "size": 19,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 18,
+            "anchor": "t1_olzm1kv",
+            "anchor_label": "t1_olzm1kv",
+            "size": 8,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 19,
+            "anchor": "t1_olwun40",
+            "anchor_label": "t1_olwun40",
+            "size": 26,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 20,
+            "anchor": "t1_olhbf24",
+            "anchor_label": "t1_olhbf24",
+            "size": 48,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 21,
+            "anchor": "t1_ols90a4",
+            "anchor_label": "t1_ols90a4",
+            "size": 16,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 22,
+            "anchor": "t1_olnw8kv",
+            "anchor_label": "t1_olnw8kv",
+            "size": 14,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 23,
+            "anchor": "t1_omdpu78",
+            "anchor_label": "t1_omdpu78",
+            "size": 9,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 24,
+            "anchor": "t1_olyu120",
+            "anchor_label": "t1_olyu120",
+            "size": 19,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 25,
+            "anchor": "t1_oltlhiu",
+            "anchor_label": "t1_oltlhiu",
+            "size": 9,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 26,
+            "anchor": "t1_omc1c8s",
+            "anchor_label": "t1_omc1c8s",
+            "size": 7,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 27,
+            "anchor": "t1_olz73u3",
+            "anchor_label": "t1_olz73u3",
+            "size": 23,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 28,
+            "anchor": "t1_olnylk8",
+            "anchor_label": "t1_olnylk8",
+            "size": 13,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 29,
+            "anchor": "t1_olm9s4j",
+            "anchor_label": "t1_olm9s4j",
+            "size": 5,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 30,
+            "anchor": "t1_oll0ccx",
+            "anchor_label": "t1_oll0ccx",
+            "size": 4,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          }
+        ],
+        "buried_in_anchors_unique": 3
+      },
+      "flag_contradiction": {
+        "ok": true,
+        "ms": 15764.206500000015,
+        "refs_flag2a": true,
+        "reasoning": "Same author (TKfromCambridge) posted contradictory statement on 2026-04-25: The prior says the roommate routinely drives on Tuesdays after work and they park at Cambridgeside, while the new item says the roommate was home Tuesday night and emphasizes that he no longer drives to work, taking the Green Line instead. This is in tension, especially about Tuesday-night driving habits, though the word “anymore” leaves some possibility that his commute changed after the prior post."
+      },
+      "flag_pattern": {
+        "ok": true,
+        "ms": 1668.9715000000142,
+        "fired": true,
+        "precedents": [
+          "t3_strata_flag3a",
+          "t3_strata_flag3b",
+          "t3_strata_flag3c"
+        ],
+        "reasoning": "This post is effectively a call to identify and track a specific vehicle/driver based on alleged wrongdoing, asking for community surveillance and a plate. That matches the removed precedent pattern for witch-hunting / no evidence."
+      },
+      "flag_brigade": {
+        "ok": true,
+        "ms": 1073.2034590000112,
+        "fired": true,
+        "authors": 6,
+        "reasoning": "6 distinct authors, 11 comments within 4h window, semantic uniformity 0.78, density 0.55"
+      }
+    },
+    {
+      "trial": 8,
+      "surface": {
+        "ok": true,
+        "ms": 327.6041660000046,
+        "candidates": [
+          {
+            "id": "t3_strata_flag4",
+            "score": 0.031544957774465976,
+            "role": "pattern",
+            "label": "flag4 (pattern)"
+          },
+          {
+            "id": "t1_strata_surface1",
+            "score": 0.027500922849760058,
+            "role": "buried",
+            "label": "S1 near-miss"
+          },
+          {
+            "id": "t3_strata_surface2",
+            "score": 0.02512945476698142,
+            "role": "buried",
+            "label": "S2 case#"
+          },
+          {
+            "id": "t3_1te5ph4",
+            "score": 0.023563218390804597,
+            "role": "corpus",
+            "label": "t3_1te5ph4"
+          },
+          {
+            "id": "t1_strata_decoy2",
+            "score": 0.022862309480754326,
+            "role": "decoy",
+            "label": "D2 bike case#"
+          },
+          {
+            "id": "t1_om04nt5",
+            "score": 0.02266725352112676,
+            "role": "corpus",
+            "label": "t1_om04nt5"
+          },
+          {
+            "id": "t1_om08qlb",
+            "score": 0.022397891963109356,
+            "role": "corpus",
+            "label": "t1_om08qlb"
+          },
+          {
+            "id": "t3_1te57i7",
+            "score": 0.021920563097033687,
+            "role": "corpus",
+            "label": "t3_1te57i7"
+          },
+          {
+            "id": "t1_om013gi",
+            "score": 0.02177468820282151,
+            "role": "corpus",
+            "label": "t1_om013gi"
+          },
+          {
+            "id": "t1_om07x6z",
+            "score": 0.021083133493205435,
+            "role": "corpus",
+            "label": "t1_om07x6z"
+          },
+          {
+            "id": "t1_strata_surface3",
+            "score": 0.02061333719079994,
+            "role": "buried",
+            "label": "S3 garage -K77"
+          },
+          {
+            "id": "t1_om066aa",
+            "score": 0.020425531914893616,
+            "role": "corpus",
+            "label": "t1_om066aa"
+          },
+          {
+            "id": "t1_om07nmh",
+            "score": 0.020300751879699246,
+            "role": "corpus",
+            "label": "t1_om07nmh"
+          },
+          {
+            "id": "t1_om03luy",
+            "score": 0.018849206349206348,
+            "role": "corpus",
+            "label": "t1_om03luy"
+          },
+          {
+            "id": "t1_olzzy25",
+            "score": 0.018294573643410854,
+            "role": "corpus",
+            "label": "t1_olzzy25"
+          },
+          {
+            "id": "t1_om0034v",
+            "score": 0.01807504575960952,
+            "role": "corpus",
+            "label": "t1_om0034v"
+          },
+          {
+            "id": "t1_om0400l",
+            "score": 0.017862572210398296,
+            "role": "corpus",
+            "label": "t1_om0400l"
+          },
+          {
+            "id": "t1_olzzan9",
+            "score": 0.017858471612471165,
+            "role": "corpus",
+            "label": "t1_olzzan9"
+          },
+          {
+            "id": "t1_olzz3ht",
+            "score": 0.017331635540464064,
+            "role": "corpus",
+            "label": "t1_olzz3ht"
+          },
+          {
+            "id": "t1_om7pkbr",
+            "score": 0.015873015873015872,
+            "role": "corpus",
+            "label": "t1_om7pkbr"
+          },
+          {
+            "id": "t1_olvex2s",
+            "score": 0.015625,
+            "role": "corpus",
+            "label": "t1_olvex2s"
+          },
+          {
+            "id": "t1_om00vb9",
+            "score": 0.015498373262348417,
+            "role": "corpus",
+            "label": "t1_om00vb9"
+          },
+          {
+            "id": "t1_olzzlku",
+            "score": 0.0153276955602537,
+            "role": "corpus",
+            "label": "t1_olzzlku"
+          },
+          {
+            "id": "t1_olvroxs",
+            "score": 0.014896434313818216,
+            "role": "corpus",
+            "label": "t1_olvroxs"
+          },
+          {
+            "id": "t3_1tfc01q",
+            "score": 0.014705882352941176,
+            "role": "corpus",
+            "label": "t3_1tfc01q"
+          },
+          {
+            "id": "t1_olksumu",
+            "score": 0.014492753623188406,
+            "role": "corpus",
+            "label": "t1_olksumu"
+          },
+          {
+            "id": "t1_olmzqgt",
+            "score": 0.014492753623188406,
+            "role": "corpus",
+            "label": "t1_olmzqgt"
+          },
+          {
+            "id": "t3_strata_flag3b",
+            "score": 0.014285714285714285,
+            "role": "removed",
+            "label": "flag3b (removed)"
+          },
+          {
+            "id": "t3_strata_decoy1",
+            "score": 0.014084507042253521,
+            "role": "decoy",
+            "label": "D1 cat (vehicle)"
+          },
+          {
+            "id": "t1_olpq4jx",
+            "score": 0.0136986301369863,
+            "role": "corpus",
+            "label": "t1_olpq4jx"
+          },
+          {
+            "id": "t1_olx4w2t",
+            "score": 0.013631448872412728,
+            "role": "corpus",
+            "label": "t1_olx4w2t"
+          },
+          {
+            "id": "t1_olyf3vn",
+            "score": 0.013513513513513514,
+            "role": "corpus",
+            "label": "t1_olyf3vn"
+          },
+          {
+            "id": "t1_om00miq",
+            "score": 0.013085870680807389,
+            "role": "corpus",
+            "label": "t1_om00miq"
+          },
+          {
+            "id": "t1_olrehrq",
+            "score": 0.012987012987012988,
+            "role": "corpus",
+            "label": "t1_olrehrq"
+          },
+          {
+            "id": "t1_olhlfcs",
+            "score": 0.01282051282051282,
+            "role": "corpus",
+            "label": "t1_olhlfcs"
+          },
+          {
+            "id": "t1_olud9hx",
+            "score": 0.0125,
+            "role": "corpus",
+            "label": "t1_olud9hx"
+          },
+          {
+            "id": "t3_1tfrst1",
+            "score": 0.012345679012345678,
+            "role": "corpus",
+            "label": "t3_1tfrst1"
+          },
+          {
+            "id": "t3_1td8q2a",
+            "score": 0.012232716778171324,
+            "role": "corpus",
+            "label": "t3_1td8q2a"
+          },
+          {
+            "id": "t1_ombop6x",
+            "score": 0.012195121951219513,
+            "role": "corpus",
+            "label": "t1_ombop6x"
+          },
+          {
+            "id": "t1_ome2a6h",
+            "score": 0.012195121951219513,
+            "role": "corpus",
+            "label": "t1_ome2a6h"
+          }
+        ],
+        "buried_at_K": [
+          0,
+          1,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3
+        ]
+      },
+      "scan": {
+        "ok": true,
+        "ms": 9429.241749999986,
+        "first_signal_rank": 12,
+        "groups": [
+          {
+            "rank": 1,
+            "anchor": "t1_olrg7ob",
+            "anchor_label": "t1_olrg7ob",
+            "size": 48,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 2,
+            "anchor": "t1_om86wzg",
+            "anchor_label": "t1_om86wzg",
+            "size": 24,
+            "buried": 0,
+            "decoy": 1,
+            "in_thread": 0
+          },
+          {
+            "rank": 3,
+            "anchor": "t1_olowml8",
+            "anchor_label": "t1_olowml8",
+            "size": 11,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 4,
+            "anchor": "t1_olrbjje",
+            "anchor_label": "t1_olrbjje",
+            "size": 50,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 5,
+            "anchor": "t1_olz1ivh",
+            "anchor_label": "t1_olz1ivh",
+            "size": 137,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 6,
+            "anchor": "t1_olo8f81",
+            "anchor_label": "t1_olo8f81",
+            "size": 24,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 7,
+            "anchor": "t1_om0jkts",
+            "anchor_label": "t1_om0jkts",
+            "size": 10,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 8,
+            "anchor": "t1_olxbboj",
+            "anchor_label": "t1_olxbboj",
+            "size": 18,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 9,
+            "anchor": "t1_om2ahrv",
+            "anchor_label": "t1_om2ahrv",
+            "size": 21,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 10,
+            "anchor": "t1_oli29jq",
+            "anchor_label": "t1_oli29jq",
+            "size": 20,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 11,
+            "anchor": "t1_ome16o9",
+            "anchor_label": "t1_ome16o9",
+            "size": 19,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 12,
+            "anchor": "t1_strata_brigade2",
+            "anchor_label": "Brigade 2",
+            "size": 27,
+            "buried": 3,
+            "decoy": 2,
+            "in_thread": 17
+          },
+          {
+            "rank": 13,
+            "anchor": "t1_olifozc",
+            "anchor_label": "t1_olifozc",
+            "size": 15,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 14,
+            "anchor": "t1_olrscu6",
+            "anchor_label": "t1_olrscu6",
+            "size": 13,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 15,
+            "anchor": "t1_olk45st",
+            "anchor_label": "t1_olk45st",
+            "size": 36,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 16,
+            "anchor": "t1_om2826l",
+            "anchor_label": "t1_om2826l",
+            "size": 28,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 17,
+            "anchor": "t1_om4rhw9",
+            "anchor_label": "t1_om4rhw9",
+            "size": 19,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 18,
+            "anchor": "t1_olzm1kv",
+            "anchor_label": "t1_olzm1kv",
+            "size": 8,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 19,
+            "anchor": "t1_olwun40",
+            "anchor_label": "t1_olwun40",
+            "size": 26,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 20,
+            "anchor": "t1_olhbf24",
+            "anchor_label": "t1_olhbf24",
+            "size": 48,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 21,
+            "anchor": "t1_ols90a4",
+            "anchor_label": "t1_ols90a4",
+            "size": 16,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 22,
+            "anchor": "t1_olnw8kv",
+            "anchor_label": "t1_olnw8kv",
+            "size": 14,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 23,
+            "anchor": "t1_omdpu78",
+            "anchor_label": "t1_omdpu78",
+            "size": 9,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 24,
+            "anchor": "t1_olyu120",
+            "anchor_label": "t1_olyu120",
+            "size": 19,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 25,
+            "anchor": "t1_oltlhiu",
+            "anchor_label": "t1_oltlhiu",
+            "size": 9,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 26,
+            "anchor": "t1_omc1c8s",
+            "anchor_label": "t1_omc1c8s",
+            "size": 7,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 27,
+            "anchor": "t1_olz73u3",
+            "anchor_label": "t1_olz73u3",
+            "size": 23,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 28,
+            "anchor": "t1_olnylk8",
+            "anchor_label": "t1_olnylk8",
+            "size": 13,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 29,
+            "anchor": "t1_olm9s4j",
+            "anchor_label": "t1_olm9s4j",
+            "size": 5,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 30,
+            "anchor": "t1_oll0ccx",
+            "anchor_label": "t1_oll0ccx",
+            "size": 4,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          }
+        ],
+        "buried_in_anchors_unique": 3
+      },
+      "flag_contradiction": {
+        "ok": true,
+        "ms": 3843.3745000000054,
+        "refs_flag2a": true,
+        "reasoning": "Same author (TKfromCambridge) posted contradictory statement on 2026-04-25: The new item says the roommate was home with the author Tuesday night, no longer drives to work, and takes the Green Line. The prior says they routinely go out Tuesdays after the roommate's shift, and that the roommate drives while the author drinks. These are factually incompatible about the roommate's Tuesday routine and driving status."
+      },
+      "flag_pattern": {
+        "ok": true,
+        "ms": 1472.217875000002,
+        "fired": true,
+        "precedents": [
+          "t3_strata_flag3a",
+          "t3_strata_flag3b",
+          "t3_strata_flag3c"
+        ],
+        "reasoning": "This post is a community callout about a specific vehicle and driver, asking for identifying details ('Has anyone gotten a plate?') and mobilizing others to track them. That matches the removed precedent pattern for witch-hunting / no evidence, even though it frames the behavior as dangerous. It lacks verifiable evidence and encourages targeting a specific person/vehicle."
+      },
+      "flag_brigade": {
+        "ok": true,
+        "ms": 1458.8836669999873,
+        "fired": true,
+        "authors": 6,
+        "reasoning": "6 distinct authors, 11 comments within 4h window, semantic uniformity 0.78, density 0.55"
+      }
+    },
+    {
+      "trial": 9,
+      "surface": {
+        "ok": true,
+        "ms": 553.8832089999923,
+        "candidates": [
+          {
+            "id": "t3_strata_flag4",
+            "score": 0.031544957774465976,
+            "role": "pattern",
+            "label": "flag4 (pattern)"
+          },
+          {
+            "id": "t1_strata_surface1",
+            "score": 0.027500922849760058,
+            "role": "buried",
+            "label": "S1 near-miss"
+          },
+          {
+            "id": "t3_strata_surface2",
+            "score": 0.02512945476698142,
+            "role": "buried",
+            "label": "S2 case#"
+          },
+          {
+            "id": "t3_1te5ph4",
+            "score": 0.023563218390804597,
+            "role": "corpus",
+            "label": "t3_1te5ph4"
+          },
+          {
+            "id": "t1_strata_decoy2",
+            "score": 0.022862309480754326,
+            "role": "decoy",
+            "label": "D2 bike case#"
+          },
+          {
+            "id": "t1_om04nt5",
+            "score": 0.02266725352112676,
+            "role": "corpus",
+            "label": "t1_om04nt5"
+          },
+          {
+            "id": "t1_om08qlb",
+            "score": 0.022397891963109356,
+            "role": "corpus",
+            "label": "t1_om08qlb"
+          },
+          {
+            "id": "t3_1te57i7",
+            "score": 0.021920563097033687,
+            "role": "corpus",
+            "label": "t3_1te57i7"
+          },
+          {
+            "id": "t1_om013gi",
+            "score": 0.02177468820282151,
+            "role": "corpus",
+            "label": "t1_om013gi"
+          },
+          {
+            "id": "t1_om07x6z",
+            "score": 0.021083133493205435,
+            "role": "corpus",
+            "label": "t1_om07x6z"
+          },
+          {
+            "id": "t1_strata_surface3",
+            "score": 0.02061333719079994,
+            "role": "buried",
+            "label": "S3 garage -K77"
+          },
+          {
+            "id": "t1_om066aa",
+            "score": 0.020425531914893616,
+            "role": "corpus",
+            "label": "t1_om066aa"
+          },
+          {
+            "id": "t1_om07nmh",
+            "score": 0.020300751879699246,
+            "role": "corpus",
+            "label": "t1_om07nmh"
+          },
+          {
+            "id": "t1_om03luy",
+            "score": 0.018849206349206348,
+            "role": "corpus",
+            "label": "t1_om03luy"
+          },
+          {
+            "id": "t1_olzzy25",
+            "score": 0.018294573643410854,
+            "role": "corpus",
+            "label": "t1_olzzy25"
+          },
+          {
+            "id": "t1_om0034v",
+            "score": 0.01807504575960952,
+            "role": "corpus",
+            "label": "t1_om0034v"
+          },
+          {
+            "id": "t1_om0400l",
+            "score": 0.017862572210398296,
+            "role": "corpus",
+            "label": "t1_om0400l"
+          },
+          {
+            "id": "t1_olzzan9",
+            "score": 0.017858471612471165,
+            "role": "corpus",
+            "label": "t1_olzzan9"
+          },
+          {
+            "id": "t1_olzz3ht",
+            "score": 0.017331635540464064,
+            "role": "corpus",
+            "label": "t1_olzz3ht"
+          },
+          {
+            "id": "t1_om7pkbr",
+            "score": 0.015873015873015872,
+            "role": "corpus",
+            "label": "t1_om7pkbr"
+          },
+          {
+            "id": "t1_olvex2s",
+            "score": 0.015625,
+            "role": "corpus",
+            "label": "t1_olvex2s"
+          },
+          {
+            "id": "t1_om00vb9",
+            "score": 0.015498373262348417,
+            "role": "corpus",
+            "label": "t1_om00vb9"
+          },
+          {
+            "id": "t1_olzzlku",
+            "score": 0.0153276955602537,
+            "role": "corpus",
+            "label": "t1_olzzlku"
+          },
+          {
+            "id": "t1_olvroxs",
+            "score": 0.014896434313818216,
+            "role": "corpus",
+            "label": "t1_olvroxs"
+          },
+          {
+            "id": "t3_1tfc01q",
+            "score": 0.014705882352941176,
+            "role": "corpus",
+            "label": "t3_1tfc01q"
+          },
+          {
+            "id": "t1_olksumu",
+            "score": 0.014492753623188406,
+            "role": "corpus",
+            "label": "t1_olksumu"
+          },
+          {
+            "id": "t1_olmzqgt",
+            "score": 0.014492753623188406,
+            "role": "corpus",
+            "label": "t1_olmzqgt"
+          },
+          {
+            "id": "t3_strata_flag3b",
+            "score": 0.014285714285714285,
+            "role": "removed",
+            "label": "flag3b (removed)"
+          },
+          {
+            "id": "t3_strata_decoy1",
+            "score": 0.014084507042253521,
+            "role": "decoy",
+            "label": "D1 cat (vehicle)"
+          },
+          {
+            "id": "t1_olpq4jx",
+            "score": 0.0136986301369863,
+            "role": "corpus",
+            "label": "t1_olpq4jx"
+          },
+          {
+            "id": "t1_olx4w2t",
+            "score": 0.013631448872412728,
+            "role": "corpus",
+            "label": "t1_olx4w2t"
+          },
+          {
+            "id": "t1_olyf3vn",
+            "score": 0.013513513513513514,
+            "role": "corpus",
+            "label": "t1_olyf3vn"
+          },
+          {
+            "id": "t1_om00miq",
+            "score": 0.013085870680807389,
+            "role": "corpus",
+            "label": "t1_om00miq"
+          },
+          {
+            "id": "t1_olrehrq",
+            "score": 0.012987012987012988,
+            "role": "corpus",
+            "label": "t1_olrehrq"
+          },
+          {
+            "id": "t1_olhlfcs",
+            "score": 0.01282051282051282,
+            "role": "corpus",
+            "label": "t1_olhlfcs"
+          },
+          {
+            "id": "t1_olud9hx",
+            "score": 0.0125,
+            "role": "corpus",
+            "label": "t1_olud9hx"
+          },
+          {
+            "id": "t3_1tfrst1",
+            "score": 0.012345679012345678,
+            "role": "corpus",
+            "label": "t3_1tfrst1"
+          },
+          {
+            "id": "t3_1td8q2a",
+            "score": 0.012232716778171324,
+            "role": "corpus",
+            "label": "t3_1td8q2a"
+          },
+          {
+            "id": "t1_ombop6x",
+            "score": 0.012195121951219513,
+            "role": "corpus",
+            "label": "t1_ombop6x"
+          },
+          {
+            "id": "t1_ome2a6h",
+            "score": 0.012195121951219513,
+            "role": "corpus",
+            "label": "t1_ome2a6h"
+          }
+        ],
+        "buried_at_K": [
+          0,
+          1,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3
+        ]
+      },
+      "scan": {
+        "ok": true,
+        "ms": 9751.83037499999,
+        "first_signal_rank": 12,
+        "groups": [
+          {
+            "rank": 1,
+            "anchor": "t1_olrg7ob",
+            "anchor_label": "t1_olrg7ob",
+            "size": 48,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 2,
+            "anchor": "t1_om86wzg",
+            "anchor_label": "t1_om86wzg",
+            "size": 24,
+            "buried": 0,
+            "decoy": 1,
+            "in_thread": 0
+          },
+          {
+            "rank": 3,
+            "anchor": "t1_olowml8",
+            "anchor_label": "t1_olowml8",
+            "size": 11,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 4,
+            "anchor": "t1_olrbjje",
+            "anchor_label": "t1_olrbjje",
+            "size": 50,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 5,
+            "anchor": "t1_olz1ivh",
+            "anchor_label": "t1_olz1ivh",
+            "size": 137,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 6,
+            "anchor": "t1_olo8f81",
+            "anchor_label": "t1_olo8f81",
+            "size": 24,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 7,
+            "anchor": "t1_om0jkts",
+            "anchor_label": "t1_om0jkts",
+            "size": 10,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 8,
+            "anchor": "t1_olxbboj",
+            "anchor_label": "t1_olxbboj",
+            "size": 18,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 9,
+            "anchor": "t1_om2ahrv",
+            "anchor_label": "t1_om2ahrv",
+            "size": 21,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 10,
+            "anchor": "t1_oli29jq",
+            "anchor_label": "t1_oli29jq",
+            "size": 20,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 11,
+            "anchor": "t1_ome16o9",
+            "anchor_label": "t1_ome16o9",
+            "size": 19,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 12,
+            "anchor": "t1_strata_brigade2",
+            "anchor_label": "Brigade 2",
+            "size": 27,
+            "buried": 3,
+            "decoy": 2,
+            "in_thread": 17
+          },
+          {
+            "rank": 13,
+            "anchor": "t1_olifozc",
+            "anchor_label": "t1_olifozc",
+            "size": 15,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 14,
+            "anchor": "t1_olrscu6",
+            "anchor_label": "t1_olrscu6",
+            "size": 13,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 15,
+            "anchor": "t1_olk45st",
+            "anchor_label": "t1_olk45st",
+            "size": 36,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 16,
+            "anchor": "t1_om2826l",
+            "anchor_label": "t1_om2826l",
+            "size": 28,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 17,
+            "anchor": "t1_om4rhw9",
+            "anchor_label": "t1_om4rhw9",
+            "size": 19,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 18,
+            "anchor": "t1_olzm1kv",
+            "anchor_label": "t1_olzm1kv",
+            "size": 8,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 19,
+            "anchor": "t1_olwun40",
+            "anchor_label": "t1_olwun40",
+            "size": 26,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 20,
+            "anchor": "t1_olhbf24",
+            "anchor_label": "t1_olhbf24",
+            "size": 48,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 21,
+            "anchor": "t1_ols90a4",
+            "anchor_label": "t1_ols90a4",
+            "size": 16,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 22,
+            "anchor": "t1_olnw8kv",
+            "anchor_label": "t1_olnw8kv",
+            "size": 14,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 23,
+            "anchor": "t1_omdpu78",
+            "anchor_label": "t1_omdpu78",
+            "size": 9,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 24,
+            "anchor": "t1_olyu120",
+            "anchor_label": "t1_olyu120",
+            "size": 19,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 25,
+            "anchor": "t1_oltlhiu",
+            "anchor_label": "t1_oltlhiu",
+            "size": 9,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 26,
+            "anchor": "t1_omc1c8s",
+            "anchor_label": "t1_omc1c8s",
+            "size": 7,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 27,
+            "anchor": "t1_olz73u3",
+            "anchor_label": "t1_olz73u3",
+            "size": 23,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 28,
+            "anchor": "t1_olnylk8",
+            "anchor_label": "t1_olnylk8",
+            "size": 13,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 29,
+            "anchor": "t1_olm9s4j",
+            "anchor_label": "t1_olm9s4j",
+            "size": 5,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 30,
+            "anchor": "t1_oll0ccx",
+            "anchor_label": "t1_oll0ccx",
+            "size": 4,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          }
+        ],
+        "buried_in_anchors_unique": 3
+      },
+      "flag_contradiction": {
+        "ok": true,
+        "ms": 2935.4872909999976,
+        "refs_flag2a": true,
+        "reasoning": "Same author (TKfromCambridge) posted contradictory statement on 2026-04-25: The new item says the roommate was home with the author Tuesday night and does not drive to work anymore, taking the Green Line. The prior item says they always go to Night Shift on Tuesdays after the roommate's shift, and that the roommate drives while the author drinks. This is a direct factual conflict about the roommate driving and their Tuesday-night whereabouts/routine."
+      },
+      "flag_pattern": {
+        "ok": true,
+        "ms": 1235.1425000000163,
+        "fired": true,
+        "precedents": [
+          "t3_strata_flag3a",
+          "t3_strata_flag3b",
+          "t3_strata_flag3c"
+        ],
+        "reasoning": "This post is a community callout about a specific vehicle and driver behavior, asking for others to identify or track it (“Has anyone gotten a plate?”). That matches the removed precedent pattern for witch-hunting / no evidence, where users solicit community surveillance and identification based on unverified allegations."
+      },
+      "flag_brigade": {
+        "ok": true,
+        "ms": 3895.180625000008,
+        "fired": true,
+        "authors": 6,
+        "reasoning": "6 distinct authors, 11 comments within 4h window, semantic uniformity 0.78, density 0.55"
+      }
+    },
+    {
+      "trial": 10,
+      "surface": {
+        "ok": true,
+        "ms": 422.93458400000236,
+        "candidates": [
+          {
+            "id": "t3_strata_flag4",
+            "score": 0.031544957774465976,
+            "role": "pattern",
+            "label": "flag4 (pattern)"
+          },
+          {
+            "id": "t1_strata_surface1",
+            "score": 0.027500922849760058,
+            "role": "buried",
+            "label": "S1 near-miss"
+          },
+          {
+            "id": "t3_strata_surface2",
+            "score": 0.02512945476698142,
+            "role": "buried",
+            "label": "S2 case#"
+          },
+          {
+            "id": "t3_1te5ph4",
+            "score": 0.023563218390804597,
+            "role": "corpus",
+            "label": "t3_1te5ph4"
+          },
+          {
+            "id": "t1_strata_decoy2",
+            "score": 0.022862309480754326,
+            "role": "decoy",
+            "label": "D2 bike case#"
+          },
+          {
+            "id": "t1_om04nt5",
+            "score": 0.02266725352112676,
+            "role": "corpus",
+            "label": "t1_om04nt5"
+          },
+          {
+            "id": "t1_om08qlb",
+            "score": 0.022397891963109356,
+            "role": "corpus",
+            "label": "t1_om08qlb"
+          },
+          {
+            "id": "t3_1te57i7",
+            "score": 0.021920563097033687,
+            "role": "corpus",
+            "label": "t3_1te57i7"
+          },
+          {
+            "id": "t1_om013gi",
+            "score": 0.02177468820282151,
+            "role": "corpus",
+            "label": "t1_om013gi"
+          },
+          {
+            "id": "t1_om07x6z",
+            "score": 0.021083133493205435,
+            "role": "corpus",
+            "label": "t1_om07x6z"
+          },
+          {
+            "id": "t1_strata_surface3",
+            "score": 0.02061333719079994,
+            "role": "buried",
+            "label": "S3 garage -K77"
+          },
+          {
+            "id": "t1_om066aa",
+            "score": 0.020425531914893616,
+            "role": "corpus",
+            "label": "t1_om066aa"
+          },
+          {
+            "id": "t1_om07nmh",
+            "score": 0.020300751879699246,
+            "role": "corpus",
+            "label": "t1_om07nmh"
+          },
+          {
+            "id": "t1_om03luy",
+            "score": 0.018849206349206348,
+            "role": "corpus",
+            "label": "t1_om03luy"
+          },
+          {
+            "id": "t1_olzzy25",
+            "score": 0.018294573643410854,
+            "role": "corpus",
+            "label": "t1_olzzy25"
+          },
+          {
+            "id": "t1_om0034v",
+            "score": 0.01807504575960952,
+            "role": "corpus",
+            "label": "t1_om0034v"
+          },
+          {
+            "id": "t1_om0400l",
+            "score": 0.017862572210398296,
+            "role": "corpus",
+            "label": "t1_om0400l"
+          },
+          {
+            "id": "t1_olzzan9",
+            "score": 0.017858471612471165,
+            "role": "corpus",
+            "label": "t1_olzzan9"
+          },
+          {
+            "id": "t1_olzz3ht",
+            "score": 0.017331635540464064,
+            "role": "corpus",
+            "label": "t1_olzz3ht"
+          },
+          {
+            "id": "t1_om7pkbr",
+            "score": 0.015873015873015872,
+            "role": "corpus",
+            "label": "t1_om7pkbr"
+          },
+          {
+            "id": "t1_olvex2s",
+            "score": 0.015625,
+            "role": "corpus",
+            "label": "t1_olvex2s"
+          },
+          {
+            "id": "t1_om00vb9",
+            "score": 0.015498373262348417,
+            "role": "corpus",
+            "label": "t1_om00vb9"
+          },
+          {
+            "id": "t1_olzzlku",
+            "score": 0.0153276955602537,
+            "role": "corpus",
+            "label": "t1_olzzlku"
+          },
+          {
+            "id": "t1_olvroxs",
+            "score": 0.014896434313818216,
+            "role": "corpus",
+            "label": "t1_olvroxs"
+          },
+          {
+            "id": "t3_1tfc01q",
+            "score": 0.014705882352941176,
+            "role": "corpus",
+            "label": "t3_1tfc01q"
+          },
+          {
+            "id": "t1_olksumu",
+            "score": 0.014492753623188406,
+            "role": "corpus",
+            "label": "t1_olksumu"
+          },
+          {
+            "id": "t1_olmzqgt",
+            "score": 0.014492753623188406,
+            "role": "corpus",
+            "label": "t1_olmzqgt"
+          },
+          {
+            "id": "t3_strata_flag3b",
+            "score": 0.014285714285714285,
+            "role": "removed",
+            "label": "flag3b (removed)"
+          },
+          {
+            "id": "t3_strata_decoy1",
+            "score": 0.014084507042253521,
+            "role": "decoy",
+            "label": "D1 cat (vehicle)"
+          },
+          {
+            "id": "t1_olpq4jx",
+            "score": 0.0136986301369863,
+            "role": "corpus",
+            "label": "t1_olpq4jx"
+          },
+          {
+            "id": "t1_olx4w2t",
+            "score": 0.013631448872412728,
+            "role": "corpus",
+            "label": "t1_olx4w2t"
+          },
+          {
+            "id": "t1_olyf3vn",
+            "score": 0.013513513513513514,
+            "role": "corpus",
+            "label": "t1_olyf3vn"
+          },
+          {
+            "id": "t1_om00miq",
+            "score": 0.013085870680807389,
+            "role": "corpus",
+            "label": "t1_om00miq"
+          },
+          {
+            "id": "t1_olrehrq",
+            "score": 0.012987012987012988,
+            "role": "corpus",
+            "label": "t1_olrehrq"
+          },
+          {
+            "id": "t1_olhlfcs",
+            "score": 0.01282051282051282,
+            "role": "corpus",
+            "label": "t1_olhlfcs"
+          },
+          {
+            "id": "t1_olud9hx",
+            "score": 0.0125,
+            "role": "corpus",
+            "label": "t1_olud9hx"
+          },
+          {
+            "id": "t3_1tfrst1",
+            "score": 0.012345679012345678,
+            "role": "corpus",
+            "label": "t3_1tfrst1"
+          },
+          {
+            "id": "t3_1td8q2a",
+            "score": 0.012232716778171324,
+            "role": "corpus",
+            "label": "t3_1td8q2a"
+          },
+          {
+            "id": "t1_ombop6x",
+            "score": 0.012195121951219513,
+            "role": "corpus",
+            "label": "t1_ombop6x"
+          },
+          {
+            "id": "t1_ome2a6h",
+            "score": 0.012195121951219513,
+            "role": "corpus",
+            "label": "t1_ome2a6h"
+          }
+        ],
+        "buried_at_K": [
+          0,
+          1,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          2,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3
+        ]
+      },
+      "scan": {
+        "ok": true,
+        "ms": 9947.47195800001,
+        "first_signal_rank": 12,
+        "groups": [
+          {
+            "rank": 1,
+            "anchor": "t1_olrg7ob",
+            "anchor_label": "t1_olrg7ob",
+            "size": 48,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 2,
+            "anchor": "t1_om86wzg",
+            "anchor_label": "t1_om86wzg",
+            "size": 24,
+            "buried": 0,
+            "decoy": 1,
+            "in_thread": 0
+          },
+          {
+            "rank": 3,
+            "anchor": "t1_olowml8",
+            "anchor_label": "t1_olowml8",
+            "size": 11,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 4,
+            "anchor": "t1_olrbjje",
+            "anchor_label": "t1_olrbjje",
+            "size": 50,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 5,
+            "anchor": "t1_olz1ivh",
+            "anchor_label": "t1_olz1ivh",
+            "size": 137,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 6,
+            "anchor": "t1_olo8f81",
+            "anchor_label": "t1_olo8f81",
+            "size": 24,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 7,
+            "anchor": "t1_om0jkts",
+            "anchor_label": "t1_om0jkts",
+            "size": 10,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 8,
+            "anchor": "t1_olxbboj",
+            "anchor_label": "t1_olxbboj",
+            "size": 18,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 9,
+            "anchor": "t1_om2ahrv",
+            "anchor_label": "t1_om2ahrv",
+            "size": 21,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 10,
+            "anchor": "t1_oli29jq",
+            "anchor_label": "t1_oli29jq",
+            "size": 20,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 11,
+            "anchor": "t1_ome16o9",
+            "anchor_label": "t1_ome16o9",
+            "size": 19,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 12,
+            "anchor": "t1_strata_brigade2",
+            "anchor_label": "Brigade 2",
+            "size": 27,
+            "buried": 3,
+            "decoy": 2,
+            "in_thread": 17
+          },
+          {
+            "rank": 13,
+            "anchor": "t1_olifozc",
+            "anchor_label": "t1_olifozc",
+            "size": 15,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 14,
+            "anchor": "t1_olrscu6",
+            "anchor_label": "t1_olrscu6",
+            "size": 13,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 15,
+            "anchor": "t1_olk45st",
+            "anchor_label": "t1_olk45st",
+            "size": 36,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 16,
+            "anchor": "t1_om2826l",
+            "anchor_label": "t1_om2826l",
+            "size": 28,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 17,
+            "anchor": "t1_om4rhw9",
+            "anchor_label": "t1_om4rhw9",
+            "size": 19,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 18,
+            "anchor": "t1_olzm1kv",
+            "anchor_label": "t1_olzm1kv",
+            "size": 8,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 19,
+            "anchor": "t1_olwun40",
+            "anchor_label": "t1_olwun40",
+            "size": 26,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 20,
+            "anchor": "t1_olhbf24",
+            "anchor_label": "t1_olhbf24",
+            "size": 48,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 21,
+            "anchor": "t1_ols90a4",
+            "anchor_label": "t1_ols90a4",
+            "size": 16,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 22,
+            "anchor": "t1_olnw8kv",
+            "anchor_label": "t1_olnw8kv",
+            "size": 14,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 23,
+            "anchor": "t1_omdpu78",
+            "anchor_label": "t1_omdpu78",
+            "size": 9,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 24,
+            "anchor": "t1_olyu120",
+            "anchor_label": "t1_olyu120",
+            "size": 19,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 25,
+            "anchor": "t1_oltlhiu",
+            "anchor_label": "t1_oltlhiu",
+            "size": 9,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 26,
+            "anchor": "t1_omc1c8s",
+            "anchor_label": "t1_omc1c8s",
+            "size": 7,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 27,
+            "anchor": "t1_olz73u3",
+            "anchor_label": "t1_olz73u3",
+            "size": 23,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 28,
+            "anchor": "t1_olnylk8",
+            "anchor_label": "t1_olnylk8",
+            "size": 13,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 29,
+            "anchor": "t1_olm9s4j",
+            "anchor_label": "t1_olm9s4j",
+            "size": 5,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          },
+          {
+            "rank": 30,
+            "anchor": "t1_oll0ccx",
+            "anchor_label": "t1_oll0ccx",
+            "size": 4,
+            "buried": 0,
+            "decoy": 0,
+            "in_thread": 0
+          }
+        ],
+        "buried_in_anchors_unique": 3
+      },
+      "flag_contradiction": {
+        "ok": true,
+        "ms": 2468.324790999992,
+        "refs_flag2a": true,
+        "reasoning": "Same author (TKfromCambridge) posted contradictory statement on 2026-04-25: The new item says the roommate was home with the author Tuesday night, does not drive to work anymore, and takes the Green Line. The prior item says they always go out Tuesdays after the roommate's shift, the roommate drives, and they park at Cambridgeside. These are factually incompatible about the roommate's Tuesday routine and whether he drives."
+      },
+      "flag_pattern": {
+        "ok": true,
+        "ms": 1217.611957999994,
+        "fired": true,
+        "precedents": [
+          "t3_strata_flag3a",
+          "t3_strata_flag3b",
+          "t3_strata_flag3c"
+        ],
+        "reasoning": "This post is effectively a call for community identification/surveillance of a specific vehicle and driver based on alleged wrongdoing, which matches the removed precedent pattern for witch-hunting / no evidence. It asks for eyes on the car and a plate, escalating a public accusation without substantiated evidence."
+      },
+      "flag_brigade": {
+        "ok": true,
+        "ms": 3009.1787920000206,
+        "fired": true,
+        "authors": 6,
+        "reasoning": "6 distinct authors, 11 comments within 4h window, semantic uniformity 0.78, density 0.55"
+      }
+    }
+  ],
+  "classification": {
+    "tp": 3,
+    "fp": 1,
+    "fn": 0,
+    "tn": 11,
+    "results": [
+      {
+        "id": "t3_strata_flag4",
+        "label": "flag4 (pattern)",
+        "role": "pattern",
+        "is_signal": false,
+        "classified_as": "RELATED",
+        "relationship": "TEMPORAL",
+        "reason": "Describes a dark green SUV repeatedly running red lights on Mass Ave near Central over the past month, which could establish a pattern near the crash location, but it lacks the case number, plate endi"
+      },
+      {
+        "id": "t1_strata_surface1",
+        "label": "S1 near-miss",
+        "role": "buried",
+        "is_signal": true,
+        "classified_as": "RELATED",
+        "relationship": "UPDATES",
+        "reason": "Adds a specific possible vehicle description and behavior at the same Mass Ave/Prospect light: dark green Subaru wagon, red-light running, plate started with K. This aligns with the case location and "
+      },
+      {
+        "id": "t3_strata_surface2",
+        "label": "S2 case#",
+        "role": "buried",
+        "is_signal": true,
+        "classified_as": "RELATED",
+        "relationship": "UPDATES",
+        "reason": "Explicitly references case #2026-04891 and says the poster submitted a dashcam clip, adding evidence/status information about the same hit-and-run investigation."
+      },
+      {
+        "id": "t3_1te5ph4",
+        "label": "t3_1te5ph4",
+        "role": "corpus",
+        "is_signal": false,
+        "classified_as": "UNRELATED",
+        "relationship": "UNRELATED",
+        "reason": "Asks for DMs/videos and mentions a BPD case number, but provides no shared identifier with the Cambridge hit-and-run case, no location, no victim, no vehicle, and no case number match."
+      },
+      {
+        "id": "t1_strata_decoy2",
+        "label": "D2 bike case#",
+        "role": "decoy",
+        "is_signal": false,
+        "classified_as": "UNRELATED",
+        "relationship": "UNRELATED",
+        "reason": "Concerns a stolen red Trek bike in Davis with a different Cambridge PD case number (#2026-04123), not the Mass Ave/Prospect hit-and-run."
+      },
+      {
+        "id": "t1_om04nt5",
+        "label": "t1_om04nt5",
+        "role": "corpus",
+        "is_signal": false,
+        "classified_as": "UNRELATED",
+        "relationship": "UNRELATED",
+        "reason": "Generic comment about rental cars and dashcams; no shared specific identifier with the case."
+      },
+      {
+        "id": "t1_om08qlb",
+        "label": "t1_om08qlb",
+        "role": "corpus",
+        "is_signal": false,
+        "classified_as": "UNRELATED",
+        "relationship": "UNRELATED",
+        "reason": "Generic moderation warning about doxxing/witch hunts; no factual connection to the hit-and-run."
+      },
+      {
+        "id": "t3_1te57i7",
+        "label": "t3_1te57i7",
+        "role": "corpus",
+        "is_signal": false,
+        "classified_as": "UNRELATED",
+        "relationship": "UNRELATED",
+        "reason": "Generic request for tag/videos with no shared identifier such as the case number, location, vehicle, victim, or plate details."
+      },
+      {
+        "id": "t1_om013gi",
+        "label": "t1_om013gi",
+        "role": "corpus",
+        "is_signal": false,
+        "classified_as": "UNRELATED",
+        "relationship": "UNRELATED",
+        "reason": "Generic moderation warning about doxxing/witch hunts; no factual connection to the hit-and-run."
+      },
+      {
+        "id": "t1_om07x6z",
+        "label": "t1_om07x6z",
+        "role": "corpus",
+        "is_signal": false,
+        "classified_as": "UNRELATED",
+        "relationship": "UNRELATED",
+        "reason": "Generic remark about rental cars with no shared specific identifier."
+      },
+      {
+        "id": "t1_strata_surface3",
+        "label": "S3 garage -K77",
+        "role": "buried",
+        "is_signal": true,
+        "classified_as": "RELATED",
+        "relationship": "UPDATES",
+        "reason": "Shares strong identifiers with the case: dark green Subaru wagon, same partial plate ending -K77, and Tuesday around 5:30. However, it describes a side-mirror clipping in P3 rather than the Mass Ave/P"
+      },
+      {
+        "id": "t1_om066aa",
+        "label": "t1_om066aa",
+        "role": "corpus",
+        "is_signal": false,
+        "classified_as": "UNRELATED",
+        "relationship": "UNRELATED",
+        "reason": "Generic question about dashcams for pedestrians; no shared specific identifier."
+      },
+      {
+        "id": "t1_om07nmh",
+        "label": "t1_om07nmh",
+        "role": "corpus",
+        "is_signal": false,
+        "classified_as": "UNRELATED",
+        "relationship": "UNRELATED",
+        "reason": "Generic discussion of body cameras; no shared specific identifier with the hit-and-run."
+      },
+      {
+        "id": "t1_om03luy",
+        "label": "t1_om03luy",
+        "role": "corpus",
+        "is_signal": false,
+        "classified_as": "UNRELATED",
+        "relationship": "UNRELATED",
+        "reason": "Generic reaction/comment with no shared specific identifier."
+      },
+      {
+        "id": "t1_olzzy25",
+        "label": "t1_olzzy25",
+        "role": "corpus",
+        "is_signal": false,
+        "classified_as": "UNRELATED",
+        "relationship": "UNRELATED",
+        "reason": "Generic/irrelevant comment with no shared identifier or meaningful connection to the case."
+      }
+    ]
+  },
+  "static": {
+    "network": {
+      "nodes": [
+        {
+          "id": "t3_strata_casepost",
+          "label": "Case Post",
+          "role": "anchor",
+          "entity_count": 9
+        },
+        {
+          "id": "t1_strata_surface1",
+          "label": "S1 near-miss",
+          "role": "buried",
+          "entity_count": 3
+        },
+        {
+          "id": "t3_strata_surface2",
+          "label": "S2 case#",
+          "role": "buried",
+          "entity_count": 2
+        },
+        {
+          "id": "t1_strata_surface3",
+          "label": "S3 garage -K77",
+          "role": "buried",
+          "entity_count": 5
+        },
+        {
+          "id": "t3_strata_surface4",
+          "label": "S4 earwitness",
+          "role": "buried",
+          "entity_count": 1
+        },
+        {
+          "id": "t3_strata_decoy1",
+          "label": "D1 cat (vehicle)",
+          "role": "decoy",
+          "entity_count": 7
+        },
+        {
+          "id": "t1_strata_decoy2",
+          "label": "D2 bike case#",
+          "role": "decoy",
+          "entity_count": 4
+        },
+        {
+          "id": "t1_strata_decoy3",
+          "label": "D3 CharlieCard K77",
+          "role": "decoy",
+          "entity_count": 4
+        },
+        {
+          "id": "t3_strata_decoy4",
+          "label": "D4 Davis crash",
+          "role": "decoy",
+          "entity_count": 2
+        },
+        {
+          "id": "t1_strata_brigade1",
+          "label": "Brigade 1",
+          "role": "brigade",
+          "entity_count": 2
+        },
+        {
+          "id": "t1_strata_brigade2",
+          "label": "Brigade 2",
+          "role": "brigade",
+          "entity_count": 5
+        },
+        {
+          "id": "t1_strata_brigade3",
+          "label": "Brigade 3",
+          "role": "brigade",
+          "entity_count": 4
+        },
+        {
+          "id": "t1_strata_brigade4",
+          "label": "Brigade 4",
+          "role": "brigade",
+          "entity_count": 2
+        },
+        {
+          "id": "t1_strata_flag2a",
+          "label": "flag2a (bar post)",
+          "role": "contradiction",
+          "entity_count": 4
+        },
+        {
+          "id": "t1_strata_flag2b",
+          "label": "flag2b (contradicts)",
+          "role": "contradiction",
+          "entity_count": 4
+        },
+        {
+          "id": "t3_strata_flag4",
+          "label": "flag4 (pattern)",
+          "role": "pattern",
+          "entity_count": 2
+        },
+        {
+          "id": "t3_strata_flag3a",
+          "label": "flag3a (removed)",
+          "role": "removed",
+          "entity_count": 2
+        },
+        {
+          "id": "t3_strata_flag3b",
+          "label": "flag3b (removed)",
+          "role": "removed",
+          "entity_count": 3
+        },
+        {
+          "id": "t3_strata_flag3c",
+          "label": "flag3c (removed)",
+          "role": "removed",
+          "entity_count": 2
+        },
+        {
+          "id": "t1_strata_thread_modA",
+          "label": "Thread modA",
+          "role": "thread",
+          "entity_count": 5
+        },
+        {
+          "id": "t1_strata_thread_closureA",
+          "label": "Thread closureA",
+          "role": "thread",
+          "entity_count": 3
+        }
+      ],
+      "edges": [
+        {
+          "source": "t3_strata_casepost",
+          "target": "t1_strata_surface1",
+          "channel": "location",
+          "strength": 0.95,
+          "type": "entity"
+        },
+        {
+          "source": "t3_strata_casepost",
+          "target": "t3_strata_surface2",
+          "channel": "organization",
+          "strength": 1,
+          "type": "entity"
+        },
+        {
+          "source": "t3_strata_casepost",
+          "target": "t1_strata_surface3",
+          "channel": "quantity",
+          "strength": 1,
+          "type": "entity"
+        },
+        {
+          "source": "t3_strata_casepost",
+          "target": "t3_strata_surface4",
+          "channel": "location",
+          "strength": 1,
+          "type": "entity"
+        },
+        {
+          "source": "t3_strata_casepost",
+          "target": "t3_strata_decoy1",
+          "channel": "narrative",
+          "strength": 0.5714285165940964,
+          "type": "narrative"
+        },
+        {
+          "source": "t3_strata_casepost",
+          "target": "t1_strata_decoy2",
+          "channel": "organization",
+          "strength": 1,
+          "type": "entity"
+        },
+        {
+          "source": "t3_strata_casepost",
+          "target": "t1_strata_brigade1",
+          "channel": "location",
+          "strength": 1,
+          "type": "entity"
+        },
+        {
+          "source": "t3_strata_casepost",
+          "target": "t1_strata_brigade2",
+          "channel": "location",
+          "strength": 1,
+          "type": "entity"
+        },
+        {
+          "source": "t3_strata_casepost",
+          "target": "t1_strata_brigade3",
+          "channel": "location",
+          "strength": 1,
+          "type": "entity"
+        },
+        {
+          "source": "t3_strata_casepost",
+          "target": "t1_strata_brigade4",
+          "channel": "location",
+          "strength": 1,
+          "type": "entity"
+        },
+        {
+          "source": "t3_strata_casepost",
+          "target": "t1_strata_flag2b",
+          "channel": "location",
+          "strength": 1,
+          "type": "entity"
+        },
+        {
+          "source": "t3_strata_casepost",
+          "target": "t3_strata_flag4",
+          "channel": "location",
+          "strength": 0.95,
+          "type": "entity"
+        },
+        {
+          "source": "t3_strata_casepost",
+          "target": "t3_strata_flag3b",
+          "channel": "narrative",
+          "strength": 0.5718360132432281,
+          "type": "narrative"
+        },
+        {
+          "source": "t3_strata_casepost",
+          "target": "t1_strata_thread_modA",
+          "channel": "location",
+          "strength": 1,
+          "type": "entity"
+        },
+        {
+          "source": "t3_strata_casepost",
+          "target": "t1_strata_thread_closureA",
+          "channel": "location",
+          "strength": 1,
+          "type": "entity"
+        },
+        {
+          "source": "t1_strata_surface1",
+          "target": "t1_strata_surface3",
+          "channel": "object",
+          "strength": 1,
+          "type": "entity"
+        },
+        {
+          "source": "t1_strata_surface1",
+          "target": "t3_strata_decoy1",
+          "channel": "object",
+          "strength": 0.95,
+          "type": "entity"
+        },
+        {
+          "source": "t1_strata_surface1",
+          "target": "t1_strata_brigade1",
+          "channel": "location",
+          "strength": 0.95,
+          "type": "entity"
+        },
+        {
+          "source": "t1_strata_surface1",
+          "target": "t1_strata_brigade2",
+          "channel": "location",
+          "strength": 0.95,
+          "type": "entity"
+        },
+        {
+          "source": "t1_strata_surface1",
+          "target": "t1_strata_brigade3",
+          "channel": "location",
+          "strength": 0.95,
+          "type": "entity"
+        },
+        {
+          "source": "t1_strata_surface1",
+          "target": "t1_strata_brigade4",
+          "channel": "location",
+          "strength": 0.95,
+          "type": "entity"
+        },
+        {
+          "source": "t1_strata_surface1",
+          "target": "t1_strata_flag2b",
+          "channel": "location",
+          "strength": 0.95,
+          "type": "entity"
+        },
+        {
+          "source": "t1_strata_surface1",
+          "target": "t3_strata_flag4",
+          "channel": "narrative",
+          "strength": 0.6714068271016913,
+          "type": "narrative"
+        },
+        {
+          "source": "t1_strata_surface1",
+          "target": "t3_strata_flag3a",
+          "channel": "narrative",
+          "strength": 0.55434794054554,
+          "type": "narrative"
+        },
+        {
+          "source": "t1_strata_surface1",
+          "target": "t1_strata_thread_modA",
+          "channel": "location",
+          "strength": 0.95,
+          "type": "entity"
+        },
+        {
+          "source": "t1_strata_surface1",
+          "target": "t1_strata_thread_closureA",
+          "channel": "location",
+          "strength": 0.95,
+          "type": "entity"
+        },
+        {
+          "source": "t3_strata_surface2",
+          "target": "t1_strata_decoy2",
+          "channel": "organization",
+          "strength": 1,
+          "type": "entity"
+        },
+        {
+          "source": "t3_strata_surface2",
+          "target": "t1_strata_brigade1",
+          "channel": "quantity",
+          "strength": 1,
+          "type": "entity"
+        },
+        {
+          "source": "t3_strata_surface2",
+          "target": "t1_strata_brigade2",
+          "channel": "quantity",
+          "strength": 1,
+          "type": "entity"
+        },
+        {
+          "source": "t3_strata_surface2",
+          "target": "t1_strata_brigade3",
+          "channel": "quantity",
+          "strength": 1,
+          "type": "entity"
+        },
+        {
+          "source": "t3_strata_surface2",
+          "target": "t1_strata_brigade4",
+          "channel": "quantity",
+          "strength": 1,
+          "type": "entity"
+        },
+        {
+          "source": "t3_strata_surface2",
+          "target": "t1_strata_flag2b",
+          "channel": "quantity",
+          "strength": 1,
+          "type": "entity"
+        },
+        {
+          "source": "t3_strata_surface2",
+          "target": "t1_strata_thread_modA",
+          "channel": "quantity",
+          "strength": 1,
+          "type": "entity"
+        },
+        {
+          "source": "t3_strata_surface2",
+          "target": "t1_strata_thread_closureA",
+          "channel": "quantity",
+          "strength": 1,
+          "type": "entity"
+        },
+        {
+          "source": "t1_strata_surface3",
+          "target": "t3_strata_decoy1",
+          "channel": "object",
+          "strength": 0.95,
+          "type": "entity"
+        },
+        {
+          "source": "t1_strata_surface3",
+          "target": "t1_strata_brigade1",
+          "channel": "narrative",
+          "strength": 0.5542772041317221,
+          "type": "narrative"
+        },
+        {
+          "source": "t1_strata_surface3",
+          "target": "t1_strata_brigade2",
+          "channel": "object",
+          "strength": 0.95,
+          "type": "entity"
+        },
+        {
+          "source": "t1_strata_surface3",
+          "target": "t1_strata_brigade3",
+          "channel": "narrative",
+          "strength": 0.6581098798233143,
+          "type": "narrative"
+        },
+        {
+          "source": "t1_strata_surface3",
+          "target": "t1_strata_flag2a",
+          "channel": "location",
+          "strength": 1,
+          "type": "entity"
+        },
+        {
+          "source": "t1_strata_surface3",
+          "target": "t1_strata_flag2b",
+          "channel": "narrative",
+          "strength": 0.5607901261828374,
+          "type": "narrative"
+        },
+        {
+          "source": "t1_strata_surface3",
+          "target": "t3_strata_flag4",
+          "channel": "narrative",
+          "strength": 0.6306971124013216,
+          "type": "narrative"
+        },
+        {
+          "source": "t1_strata_surface3",
+          "target": "t3_strata_flag3a",
+          "channel": "narrative",
+          "strength": 0.5651950655280871,
+          "type": "narrative"
+        },
+        {
+          "source": "t1_strata_surface3",
+          "target": "t3_strata_flag3b",
+          "channel": "narrative",
+          "strength": 0.5966208401714539,
+          "type": "narrative"
+        },
+        {
+          "source": "t1_strata_surface3",
+          "target": "t3_strata_flag3c",
+          "channel": "narrative",
+          "strength": 0.5538152597246153,
+          "type": "narrative"
+        },
+        {
+          "source": "t1_strata_surface3",
+          "target": "t1_strata_thread_modA",
+          "channel": "narrative",
+          "strength": 0.5794422172248233,
+          "type": "narrative"
+        },
+        {
+          "source": "t1_strata_surface3",
+          "target": "t1_strata_thread_closureA",
+          "channel": "object",
+          "strength": 0.95,
+          "type": "entity"
+        },
+        {
+          "source": "t3_strata_surface4",
+          "target": "t3_strata_decoy4",
+          "channel": "narrative",
+          "strength": 0.622404673093115,
+          "type": "narrative"
+        },
+        {
+          "source": "t3_strata_surface4",
+          "target": "t3_strata_flag4",
+          "channel": "location",
+          "strength": 0.95,
+          "type": "entity"
+        },
+        {
+          "source": "t3_strata_decoy1",
+          "target": "t1_strata_brigade1",
+          "channel": "narrative",
+          "strength": 0.5788687791991833,
+          "type": "narrative"
+        },
+        {
+          "source": "t3_strata_decoy1",
+          "target": "t1_strata_brigade2",
+          "channel": "object",
+          "strength": 1,
+          "type": "entity"
+        },
+        {
+          "source": "t3_strata_decoy1",
+          "target": "t1_strata_brigade3",
+          "channel": "narrative",
+          "strength": 0.5908196372365637,
+          "type": "narrative"
+        },
+        {
+          "source": "t3_strata_decoy1",
+          "target": "t1_strata_brigade4",
+          "channel": "narrative",
+          "strength": 0.5567946855926493,
+          "type": "narrative"
+        },
+        {
+          "source": "t3_strata_decoy1",
+          "target": "t3_strata_flag3a",
+          "channel": "location",
+          "strength": 1,
+          "type": "entity"
+        },
+        {
+          "source": "t3_strata_decoy1",
+          "target": "t1_strata_thread_modA",
+          "channel": "narrative",
+          "strength": 0.5749117967334314,
+          "type": "narrative"
+        },
+        {
+          "source": "t3_strata_decoy1",
+          "target": "t1_strata_thread_closureA",
+          "channel": "object",
+          "strength": 0.95,
+          "type": "entity"
+        },
+        {
+          "source": "t1_strata_decoy2",
+          "target": "t3_strata_decoy4",
+          "channel": "location",
+          "strength": 1,
+          "type": "entity"
+        },
+        {
+          "source": "t1_strata_decoy2",
+          "target": "t1_strata_thread_modA",
+          "channel": "organization",
+          "strength": 0.95,
+          "type": "entity"
+        },
+        {
+          "source": "t1_strata_brigade1",
+          "target": "t1_strata_brigade2",
+          "channel": "location",
+          "strength": 1,
+          "type": "entity"
+        },
+        {
+          "source": "t1_strata_brigade1",
+          "target": "t1_strata_brigade3",
+          "channel": "location",
+          "strength": 1,
+          "type": "entity"
+        },
+        {
+          "source": "t1_strata_brigade1",
+          "target": "t1_strata_brigade4",
+          "channel": "location",
+          "strength": 1,
+          "type": "entity"
+        },
+        {
+          "source": "t1_strata_brigade1",
+          "target": "t1_strata_flag2b",
+          "channel": "location",
+          "strength": 1,
+          "type": "entity"
+        },
+        {
+          "source": "t1_strata_brigade1",
+          "target": "t3_strata_flag4",
+          "channel": "narrative",
+          "strength": 0.6018083275776007,
+          "type": "narrative"
+        },
+        {
+          "source": "t1_strata_brigade1",
+          "target": "t3_strata_flag3b",
+          "channel": "narrative",
+          "strength": 0.590560333823305,
+          "type": "narrative"
+        },
+        {
+          "source": "t1_strata_brigade1",
+          "target": "t1_strata_thread_modA",
+          "channel": "location",
+          "strength": 1,
+          "type": "entity"
+        },
+        {
+          "source": "t1_strata_brigade1",
+          "target": "t1_strata_thread_closureA",
+          "channel": "location",
+          "strength": 1,
+          "type": "entity"
+        },
+        {
+          "source": "t1_strata_brigade2",
+          "target": "t1_strata_brigade3",
+          "channel": "location",
+          "strength": 1,
+          "type": "entity"
+        },
+        {
+          "source": "t1_strata_brigade2",
+          "target": "t1_strata_brigade4",
+          "channel": "location",
+          "strength": 1,
+          "type": "entity"
+        },
+        {
+          "source": "t1_strata_brigade2",
+          "target": "t1_strata_flag2a",
+          "channel": "location",
+          "strength": 0.95,
+          "type": "entity"
+        },
+        {
+          "source": "t1_strata_brigade2",
+          "target": "t1_strata_flag2b",
+          "channel": "location",
+          "strength": 1,
+          "type": "entity"
+        },
+        {
+          "source": "t1_strata_brigade2",
+          "target": "t3_strata_flag4",
+          "channel": "narrative",
+          "strength": 0.6257963303671659,
+          "type": "narrative"
+        },
+        {
+          "source": "t1_strata_brigade2",
+          "target": "t3_strata_flag3b",
+          "channel": "location",
+          "strength": 0.95,
+          "type": "entity"
+        },
+        {
+          "source": "t1_strata_brigade2",
+          "target": "t1_strata_thread_modA",
+          "channel": "location",
+          "strength": 1,
+          "type": "entity"
+        },
+        {
+          "source": "t1_strata_brigade2",
+          "target": "t1_strata_thread_closureA",
+          "channel": "location",
+          "strength": 1,
+          "type": "entity"
+        },
+        {
+          "source": "t1_strata_brigade3",
+          "target": "t1_strata_brigade4",
+          "channel": "location",
+          "strength": 1,
+          "type": "entity"
+        },
+        {
+          "source": "t1_strata_brigade3",
+          "target": "t1_strata_flag2a",
+          "channel": "location",
+          "strength": 1,
+          "type": "entity"
+        },
+        {
+          "source": "t1_strata_brigade3",
+          "target": "t1_strata_flag2b",
+          "channel": "location",
+          "strength": 1,
+          "type": "entity"
+        },
+        {
+          "source": "t1_strata_brigade3",
+          "target": "t3_strata_flag4",
+          "channel": "narrative",
+          "strength": 0.5795711979517364,
+          "type": "narrative"
+        },
+        {
+          "source": "t1_strata_brigade3",
+          "target": "t3_strata_flag3b",
+          "channel": "narrative",
+          "strength": 0.5937446714815451,
+          "type": "narrative"
+        },
+        {
+          "source": "t1_strata_brigade3",
+          "target": "t1_strata_thread_modA",
+          "channel": "location",
+          "strength": 1,
+          "type": "entity"
+        },
+        {
+          "source": "t1_strata_brigade3",
+          "target": "t1_strata_thread_closureA",
+          "channel": "location",
+          "strength": 1,
+          "type": "entity"
+        },
+        {
+          "source": "t1_strata_brigade4",
+          "target": "t1_strata_flag2b",
+          "channel": "location",
+          "strength": 1,
+          "type": "entity"
+        },
+        {
+          "source": "t1_strata_brigade4",
+          "target": "t3_strata_flag4",
+          "channel": "narrative",
+          "strength": 0.5587875042123187,
+          "type": "narrative"
+        },
+        {
+          "source": "t1_strata_brigade4",
+          "target": "t1_strata_thread_modA",
+          "channel": "location",
+          "strength": 1,
+          "type": "entity"
+        },
+        {
+          "source": "t1_strata_brigade4",
+          "target": "t1_strata_thread_closureA",
+          "channel": "location",
+          "strength": 1,
+          "type": "entity"
+        },
+        {
+          "source": "t1_strata_flag2a",
+          "target": "t1_strata_flag2b",
+          "channel": "location",
+          "strength": 0.95,
+          "type": "entity"
+        },
+        {
+          "source": "t1_strata_flag2b",
+          "target": "t3_strata_flag4",
+          "channel": "narrative",
+          "strength": 0.5871079790231306,
+          "type": "narrative"
+        },
+        {
+          "source": "t1_strata_flag2b",
+          "target": "t3_strata_flag3b",
+          "channel": "narrative",
+          "strength": 0.6158001935891662,
+          "type": "narrative"
+        },
+        {
+          "source": "t1_strata_flag2b",
+          "target": "t1_strata_thread_modA",
+          "channel": "location",
+          "strength": 1,
+          "type": "entity"
+        },
+        {
+          "source": "t1_strata_flag2b",
+          "target": "t1_strata_thread_closureA",
+          "channel": "location",
+          "strength": 1,
+          "type": "entity"
+        },
+        {
+          "source": "t3_strata_flag4",
+          "target": "t3_strata_flag3a",
+          "channel": "narrative",
+          "strength": 0.7162904477045231,
+          "type": "narrative"
+        },
+        {
+          "source": "t3_strata_flag4",
+          "target": "t3_strata_flag3b",
+          "channel": "narrative",
+          "strength": 0.6300783074329956,
+          "type": "narrative"
+        },
+        {
+          "source": "t3_strata_flag4",
+          "target": "t3_strata_flag3c",
+          "channel": "narrative",
+          "strength": 0.5965438539737988,
+          "type": "narrative"
+        },
+        {
+          "source": "t3_strata_flag4",
+          "target": "t1_strata_thread_modA",
+          "channel": "narrative",
+          "strength": 0.6077585860657564,
+          "type": "narrative"
+        },
+        {
+          "source": "t3_strata_flag4",
+          "target": "t1_strata_thread_closureA",
+          "channel": "narrative",
+          "strength": 0.6636577585013583,
+          "type": "narrative"
+        },
+        {
+          "source": "t3_strata_flag3a",
+          "target": "t3_strata_flag3b",
+          "channel": "narrative",
+          "strength": 0.6049241602286202,
+          "type": "narrative"
+        },
+        {
+          "source": "t3_strata_flag3a",
+          "target": "t3_strata_flag3c",
+          "channel": "narrative",
+          "strength": 0.5509784526748263,
+          "type": "narrative"
+        },
+        {
+          "source": "t3_strata_flag3b",
+          "target": "t3_strata_flag3c",
+          "channel": "narrative",
+          "strength": 0.5961175155166529,
+          "type": "narrative"
+        },
+        {
+          "source": "t3_strata_flag3b",
+          "target": "t1_strata_thread_modA",
+          "channel": "narrative",
+          "strength": 0.605030182408882,
+          "type": "narrative"
+        },
+        {
+          "source": "t3_strata_flag3b",
+          "target": "t1_strata_thread_closureA",
+          "channel": "narrative",
+          "strength": 0.6178422316688739,
+          "type": "narrative"
+        },
+        {
+          "source": "t1_strata_thread_modA",
+          "target": "t1_strata_thread_closureA",
+          "channel": "location",
+          "strength": 1,
+          "type": "entity"
+        }
+      ]
+    },
+    "channels": {
+      "rows": [
+        {
+          "id": "t1_strata_surface1",
+          "label": "S1 near-miss",
+          "role": "buried"
+        },
+        {
+          "id": "t3_strata_surface2",
+          "label": "S2 case#",
+          "role": "buried"
+        },
+        {
+          "id": "t1_strata_surface3",
+          "label": "S3 garage",
+          "role": "buried"
+        },
+        {
+          "id": "t3_strata_surface4",
+          "label": "S4 earwitness",
+          "role": "buried"
+        },
+        {
+          "id": "t3_strata_decoy1",
+          "label": "D1 cat",
+          "role": "decoy"
+        },
+        {
+          "id": "t1_strata_decoy2",
+          "label": "D2 bike case#",
+          "role": "decoy"
+        },
+        {
+          "id": "t1_strata_decoy3",
+          "label": "D3 CharlieCard",
+          "role": "decoy"
+        },
+        {
+          "id": "t3_strata_decoy4",
+          "label": "D4 Davis crash",
+          "role": "decoy"
+        }
+      ],
+      "cols": [
+        "Vehicle",
+        "Case#",
+        "Plate -K77",
+        "Narrative"
+      ],
+      "matrix": [
+        [
+          1,
+          0,
+          0,
+          0.605946689927805
+        ],
+        [
+          0,
+          1,
+          0,
+          0.5294850884529296
+        ],
+        [
+          1,
+          0,
+          1,
+          0.6139531240351062
+        ],
+        [
+          0,
+          0,
+          0,
+          0.5061663949581998
+        ],
+        [
+          0.95,
+          0,
+          0,
+          0.5714285165940964
+        ],
+        [
+          0.08,
+          0.5,
+          0,
+          0.5506606601338717
+        ],
+        [
+          0.07407407407407407,
+          0,
+          0,
+          0.46966573408462864
+        ],
+        [
+          0,
+          0,
+          0,
+          0.37567016857610724
+        ]
+      ]
+    }
+  }
+}

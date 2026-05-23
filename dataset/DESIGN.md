@@ -4,8 +4,8 @@
 
 Strata is one engine with two modes:
 
-- **Surface** — when something important happens, find everything the community already knows but hasn't connected
-- **Flag** — when something looks wrong, catch what's slipping past current tools
+- **Surface** — when something important happens, find everything the community already knows but hasn't connected.
+- **Flag** — when something looks wrong, catch what's slipping past current tools.
 
 Same pipeline. Same data. Two directions.
 
@@ -13,11 +13,11 @@ Same pipeline. Same data. Two directions.
 
 ## The Story: Hit-and-Run on Mass Ave
 
-A cyclist named Sarah is struck on Mass Ave near Central Square, Cambridge. The driver flees. Sarah is in the ICU. Her roommate posts desperately on r/boston.
+A cyclist named Sarah is struck on Mass Ave near the Prospect St intersection in Central Square, Cambridge. The driver flees. Sarah is in MGH ICU. Five weeks later, her roommate posts on r/boston asking for help finding witnesses.
 
-**Surface finds**: Three strangers already posted about this car — buried in unrelated threads over the past 3 weeks. A near-miss pedestrian. A dashcam owner with footage. A garage neighbor who sees the car every morning.
+**Surface finds**: Four people already posted about this incident — buried in unrelated threads over the prior month. A cyclist near-missed by the same vehicle the morning of the crash. A dashcam owner complaining that Cambridge PD never followed up on his footage. A garage resident whose mirror was clipped in P3 by the same partial plate. An earwitness who heard the crash near Central but kept walking.
 
-**Flag catches**: After the case post goes viral, fresh accounts flood the thread defending the driver. Strata flags the coordination. Meanwhile, the driver's roommate posts a statement that contradicts their own comment from 2 weeks ago. Strata catches the lie.
+**Flag catches**: After the case post goes viral, fresh accounts flood the thread defending "the driver." Strata flags the coordination. A user defending the driver in the thread contradicts a post they made themselves two weeks earlier. Strata catches the lie.
 
 One incident. One engine. Both modes demonstrated.
 
@@ -25,12 +25,10 @@ One incident. One engine. Both modes demonstrated.
 
 ## Why This Wins
 
-- **Life or death** — someone's in the ICU, not just annoyed about a scam
-- **The witnesses don't know they're witnesses** — that's the goosebump moment
-- **The dashcam person literally offered footage** and nobody connected it
-- **The garage neighbor can locate the car TODAY** — actionable justice
-- **Every city sub mod has seen hit-and-run posts** — judges will think about THEIR subreddit
-- **Mirrors the YouTube cold case stories** (Linda Pagano, Susan Rainwater, Grateful Doe) — scattered fragments, years apart, finally connected. But Strata does it in seconds, not years.
+- Life or death stakes — someone's in the ICU.
+- The witnesses don't know they're witnesses — fragments scattered across four unrelated threads over four weeks.
+- Each witness left exactly one piece of usable evidence — a vehicle description, a case number, a partial plate, a sound. Together they're a case.
+- Every city-subreddit mod has seen hit-and-run posts — judges will think about *their* subreddit.
 
 ---
 
@@ -40,257 +38,209 @@ One incident. One engine. Both modes demonstrated.
 
 ---
 
-## Dataset: Real r/boston + Planted Signals
+## Dataset
 
-**Source**: r/boston April 1 – May 17, 2026 (3,700 posts, 93,080 comments)
+**Source**: r/boston April 1 – May 17, 2026.
 
 **Process**:
-1. Sample ~3,000 items from the real data (deterministic seed)
-2. Inject 12 hand-crafted signal items into the corpus
-3. Run through the engine (embed + extract entities)
-4. Cache the result as the backfill seed
+1. Sample ~3,000 items from the real data, sorted by recency.
+2. Inject 16 planted items into the corpus.
+3. Run through the engine (embed + extract entities) so the planted items are indistinguishable from real ones at retrieval time.
+4. Mark FLAG-3 items as previously removed by mods, so the algorithm sees them as decision history.
 
-**Two slices**:
-| Slice | Content | How processed |
-|---|---|---|
-| **Backfill** (Apr 1 – May 10) | ~3,000 real items + 9 planted fragments | `ingestBatch()` on install |
-| **Live** (May 11+) | The case post + 2 supporting items | `ingest()` one-by-one via trigger |
+---
+
+## Design Principles
+
+The 16 planted items follow five rules:
+
+1. **Sparse anchor.** The case post carries the incident + case# + partial plate + people/places, but no vehicle description and no sticker. The witnesses must be discovered by their own clues, not re-confirmed by quoting the case post.
+2. **One primary channel per witness.** Each SURFACE links to the case via one primary mechanism + one weak secondary. The primary is what's being tested; the secondary is so a single embedding/extraction miss doesn't lose the item.
+3. **Inter-witness overlap.** Witnesses cluster among themselves on shared rare entities (S1↔S3 on vehicle paraphrase). The case post joins post-hoc via the secondary entity overlap + narrative cosine.
+4. **Adversarial decoys.** Each DECOY attacks the primary channel of one SURFACE — same vehicle in a different incident, same case-number format with a different number, same `K77` token with a different head noun, same "heard a crash" narrative at a different time and place. If scan rejects all four, the algorithm has demonstrated genuine discrimination.
+5. **Voice realism.** Every item passes the "would I see this on r/boston" test.
 
 ---
 
 ## All Planted Items
 
-Everything below is one interconnected story. The hit-and-run is the center. Everything radiates from it.
+### CASE POST (LIVE) — sparse trigger
+
+**`t3_strata_casepost`** — posted Day 40 by Sarah's roommate.
+
+> Title: **My roommate was hit Tuesday on Mass Ave & Prospect — driver fled — case #2026-04891**
+>
+> Posting on behalf of my roommate Sarah. She was riding home on Mass Ave near the Prospect St intersection in Central around 5:30pm Tuesday when a driver ran the light, hit her, and took off. She's at MGH — broken pelvis, broken collarbone, internal bleeding. Stable but it's bad.
+>
+> Cambridge PD opened it as case #2026-04891. They have a partial plate ending in -K77 but it isn't enough on its own. If anyone was driving through Central around 5:30 Tuesday with a dashcam, or saw anything weird around the Prospect light, please reach out — Cambridge PD non-emergency, or DM me here. Not trying to start a witch hunt. She just deserves to know what happened.
+
+**Carries**: `Sarah` (person), `Mass Ave near the Prospect St intersection / Central` (location), `MGH / Cambridge PD` (organization), `#2026-04891` (quantity), `partial plate ending in -K77` (object).
+
+**Deliberately omits**: vehicle make/color/model, marathon sticker, victim helmet, time of injury, hospital ward.
 
 ---
 
-### ACT 1: BEFORE THE CRASH (Backfill — Surface signals)
+### SURFACE-1 (BACKFILL) — vehicle paraphrase channel
 
-These are the buried fragments that Surface will find.
+**`t1_strata_surface1`** — posted Day 7 morning in a daily bike-commute thread.
 
----
+> Almost ate it this morning at the Mass Ave / Prospect light — dark green Subaru wagon came flying through the red heading east. Plate started with a K, that's all I caught before he was gone. Driver looked right at me then floored it. If you cycle through there in the evenings, just assume nothing.
 
-#### SURFACE-1 — The Near-Miss Pedestrian
-
-**Day**: Apr 8 (backfill)  
-**Thread**: "Best bike routes that avoid traffic?" (real thread about cycling)  
-**Position**: Comment #11 in a 24-comment thread  
-**Author**: ThursdayCommuter  
-
-```
-Honestly stay off Mass Ave near Central if you can. Last Tuesday around 6pm some asshole in a dark green Subaru Outback blew through the crosswalk at Prospect while I was mid-crossing. Had to jump back onto the curb. Didn't get the plate but the car had a cracked taillight and one of those "26.2" marathon stickers on the back window. Reported it to Cambridge PD non-emergency but they basically said without a plate there's nothing they can do.
-```
+**Primary channel**: object-entity embedding (`dark green Subaru wagon` ↔ S3's same wording).
+**Secondary**: location string match (`Mass Ave / Prospect` ↔ casepost).
+**Does not carry**: case#, partial plate, sticker, Sarah.
 
 ---
 
-#### SURFACE-2 — The Dashcam Owner (case number string match)
+### SURFACE-2 (BACKFILL) — identifier channel
 
-**Day**: Apr 25 (backfill)  
-**Thread**: "How do you actually get Cambridge PD to follow up on anything?" (police bureaucracy rant)  
-**Position**: Comment #6 in a 30-comment thread  
-**Author**: DashcamDave_617  
+**`t3_strata_surface2`** — posted Day 28 as a comment in a "Cambridge PD black hole" rant thread.
 
-```
-Three weeks and counting since I submitted dashcam footage to Cambridge PD for case #2026-04891. They told me a detective would follow up within 48 hours. Never heard back. Called twice, got "we'll pass along the message" both times. I have clear HD footage of the car they're looking for but apparently nobody cares. At this point should I just post it publicly? Is there a civilian oversight board or something I can escalate to?
-```
+> Submitted my dashcam clip to case #2026-04891 close to three weeks ago. Detective on the desk said "we'll be in touch within 48 hours" and that was the last contact. Called twice; both times got "we'll pass it along." Stretched or not, a five-minute callback would matter — just want to know the clip didn't go in the trash.
 
-**Why this works**: The case number `#2026-04891` is an exact identifier. Entity filter finds this via string match — full-text cosine would never connect a police bureaucracy rant to a hit-and-run plea. This is what entity matching uniquely does.
+**Primary channel**: quantity string-exact match (`#2026-04891` ↔ casepost).
+**Secondary**: weak `Cambridge PD` organization (via thread title).
+**Does not carry**: vehicle, location of incident, Sarah.
 
 ---
 
-#### SURFACE-3 — The Garage Neighbor
+### SURFACE-3 (BACKFILL) — rare plate-fragment channel
 
-**Day**: Apr 20 (backfill)  
-**Thread**: "Monthly parking rant thread" (real recurring thread)  
-**Position**: Comment #18 in a 40+ comment thread  
-**Author**: CambridgeSide_Resident  
+**`t1_strata_surface3`** — posted Day 19 as a comment in a Cambridgeside garage rant.
 
-```
-Not exactly a rant but something that's been bugging me — someone on P3 of the Cambridgeside garage (near the elevator) has a dark green Subaru Outback that suddenly has gnarly front bumper damage and a cracked passenger headlight. Showed up maybe 2 weeks ago. The bumper is hanging off on one side. They park in the same spot every weekday morning. Part of me wonders if they hit something (someone?) and are just hoping nobody notices. I see it every morning when I park for work around 8:30. Am I being paranoid or should I say something?
-```
+> Whoever's parking a dark green Subaru wagon in P3 — your friend or whoever clipped my side mirror last Tuesday around 5:30 and just bounced. Partial plate ended in -K77 if anyone has dashcam from P3. Cracked mirror, paint transfer on my door. Genuinely just want their insurance info, not trying to start a thing.
 
----
-
-#### SURFACE-4 — The Earwitness
-
-**Day**: Apr 8 (backfill, same evening as SURFACE-1)  
-**Thread**: Own post (8 upvotes)  
-**Author**: InmanSq_Walker  
-
-**Title**: "What was that commotion on Mass Ave tonight?"
-
-```
-Was walking down Prospect toward Central around 6pm and heard a loud crash followed by tires screeching. By the time I got to Mass Ave there was a bicycle on the ground with the front wheel bent in half but no car and no person. A couple people were looking around confused. Someone said they saw the cyclist get up and stumble toward the CVS. Nobody seemed to have called 911 yet so I did. Ambulance showed up maybe 8 minutes later. The whole thing felt really wrong — like whoever hit them just floored it. If you were the cyclist I hope you're okay. This was right at the Prospect/Mass Ave intersection.
-```
-
-Note: No vehicle description. Embedding-only retrieval.
+**Primary channel**: object-entity match on partial plate (`-K77` ↔ casepost).
+**Secondary**: vehicle paraphrase (`dark green Subaru wagon` ↔ S1).
+**Does not carry**: case#, Sarah, Mass Ave / Prospect.
 
 ---
 
-### ACT 2: THE CRASH (Live — triggers Surface)
+### SURFACE-4 (BACKFILL) — full-text safety net
+
+**`t3_strata_surface4`** — posted Day 7 evening as a top-level "what was that crash" post.
+
+> Title: **Tuesday around 5:30 near Central — what was that crash?**
+>
+> Was walking down to dinner Tuesday evening and heard a real bad bang from up the street, then someone screaming. By the time I got close it had already cleared out — cops weren't there yet. Kept walking like a coward. Been thinking about it all week. If anyone knows what happened, I'd like to know.
+
+**Primary channel**: text-embedding cosine (no entity-blocking help).
+**Secondary**: weak `Central` location.
+**Does not carry**: vehicle, plate, case#, Sarah, Mass Ave / Prospect.
 
 ---
 
-#### CASE POST — The Roommate's Plea
+### DECOY-1 (BACKFILL) — paraphrase attack
 
-**Day**: May 11 (LIVE — you post this during the demo)  
-**Author**: SarahsRoommate2026  
+**`t3_strata_decoy1`** — posted Day 21. Same vehicle, different incident.
 
-**Title**: "My roommate was hit on Mass Ave Tuesday night — driver fled — PLEASE HELP"
+> Title: **Lost cat hit by a green Subaru on Beacon St last Friday — please**
+>
+> Reposting from Nextdoor with no luck. Our cat Mango got hit on Beacon St near the Park / Marlboro intersection Friday evening. Neighbor said the car was a dark green Subaru hatchback. He had a tag with my number, the driver didn't stop. If anyone on Beacon has a doorbell or dashcam from around then, please reach out — we mostly just need closure.
 
-```
-I don't know what else to do. My roommate Sarah was biking home on Mass Ave near the Prospect St intersection in Central Square around 6pm Tuesday. A car ran the light and hit her. The driver did not stop.
-
-Sarah is in the ICU at MGH with a broken pelvis, broken collarbone, and internal bleeding. She is 28 years old. She remembers the car was a dark green SUV, possibly a Subaru, and she thinks she saw a sticker on the back window before she blacked out.
-
-Cambridge PD case #2026-04891. If ANYONE has dashcam footage from Mass Ave near Prospect St Tuesday around 6pm, or if anyone saw ANYTHING, please contact Cambridge PD or DM me.
-
-She doesn't deserve this. Someone knows something. Please.
-```
-
-**What Surface returns**: SURFACE-1, 2, 3, 4 — all found in under 2 seconds.
+**Why it must not cluster with the case**: Beacon St ≠ Mass Ave/Prospect, Friday ≠ Tuesday, cat ≠ cyclist. Vehicle cluster {S1, S3, D1} forms — but after `mergeClustersByItemOverlap`, D1 shares only the vehicle. It has no overlap with the plate cluster, the case# cluster, or the Mass-Ave location cluster, so it stays separate from the case anchor group.
 
 ---
 
-### ACT 3: THE AFTERMATH (Live — triggers Flag)
+### DECOY-2 (BACKFILL) — identifier attack
 
-After the case post gains traction, two things happen that Flag catches:
+**`t1_strata_decoy2`** — posted Day 33. Same case# format, different number.
 
----
+> If anyone has leads on a missing red Trek 7.2 stolen from outside Davis last Wednesday, the case is filed as #2026-04123 with Cambridge PD. $200 finder's reward, no questions asked. I just want it back.
 
-#### FLAG-1 — The Brigade (Coordination Detection)
-
-**Day**: May 12 (LIVE — 6 hours after case post)  
-**Thread**: The case post's comment section  
-**Authors**: 4 brand-new accounts, all posting within a 2-hour window  
-
-**BostonDriver2026_1**:
-```
-This is getting out of hand. I know the owner of that car and he's a good dude who works two jobs. You people are ready to ruin someone's life over a description that could match hundreds of green SUVs in Cambridge. This is a witch hunt.
-```
-
-**BostonDriver2026_2**:
-```
-Classic reddit mob mentality. A "green Subaru" — do you know how many of those exist in the Boston area? My neighbor has one. Are we going to harass every Subaru owner now? This post should be taken down before someone gets hurt.
-```
-
-**BostonDriver2026_3**:
-```
-I drive past Cambridgeside garage every day and there's no damaged Subaru there. That commenter is either lying or confused. Stop spreading misinformation that could get an innocent person targeted.
-```
-
-**BostonDriver2026_4**:
-```
-Has anyone verified this story is even real? No news articles, no police confirmation, just an anonymous reddit post. I'm not saying nothing happened but maybe pump the brakes before destroying someone's reputation based on a color and a car brand.
-```
-
-**What Flag catches**: 
-- 4 items, same thread, 2-hour window
-- 4 different authors (all new)
-- High semantic uniformity (all defending the driver, dismissing evidence)
-- `detectCampaign` fires on entity overlap + temporal density + author diversity
+**Why it must not cluster**: `#2026-04891` vs `#2026-04123` has string Dice ≈ 0.70, below the 0.90 threshold. The quantity match is rejected. Cambridge PD as a shared organization is a weak link that fails the IDF + thread-count gates.
 
 ---
 
-#### FLAG-2 — The Self-Contradiction
+### DECOY-3 (BACKFILL) — plate-fragment attack
 
-**Day**: Apr 25 (backfill) — This comment exists BEFORE the crash  
-**Thread**: "Best bars near Cambridgeside/Lechmere?"  
-**Author**: TKfromCambridge  
+**`t1_strata_decoy3`** — posted Day 15. `K77` appears, but with a different head noun.
 
-```
-I live right above the Cambridgeside garage, can vouch for Night Shift Brewing — great taproom, walkable from Lechmere. My roommate and I usually hit it on Tuesdays after his shift ends around 7. He drives so I can drink lol. We park on P3, never had issues finding a spot in the evening.
-```
+> Lost my CharlieCard, I think it was the K77 series — does the MBTA recover the balance if you have the serial code? The older numbered series got transitioned and I can't find my replacement card. Already tried the Park St customer service window.
 
-**Day**: May 12 (LIVE — after the case post goes viral)  
-**Thread**: The case post's comment section  
-**Author**: TKfromCambridge (SAME PERSON)  
-
-```
-I live near Cambridgeside and I can tell you my roommate was home all evening Tuesday. He doesn't even drive to work anymore, he takes the Green Line. People in this thread need to stop playing detective and let the police handle it.
-```
-
-**What Flag catches**:
-- Same author, same entity (`location:cambridgeside_garage_p3`, `person:roommate`)
-- Statement 1: "He drives... we park on P3... Tuesdays after his shift"
-- Statement 2: "He doesn't even drive to work anymore, he was home all evening Tuesday"
-- `classifyRelationship` → **CONTRADICTS**
-
-This is the "oh shit" moment for the submission writeup: Strata didn't just find witnesses — it caught the suspect's roommate lying to cover for them.
+**Why it must not cluster**: The atomize+head-noun extraction rule yields `object: K77 series CharlieCard` (head noun: CharlieCard) for D3 vs `object: partial plate ending in -K77` (head noun: plate) for S3 and casepost. Different head nouns → low embedding cosine → no cluster.
 
 ---
 
-### ACT 4: PATTERN RECOGNITION (Backfill — Flag signals)
+### DECOY-4 (BACKFILL) — narrative attack
 
-These demonstrate Flag's other capability: catching items that match previously-removed patterns.
+**`t3_strata_decoy4`** — posted Day 29. "Heard a crash" structure, different time and place.
 
----
+> Title: **Davis Saturday 11pm — anyone know what the big crash was?**
+>
+> Was walking through Davis around 11pm Saturday night and heard this huge crash, then fire trucks for about an hour up the road. Tried to look it up the next morning, nothing on the news. Anyone know what actually happened?
 
-#### FLAG-3 — Prior Removed Posts (establishes precedent)
-
-Three posts from weeks 1-2, already marked `decision: 'removed'` in the seed data:
-
-**Day 3** (removed, reason: "witch-hunting / no evidence"):
-```
-PSA: silver Honda on Beacon St keeps running the red at Mass Ave intersection. I don't have the plate but someone needs to stop this guy before he kills someone. He's there every morning around 8am.
-```
-
-**Day 6** (removed, reason: "witch-hunting / no evidence"):
-```
-There's a white pickup that parks illegally on Cambridge St every night and I'm pretty sure the driver is dealing. Can we get some eyes on this? License starts with 4R something.
-```
-
-**Day 10** (removed, reason: "witch-hunting / no evidence"):
-```
-HEADS UP — blue minivan with NH plates keeps circling my block in Allston. I've seen it 4 days in a row now just slowly driving past. This has to be casing houses right? Should I call police?
-```
-
-#### FLAG-4 — New Item Matching Removed Pattern
-
-**Day**: May 13 (LIVE)  
-**Thread**: Own post  
-**Author**: MassAveSafety  
-
-```
-WARNING: dark green SUV has been seen blowing through red lights on Mass Ave near Central multiple times over the past month. I've personally witnessed it twice now. Someone is going to get seriously hurt. Can the mods pin this? Can we get a plate?
-```
-
-**What Flag catches**:
-- High embedding similarity to the 3 previously-removed posts (all are "I saw a dangerous vehicle, here's a vague description, someone do something")
-- Strata flags it: "This matches a pattern you've previously removed for witch-hunting. Recommended action: review with context."
-- BUT — now there's the case post, the witnesses, the police case number. This time it's real. The mod can make an informed decision instead of auto-removing.
+**Why it must not cluster**: Davis ≠ Central, Saturday 11pm ≠ Tuesday 5:30pm. Text-embedding cosine to casepost will be elevated by the narrative similarity but stays below the safety-net threshold because location/time tokens disambiguate.
 
 ---
 
-## Retrieval Design: Each Signal Tests a Different Path
+### FLAG-1 BRIGADE (LIVE) — coordination detection
 
-| Signal | Retrieval Path | Join Key |
-|---|---|---|
-| SURFACE-1 | Entity filter (embedding match) | "dark green Subaru Outback" ↔ "dark green SUV, possibly a Subaru" |
-| SURFACE-2 | Entity filter (string match) | `#2026-04891` exact case number in unrelated thread |
-| SURFACE-3 | Entity filter (embedding match) | Vehicle description in topically distant parking rant |
-| SURFACE-4 | Safety net (full-text cosine) | Pure narrative, no entity overlap — proves safety net needed |
+Four fresh accounts (created within a week of the case post), commenting in the case thread within a 2-hour window. All defend "the driver" using the vehicle description that surfaced inside the thread, with similar phrasing about "witch hunt" and "hundreds of green Subarus in Cambridge."
 
-Neither retrieval method alone finds all 4. The hybrid approach does.
+`t1_strata_brigade1`, `t1_strata_brigade2`, `t1_strata_brigade3`, `t1_strata_brigade4`.
 
 ---
 
-## Summary: What Each Item Demonstrates
+### FLAG-2 CONTRADICTION (BACKFILL + LIVE) — same-author self-contradiction
 
-| Item | Mode | What it proves |
-|---|---|---|
-| SURFACE-1 (near-miss) | Surface | Entity embedding matches paraphrased vehicle description |
-| SURFACE-2 (dashcam/case#) | Surface | String match on identifier connects unrelated topics |
-| SURFACE-3 (garage) | Surface | Entity match in topically distant thread |
-| SURFACE-4 (earwitness) | Surface | Safety net catches narrative with no shared entities |
-| CASE POST | Surface trigger | New post instantly surfaces all 4 historical connections |
-| FLAG-1 (brigade) | Flag | Coordinated inauthentic behavior detected in real-time |
-| FLAG-2 (contradiction) | Flag | Same user's statements across time contradict — caught |
-| FLAG-3 (removed precedents) | Flag setup | Establishes what mods have already decided is bad |
-| FLAG-4 (pattern match) | Flag | New item flagged as matching previously-removed pattern |
+**`t1_strata_flag2a`** — posted Day 24 in a "best bars near Lechmere" thread.
 
-**Total planted items**: 13 (4 Surface + 1 case post + 4 brigade + 2 contradiction + 3 removed precedents + 1 pattern match)
+> I live right above the Cambridgeside garage — can vouch for Night Shift, great taproom, walk from Lechmere. My roommate and I always hit it Tuesdays after his shift ends around 7. He drives, I drink, nobody gets a DUI lol. We park P3, always plenty of space evenings.
 
-All from one story. All exercising the same engine.
+**`t1_strata_flag2b`** — posted Day 41 in the case thread.
+
+> I live near Cambridgeside and my roommate was home with me Tuesday night. He doesn't even drive to work anymore, he takes the Green Line. People in this thread need to stop playing detective and let the police actually handle it.
+
+**Contradiction**: same author. The earlier post says his roommate drives every Tuesday and they park P3 (where S3 saw the damaged Subaru). The case-thread post says the roommate was home Tuesday and "doesn't even drive."
 
 ---
+
+### FLAG-3 REMOVED PRECEDENTS (BACKFILL) — decision history
+
+Three prior posts removed by mods for witch-hunting (no plate, no police involvement, no specific incident): `t3_strata_flag3a` (silver Honda), `t3_strata_flag3b` (white pickup), `t3_strata_flag3c` (blue minivan casing). These establish the "we remove witch-hunt posts when there's no investigation" precedent.
+
+---
+
+### FLAG-4 PATTERN MATCH (LIVE) — pattern match against removed items
+
+**`t3_strata_flag4`** — posted Day 42, same week as case post.
+
+> WARNING: dark green SUV running reds on Mass Ave near Central. Multiple sightings. Can the mods pin this? Has anyone gotten a plate?
+
+Strata flags it as *"matches a pattern you have previously removed for witch-hunting."* This time the case post + investigation exist — the mod makes the call with full context instead of auto-removing.
+
+---
+
+## Channel × Item × Mechanism Matrix
+
+| Channel | Witness | Decoy | Mechanism the algorithm has to get right |
+|---|---|---|---|
+| Vehicle paraphrase | S1, S3 | D1 | `object` embedding cosine ≥ 0.70, witness cluster forms without anchor present |
+| Identifier (exact) | S2 | D2 | string Dice ≥ 0.90 on `quantity`, fuzzy but not too fuzzy |
+| Rare plate fragment | S3 | D3 | head-noun rule isolates `plate -K77` from `CharlieCard K77 series`; IDF wins ranking |
+| Full-text safety net | S4 | D4 | text-embedding cosine survives same-narrative decoy via location/time disambiguation |
+| Cluster merging | S1↔S3 (vehicle), S1↔casepost (location), S3↔casepost (plate), S2↔casepost (case#) | n/a | `mergeClustersByItemOverlap` joins four size-2 clusters into the signal anchor group via casepost in three of them |
+| Coordination | brigade1-4 | n/a | account age + timing cluster |
+| Self-contradiction | flag2a vs flag2b | n/a | same-author opposing statements across two weeks |
+| Removed-pattern match | flag3a-c → flag4 | n/a | pattern match against removed-item index |
+
+---
+
+## Item Count
+
+**16 planted items**: 1 case post, 4 SURFACE, 4 DECOY, 4 BRIGADE, 2 CONTRADICTION (1 backfill + 1 live), 3 REMOVED precedents, 1 PATTERN MATCH.
+
+Plus 12 in-thread comments under the case post (sympathy, debate, mod, off-topic) for thread-depth realism — these are not part of the signal, they're the negatives the scan must not confuse with cross-thread witnesses.
+
+---
+
+## Expected Outcomes
+
+**Scan top anchor group (rank #1)**: signal cluster of `{casepost, surface1, surface2, surface3, surface4}` plus same-thread context (brigades, case-thread chatter). No decoys in this group.
+
+**Surface(casepost) top results**: a mix of in-thread chatter (brigades, sympathy, mod) and cross-thread witnesses (S1, S2, S3, S4) by entity match + narrative cosine. Decoys absent.
+
+**Flag pipeline output**: brigade coordination alert, flag2a/flag2b contradiction alert, flag4 pattern-match alert.
+
+If all of the above hold, the algorithm has demonstrated each mechanism it claims, under adversarial pressure.

@@ -1,6 +1,7 @@
 node_modules/
 dist/
 .env
+.venv/
 .DS_Store
 tests/cache.json
 tests/real-data/cache/

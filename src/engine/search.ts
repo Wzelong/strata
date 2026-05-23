@@ -10,6 +10,7 @@ export type HybridResult = {
 }
 
 const STRONG_TYPES = new Set(['object', 'username', 'phone', 'email', 'url', 'person', 'organization', 'location', 'quantity'])
+const STRING_ONLY_TYPES = new Set(['quantity', 'url', 'username', 'phone', 'email'])
 const HUB_THRESHOLD = 0.03
 const MIN_HUB_COUNT = 10
 const EMBEDDING_THRESHOLD = 0.75
@@ -27,12 +28,7 @@ function normalizeForMatch(text: string): string {
   return text.toLowerCase().replace(/[^a-z0-9]/g, '')
 }
 
-export function stringSimilarity(a: string, b: string): number {
-  const na = normalizeForMatch(a)
-  const nb = normalizeForMatch(b)
-  if (na === nb) return 1.0
-  if (na.includes(nb) || nb.includes(na)) return 0.95
-  // Character-level Dice coefficient
+function diceCoefficient(na: string, nb: string): number {
   const bigrams = (s: string) => {
     const set = new Set<string>()
     for (let i = 0; i < s.length - 1; i++) set.add(s.slice(i, i + 2))
@@ -45,17 +41,33 @@ export function stringSimilarity(a: string, b: string): number {
   return (2 * overlap) / (ba.size + bb.size) || 0
 }
 
-function entityMatch(querySurface: string, queryEmb: number[], storedSurface: string, storedEmb: number[]): number {
-  const strSim = stringSimilarity(querySurface, storedSurface)
-  const embSim = cosine(queryEmb, storedEmb)
+export function stringSimilarity(a: string, b: string): number {
+  const na = normalizeForMatch(a)
+  const nb = normalizeForMatch(b)
+  if (na === nb) return 1.0
+  if (na.includes(nb) || nb.includes(na)) return 0.95
+  return diceCoefficient(na, nb)
+}
 
+// For identifiers (case#, plate, phone), substring matches are dangerous —
+// different IDs can be substrings of each other (-K77 ⊂ K77 series). Use pure
+// Dice without the substring shortcut.
+function identifierSimilarity(a: string, b: string): number {
+  const na = normalizeForMatch(a)
+  const nb = normalizeForMatch(b)
+  if (na === nb) return 1.0
+  return diceCoefficient(na, nb)
+}
+
+function entityMatch(querySurface: string, queryEmb: number[], storedSurface: string, storedEmb: number[]): number {
   if (isIdentifierLike(querySurface) || isIdentifierLike(storedSurface)) {
-    // Identifiers: characters matter, embedding can give false positives
-    return strSim >= STRING_THRESHOLD ? strSim : 0
+    const idSim = identifierSimilarity(querySurface, storedSurface)
+    return idSim >= STRING_THRESHOLD ? idSim : 0
   }
 
-  // Descriptive entities: either exact string match OR embedding match
+  const strSim = stringSimilarity(querySurface, storedSurface)
   if (strSim >= STRING_THRESHOLD) return strSim
+  const embSim = cosine(queryEmb, storedEmb)
   if (embSim >= EMBEDDING_THRESHOLD) return embSim
   return 0
 }
@@ -64,11 +76,16 @@ export async function hybridRetrieve(
   store: KVStore,
   queryEmbedding: number[],
   queryEntityEmbeddings: Array<{ type: string; surfaceText: string; embedding: number[] }>,
-  opts?: { entityK?: number; safetyK?: number; excludeIds?: Set<string> },
+  opts?: { entityK?: number; safetyK?: number; excludeIds?: Set<string>; queryThreadRootId?: string },
 ): Promise<HybridResult> {
   const entityK = opts?.entityK ?? 30
-  const safetyK = opts?.safetyK ?? 30
   const excludeIds = opts?.excludeIds ?? new Set()
+  const queryThread = opts?.queryThreadRootId
+
+  // safetyK scales with corpus size: keep top 2%, with floor 30 and cap 300.
+  // The cap matches the RRF meaningful-contribution horizon (1/(60+300) ≈ 0.003).
+  const corpusSize = await store.getItemCount()
+  const safetyK = opts?.safetyK ?? Math.min(300, Math.max(30, Math.floor(corpusSize * 0.02)))
 
   // Get hub counts for filtering
   const hubCounts = await store.getEntityHubCounts()
@@ -86,9 +103,18 @@ export async function hybridRetrieve(
     return count / typeTotal > HUB_THRESHOLD
   }
 
+  // Safety net catches narrative cross-thread witnesses (high cosine, weak entity overlap).
+  // Exclude in-thread items so they don't crowd out the cross-thread cosine slots — they
+  // already rank strongly via entity matches, they don't need the cosine path too.
+  const safetyExcludes = new Set(excludeIds)
+  if (queryThread) {
+    const inThreadIds = await store.getItemIdsByThread(queryThread)
+    for (const id of inThreadIds) safetyExcludes.add(id)
+  }
+
   const [entityResults, safetyNetResults] = await Promise.all([
     entityFilter(store, queryEntityEmbeddings, entityK, excludeIds, isHub),
-    safetyNet(store, queryEmbedding, safetyK, excludeIds),
+    safetyNet(store, queryEmbedding, safetyK, safetyExcludes),
   ])
 
   // Reciprocal Rank Fusion (RRF)
@@ -107,15 +133,26 @@ export async function hybridRetrieve(
     rrfScores.set(id, (rrfScores.get(id) ?? 0) + 1 / (RRF_K + i))
   }
 
-  // Sort by RRF score, build Hit objects
-  const sorted = [...rrfScores.entries()].sort((a, b) => b[1] - a[1])
-  const candidates: Hit[] = []
-
-  for (const [id, score] of sorted) {
+  // Partition by thread: cross-thread items are the buried-connection value-add,
+  // in-thread items are already visible to the moderator in the thread above.
+  // Returning cross-thread first achieves the same effect as a numeric boost
+  // without an arbitrary multiplier — RRF order is preserved within each stream.
+  type Entry = { id: string; weight: number; stored: NonNullable<Awaited<ReturnType<typeof store.getItem>>> }
+  const inThread: Entry[] = []
+  const crossThread: Entry[] = []
+  for (const [id, score] of rrfScores) {
     const stored = await store.getItem(id)
     if (!stored) continue
-    const emb = await store.getEmbedding(id)
-    candidates.push({ item: { ...stored, embedding: emb ?? [] }, weight: score })
+    const target = queryThread && stored.threadRootId === queryThread ? inThread : crossThread
+    target.push({ id, weight: score, stored })
+  }
+  crossThread.sort((a, b) => b.weight - a.weight)
+  inThread.sort((a, b) => b.weight - a.weight)
+
+  const candidates: Hit[] = []
+  for (const e of [...crossThread, ...inThread]) {
+    const emb = await store.getEmbedding(e.id)
+    candidates.push({ item: { ...e.stored, embedding: emb ?? [] }, weight: e.weight })
   }
 
   const entityMatches = new Map<string, string[]>()
@@ -138,33 +175,58 @@ async function entityFilter(
   excludeIds: Set<string>,
   isHub: (type: string, surfaceText: string) => boolean,
 ): Promise<{ ranked: string[]; matchedEntities: Map<string, Set<string>> }> {
-  const bestScores = new Map<string, number>()
+  const N = Math.max(1, await store.getItemCount())
+  const idfWeightedScores = new Map<string, number>()
   const matchedEntities = new Map<string, Set<string>>()
+
+  const addContribution = (itemId: string, score: number, clusterSize: number, querySurface: string) => {
+    const idf = Math.log(N / Math.max(1, clusterSize))
+    idfWeightedScores.set(itemId, (idfWeightedScores.get(itemId) ?? 0) + score * idf)
+    if (!matchedEntities.has(itemId)) matchedEntities.set(itemId, new Set())
+    matchedEntities.get(itemId)!.add(querySurface)
+  }
 
   for (const queryEntity of queryEntityEmbeddings) {
     if (!STRONG_TYPES.has(queryEntity.type)) continue
-    if (isHub(queryEntity.type, queryEntity.surfaceText)) continue
+    if (!STRING_ONLY_TYPES.has(queryEntity.type) && isHub(queryEntity.type, queryEntity.surfaceText)) continue
+
+    if (STRING_ONLY_TYPES.has(queryEntity.type)) {
+      const surfaces = await store.getEntityIndexEntries(queryEntity.type)
+      const bestPerItem = new Map<string, { score: number; clusterSize: number }>()
+      for (const surface of surfaces) {
+        const strSim = identifierSimilarity(queryEntity.surfaceText, surface)
+        if (strSim < STRING_THRESHOLD) continue
+        const itemIds = await store.getItemIdsByEntity(queryEntity.type, surface)
+        for (const itemId of itemIds) {
+          if (excludeIds.has(itemId)) continue
+          const existing = bestPerItem.get(itemId)
+          if (!existing || strSim > existing.score) bestPerItem.set(itemId, { score: strSim, clusterSize: itemIds.length })
+        }
+      }
+      for (const [itemId, m] of bestPerItem) addContribution(itemId, m.score, m.clusterSize, queryEntity.surfaceText)
+      continue
+    }
 
     const bucket = await store.getEntityEmbeddingsByType(queryEntity.type)
     if (bucket.length === 0) continue
+    const surfaceCounts = new Map<string, number>()
+    for (const entry of bucket) surfaceCounts.set(entry.surfaceText, (surfaceCounts.get(entry.surfaceText) ?? 0) + 1)
 
+    const bestPerItem = new Map<string, { score: number; clusterSize: number }>()
     for (const entry of bucket) {
       if (excludeIds.has(entry.itemId)) continue
       if (isHub(queryEntity.type, entry.surfaceText)) continue
-
       const entryEmb = dequantize(entry.embedding)
       const score = entityMatch(queryEntity.surfaceText, queryEntity.embedding, entry.surfaceText, entryEmb)
       if (score === 0) continue
-
-      const current = bestScores.get(entry.itemId) ?? 0
-      if (score > current) bestScores.set(entry.itemId, score)
-
-      if (!matchedEntities.has(entry.itemId)) matchedEntities.set(entry.itemId, new Set())
-      matchedEntities.get(entry.itemId)!.add(queryEntity.surfaceText)
+      const clusterSize = surfaceCounts.get(entry.surfaceText) ?? 1
+      const existing = bestPerItem.get(entry.itemId)
+      if (!existing || score > existing.score) bestPerItem.set(entry.itemId, { score, clusterSize })
     }
+    for (const [itemId, m] of bestPerItem) addContribution(itemId, m.score, m.clusterSize, queryEntity.surfaceText)
   }
 
-  const ranked = [...bestScores.entries()]
+  const ranked = [...idfWeightedScores.entries()]
     .sort((a, b) => b[1] - a[1])
     .slice(0, k * queryEntityEmbeddings.filter(e => STRONG_TYPES.has(e.type)).length)
     .map(([id]) => id)
@@ -189,12 +251,6 @@ async function safetyNet(
   scored.sort((a, b) => b.score - a.score)
   return scored.slice(0, k)
 }
-
-// Legacy exports for backward compatibility
-export type IdentifierHit = { item: Item; matchedEntity: { type: string; surfaceText: string } }
-export type Connection = { item: Item; mode: 'identifier' | 'similar' | 'campaign'; weight: number; matchedEntity?: { type: string; surfaceText: string } }
-export type CampaignOpts = { windowMs?: number; minItems?: number; minAuthors?: number }
-export type CampaignResult = { detected: boolean; items: Item[]; authorCount: number; entityKey: string }
 
 export async function findSimilar(
   store: KVStore,
@@ -226,47 +282,3 @@ export async function findSimilar(
   return hits
 }
 
-export async function detectCampaign(
-  store: KVStore,
-  type: string,
-  surfaceText: string,
-  opts?: CampaignOpts,
-): Promise<CampaignResult> {
-  const windowMs = opts?.windowMs ?? 7 * 24 * 60 * 60 * 1000
-  const minItems = opts?.minItems ?? 3
-  const minAuthors = opts?.minAuthors ?? 3
-  const entityKey = `${type}:${surfaceText}`
-
-  const ids = await store.getItemIdsByEntity(type, surfaceText)
-  if (ids.length < minItems) {
-    return { detected: false, items: [], authorCount: 0, entityKey }
-  }
-
-  const items: Item[] = []
-  for (const id of ids) {
-    const stored = await store.getItem(id)
-    if (!stored) continue
-    const emb = await store.getEmbedding(id)
-    items.push({ ...stored, embedding: emb ?? [] })
-  }
-
-  items.sort((a, b) => a.createdAt - b.createdAt)
-
-  let bestCluster: Item[] = []
-  for (let i = 0; i < items.length; i++) {
-    const windowEnd = items[i].createdAt + windowMs
-    const cluster = items.filter(it => it.createdAt >= items[i].createdAt && it.createdAt <= windowEnd)
-    const authors = new Set(cluster.map(c => c.authorId))
-    if (cluster.length >= minItems && authors.size >= minAuthors && cluster.length > bestCluster.length) {
-      bestCluster = cluster
-    }
-  }
-
-  const authors = new Set(bestCluster.map(c => c.authorId))
-  return {
-    detected: bestCluster.length >= minItems && authors.size >= minAuthors,
-    items: bestCluster,
-    authorCount: authors.size,
-    entityKey,
-  }
-}
