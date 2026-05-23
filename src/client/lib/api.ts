@@ -9,6 +9,7 @@ export interface AlertDetail extends Alert {
 export interface ItemListItem {
   id: string
   type: 'post' | 'comment'
+  title?: string
   text: string
   authorName: string
   createdAt: number

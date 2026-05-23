@@ -7,7 +7,7 @@ import { StrataEngine, normalize } from '../engine/index.js'
 import { RedisKVStore, type RedisClient } from '../engine/storage/redis.js'
 import { RedisAlertStore } from '../engine/storage/redis-alert-store.js'
 import type { AlertStore } from '../engine/storage/alert-store.js'
-import type { RawItem, Item, Hit, StoredItem, Entity, Alert, AlertConnection, AlertStatus, FlagResult } from '../engine/types.js'
+import type { RawItem, Item, Hit, StoredItem, Entity, Alert, AlertConnection, AlertEntity, AlertStatus, FlagResult } from '../engine/types.js'
 import {
   buildEmbeddingJsonl, buildExtractionJsonl, buildEntityEmbeddingJsonl,
   submitBatch, checkBatch, downloadBatchResults,
@@ -156,14 +156,71 @@ app.post('/internal/triggers/post-submit', async (c) => {
     if (connections.length > 0 && context.subredditName) {
       const subredditName = context.subredditName
       const related = classifications.filter(c => c.relationship !== 'UNRELATED')
-      const anchorEntityTexts = new Set(item.entities.map(e => e.surfaceText.toLowerCase()))
+
+      // Token-overlap bridge for same-type entities — handles phrasings that
+      // exact substring misses (e.g. "Mass Ave & Prospect" vs "Mass Ave /
+      // Prospect light"). Substring and equality also accepted.
+      const tokenize = (s: string) =>
+        new Set(s.toLowerCase().split(/[^a-z0-9]+/).filter(t => t.length >= 3))
+      const entityBridge = (a: Entity, b: Entity): boolean => {
+        if (a.type !== b.type) return false
+        const al = a.surfaceText.toLowerCase()
+        const bl = b.surfaceText.toLowerCase()
+        if (al === bl || al.includes(bl) || bl.includes(al)) return true
+        const at = tokenize(al), bt = tokenize(bl)
+        if (at.size === 0 || bt.size === 0) return false
+        let shared = 0
+        for (const t of at) if (bt.has(t)) shared++
+        if (shared >= 2) return true
+        if (shared >= 1 && Math.min(at.size, bt.size) <= 2) return true
+        return false
+      }
+      const inBody = (needle: string, text: string) => text.toLowerCase().includes(needle.toLowerCase())
+
+      // Only consider entities that are actually rendered in their body — an
+      // entity extracted from a title can't be highlighted in the body pane.
+      const renderedAnchorEntities = item.entities.filter(e => inBody(e.surfaceText, item.text))
+
+      // For each connection, find which rendered anchor entities bridge to a
+      // body-present connection entity. The clusterId of a connection-side
+      // span is the matched anchor's surface text — guaranteeing cross-pane
+      // links land on a real anchor span.
+      type Bridge = { anchor: Entity; connEntity: Entity }
+      const perConnBridges = new Map<string, Bridge[]>()
+      const usedAnchors = new Set<string>()
+      for (const cls of related) {
+        const hit = candidates.find(c => c.item.id === cls.id)
+        if (!hit) continue
+        const bridges: Bridge[] = []
+        for (const ce of hit.item.entities) {
+          if (!inBody(ce.surfaceText, hit.item.text)) continue
+          for (const ae of renderedAnchorEntities) {
+            if (entityBridge(ae, ce)) {
+              bridges.push({ anchor: ae, connEntity: ce })
+              usedAnchors.add(`${ae.type}:${ae.surfaceText}`)
+              break
+            }
+          }
+        }
+        perConnBridges.set(cls.id, bridges)
+      }
+
+      const anchorEntities: AlertEntity[] = renderedAnchorEntities
+        .filter(e => usedAnchors.has(`${e.type}:${e.surfaceText}`))
+        .map(e => ({ text: e.surfaceText, clusterId: `${e.type}:${e.surfaceText}` }))
+
       const alertConnections: AlertConnection[] = related.map(cls => {
         const hit = candidates.find(c => c.item.id === cls.id)!
-        const fromRetrieval = entityMatches.get(cls.id) ?? []
-        const fromOverlap = hit.item.entities
-          .filter(e => anchorEntityTexts.has(e.surfaceText.toLowerCase()))
-          .map(e => e.surfaceText)
-        const entities = fromRetrieval.length > 0 ? fromRetrieval : fromOverlap
+        const bridges = perConnBridges.get(cls.id) ?? []
+        const entities: AlertEntity[] = []
+        const seen = new Set<string>()
+        for (const b of bridges) {
+          const clusterId = `${b.anchor.type}:${b.anchor.surfaceText}`
+          const key = `${clusterId} ${b.connEntity.surfaceText}`
+          if (seen.has(key)) continue
+          seen.add(key)
+          entities.push({ text: b.connEntity.surfaceText, clusterId })
+        }
         return {
           itemId: cls.id,
           author: hit.item.authorName,
@@ -175,6 +232,7 @@ app.post('/internal/triggers/post-submit', async (c) => {
           confidence: cls.confidence ?? 'review',
           entities,
           reasoning: cls.reason,
+          createdAt: hit.item.createdAt,
           sameAuthor: hit.item.authorId === item.authorId,
         }
       })
@@ -192,6 +250,7 @@ app.post('/internal/triggers/post-submit', async (c) => {
         anchorTitle: item.title,
         anchorText: item.text,
         anchorPermalink: buildPermalink(item, subredditName),
+        anchorEntities,
       }
 
       await alertStore.createAlert(alert, alertConnections)
@@ -222,6 +281,7 @@ app.post('/internal/triggers/post-submit', async (c) => {
           confidence: flag.confidence,
           entities: [],
           reasoning: flag.type === 'pattern' ? `Similarity to removed item` : '',
+          createdAt: ci.createdAt,
           sameAuthor: ci.authorId === item.authorId,
         }))
 
@@ -238,6 +298,7 @@ app.post('/internal/triggers/post-submit', async (c) => {
           anchorTitle: item.title,
           anchorText: item.text,
           anchorPermalink: buildPermalink(item, subredditName),
+          anchorEntities: [],
           reasoning: flag.reasoning,
           flagType: flag.type,
         }
@@ -300,6 +361,7 @@ app.post('/internal/triggers/comment-submit', async (c) => {
           confidence: flag.confidence,
           entities: [],
           reasoning: flag.type === 'pattern' ? `Similarity to removed item` : '',
+          createdAt: ci.createdAt,
           sameAuthor: ci.authorId === item.authorId,
         }))
 
@@ -316,6 +378,7 @@ app.post('/internal/triggers/comment-submit', async (c) => {
           anchorTitle: item.title,
           anchorText: item.text,
           anchorPermalink: buildPermalink(item, subredditName),
+          anchorEntities: [],
           reasoning: flag.reasoning,
           flagType: flag.type,
         }
@@ -510,6 +573,10 @@ app.post('/internal/menu/mock-alerts', async (c) => {
   const now = Date.now()
   const stub = (id: string, sub: string) => `https://reddit.com/r/${sub}/comments/${id.replace(/^t[13]_/, '')}`
 
+  const hours = (n: number) => now - n * 60 * 60_000
+  const days = (n: number) => now - n * 24 * 60 * 60_000
+  const minutes = (n: number) => now - n * 60_000
+
   // SURFACE: case post with 4 buried witnesses + 1 case-thread comment
   const surfaceConnections: AlertConnection[] = [
     { itemId: 't1_strata_surface1', author: 'ThursdayCommuter', type: 'comment',
@@ -517,29 +584,42 @@ app.post('/internal/menu/mock-alerts', async (c) => {
       text: 'Almost ate it this morning at the Mass Ave / Prospect light — dark green Subaru wagon came flying through the red heading east. Plate started with a K, that\'s all I caught before he was gone.',
       permalink: stub('t1_strata_surface1', sub),
       classification: 'updates', confidence: 'high',
-      entities: ['dark green Subaru wagon', 'Mass Ave / Prospect light'],
-      reasoning: 'Same vehicle description (dark green Subaru wagon) and same intersection (Mass Ave / Prospect) running the red light. Plate starts with K, consistent with the case post\'s partial plate ending in -K77.', sameAuthor: false },
+      entities: [
+        { text: 'Mass Ave / Prospect light', clusterId: 'loc:intersection' },
+      ],
+      reasoning: 'Same vehicle description (dark green Subaru wagon) and same intersection (Mass Ave / Prospect) running the red light. Plate starts with K, consistent with the case post\'s partial plate ending in -K77.',
+      createdAt: hours(5), sameAuthor: false },
     { itemId: 't3_strata_surface2', author: 'DashcamDave_617', type: 'comment',
       title: 'Cambridge PD black hole - anyone actually had a detective call back?',
       text: 'Submitted my dashcam clip to case #2026-04891 close to three weeks ago. Detective on the desk said "we\'ll be in touch within 48 hours" and that was the last contact.',
       permalink: stub('t3_strata_surface2', sub),
       classification: 'updates', confidence: 'high',
-      entities: ['case #2026-04891', 'Cambridge PD'],
-      reasoning: 'Directly references the same Cambridge PD case number and reports submitting dashcam footage — actionable evidence the case post is asking for.', sameAuthor: false },
+      entities: [
+        { text: 'case #2026-04891', clusterId: 'qty:case' },
+      ],
+      reasoning: 'Directly references the same Cambridge PD case number and reports submitting dashcam footage — actionable evidence the case post is asking for.',
+      createdAt: days(2), sameAuthor: false },
     { itemId: 't1_strata_surface3', author: 'CambridgeSide_Resident', type: 'comment',
       title: 'Cambridgeside garage parking complaints',
       text: 'Whoever\'s parking a dark green Subaru wagon in P3 — your friend clipped my side mirror last Tuesday around 5:30 and just bounced. Partial plate ended in -K77 if anyone has dashcam from P3.',
       permalink: stub('t1_strata_surface3', sub),
       classification: 'updates', confidence: 'high',
-      entities: ['partial plate -K77', 'dark green Subaru wagon', 'P3'],
-      reasoning: 'Partial plate -K77 matches the case post exactly. Same vehicle description. Same time of day (Tuesday around 5:30) as the cyclist incident. Possibly the same driver leaving the scene of a second hit.', sameAuthor: false },
+      entities: [
+        { text: 'Partial plate ended in -K77', clusterId: 'obj:plate' },
+        { text: 'Tuesday around 5:30', clusterId: 'qty:time' },
+      ],
+      reasoning: 'Partial plate -K77 matches the case post exactly. Same vehicle description. Same time of day (Tuesday around 5:30) as the cyclist incident. Possibly the same driver leaving the scene of a second hit.',
+      createdAt: days(3), sameAuthor: false },
     { itemId: 't3_strata_surface4', author: 'InmanSq_Walker', type: 'post',
       title: 'Tuesday around 5:30 near Central — what was that crash?',
       text: 'Was walking down to dinner Tuesday evening and heard a real bad bang from up the street, then someone screaming. By the time I got close it had already cleared out — cops weren\'t there yet. Kept walking like a coward.',
       permalink: stub('t3_strata_surface4', sub),
       classification: 'confirms', confidence: 'review',
-      entities: ['Central', 'Tuesday around 5:30'],
-      reasoning: 'Earwitness near Central at the same time as the reported incident. No vehicle or victim details, but the audio narrative (loud bang + screaming) and timing line up.', sameAuthor: false },
+      entities: [
+        { text: 'Tuesday evening', clusterId: 'qty:time' },
+      ],
+      reasoning: 'Earwitness near Central at the same time as the reported incident. No vehicle or victim details, but the audio narrative (loud bang + screaming) and timing line up.',
+      createdAt: days(6), sameAuthor: false },
   ]
   const surfaceAlert: Alert = {
     id: generateAlertId(), mode: 'surface', status: 'pending',
@@ -548,6 +628,12 @@ app.post('/internal/menu/mock-alerts', async (c) => {
     anchorTitle: 'My roommate was hit Tuesday on Mass Ave & Prospect — driver fled — case #2026-04891',
     anchorText: 'Posting on behalf of my roommate Sarah. She was riding home on Mass Ave near the Prospect St intersection in Central around 5:30pm Tuesday when a driver ran the light, hit her, and took off. She\'s at MGH — broken pelvis, broken collarbone, internal bleeding. Stable but it\'s bad.\n\nCambridge PD opened it as case #2026-04891. They have a partial plate ending in -K77 but it isn\'t enough on its own.',
     anchorPermalink: stub('t3_strata_casepost', sub),
+    anchorEntities: [
+      { text: 'Mass Ave near the Prospect St intersection', clusterId: 'loc:intersection' },
+      { text: 'around 5:30pm Tuesday', clusterId: 'qty:time' },
+      { text: 'case #2026-04891', clusterId: 'qty:case' },
+      { text: 'partial plate ending in -K77', clusterId: 'obj:plate' },
+    ],
   }
   await alertStore.createAlert(surfaceAlert, surfaceConnections)
 
@@ -557,17 +643,20 @@ app.post('/internal/menu/mock-alerts', async (c) => {
       title: 'PSA: silver Honda running reds on Beacon St',
       text: 'I don\'t have the plate but someone needs to stop this guy before he kills someone.',
       permalink: stub('t3_strata_flag3a', sub),
-      classification: 'confirms', confidence: 'high', entities: [], reasoning: 'Similarity to removed item', sameAuthor: false },
+      classification: 'confirms', confidence: 'high', entities: [], reasoning: 'Similarity to removed item',
+      createdAt: days(14), sameAuthor: false },
     { itemId: 't3_strata_flag3b', author: 'CambStConcerned', type: 'post',
       title: 'Suspicious white pickup on Cambridge St every night',
       text: 'There\'s a white pickup that parks illegally on Cambridge St every night and I\'m pretty sure the driver is dealing.',
       permalink: stub('t3_strata_flag3b', sub),
-      classification: 'confirms', confidence: 'high', entities: [], reasoning: 'Similarity to removed item', sameAuthor: false },
+      classification: 'confirms', confidence: 'high', entities: [], reasoning: 'Similarity to removed item',
+      createdAt: days(21), sameAuthor: false },
     { itemId: 't3_strata_flag3c', author: 'AllstonAlert88', type: 'post',
       title: 'Blue minivan circling my block in Allston — casing?',
       text: 'I\'ve seen it 4 days in a row now just slowly driving past. This has to be casing houses right?',
       permalink: stub('t3_strata_flag3c', sub),
-      classification: 'confirms', confidence: 'high', entities: [], reasoning: 'Similarity to removed item', sameAuthor: false },
+      classification: 'confirms', confidence: 'high', entities: [], reasoning: 'Similarity to removed item',
+      createdAt: days(10), sameAuthor: false },
   ]
   const patternAlert: Alert = {
     id: generateAlertId(), mode: 'flag', status: 'pending',
@@ -576,6 +665,7 @@ app.post('/internal/menu/mock-alerts', async (c) => {
     anchorTitle: 'WARNING: dark green SUV running reds on Mass Ave near Central',
     anchorText: 'There\'s a dark green SUV that\'s been seen blowing through red lights on Mass Ave near Central multiple times. I\'ve personally witnessed it twice. Someone is going to get seriously hurt. Can the mods pin this?',
     anchorPermalink: stub('t3_strata_flag4', sub),
+    anchorEntities: [],
     reasoning: 'Matches pattern of previously removed witch-hunt posts (vague vehicle description, no plate, no police case, asking the community to identify a driver).',
     flagType: 'pattern',
   }
@@ -587,17 +677,20 @@ app.post('/internal/menu/mock-alerts', async (c) => {
       title: 'My roommate was hit Tuesday on Mass Ave & Prospect — driver fled — case #2026-04891',
       text: 'This is getting out of hand. I know the owner of that car and he\'s a good dude who works two jobs. You people are ready to ruin someone\'s life over a description that could match hundreds of green SUVs.',
       permalink: stub('t1_strata_brigade1', sub),
-      classification: 'confirms', confidence: 'review', entities: [], reasoning: '', sameAuthor: false },
+      classification: 'confirms', confidence: 'review', entities: [], reasoning: '',
+      createdAt: minutes(90), sameAuthor: false },
     { itemId: 't1_strata_brigade3', author: 'BostonDriver2026_3', type: 'comment',
       title: 'My roommate was hit Tuesday on Mass Ave & Prospect — driver fled — case #2026-04891',
       text: 'I drive past Cambridgeside garage every day and there\'s no damaged Subaru there. That commenter is either lying or confused.',
       permalink: stub('t1_strata_brigade3', sub),
-      classification: 'confirms', confidence: 'review', entities: [], reasoning: '', sameAuthor: false },
+      classification: 'confirms', confidence: 'review', entities: [], reasoning: '',
+      createdAt: minutes(105), sameAuthor: false },
     { itemId: 't1_strata_brigade4', author: 'BostonDriver2026_4', type: 'comment',
       title: 'My roommate was hit Tuesday on Mass Ave & Prospect — driver fled — case #2026-04891',
       text: 'Has anyone verified this story is even real? No news articles, no police confirmation, just an anonymous Reddit post.',
       permalink: stub('t1_strata_brigade4', sub),
-      classification: 'confirms', confidence: 'review', entities: [], reasoning: '', sameAuthor: false },
+      classification: 'confirms', confidence: 'review', entities: [], reasoning: '',
+      createdAt: minutes(75), sameAuthor: false },
   ]
   const brigadeAlert: Alert = {
     id: generateAlertId(), mode: 'flag', status: 'pending',
@@ -606,6 +699,7 @@ app.post('/internal/menu/mock-alerts', async (c) => {
     anchorTitle: 'My roommate was hit Tuesday on Mass Ave & Prospect — driver fled — case #2026-04891',
     anchorText: 'Classic Reddit mob mentality. A "green Subaru" — do you know how many of those exist in the Boston area? My neighbor has one. Are we going to harass every Subaru owner in Cambridge now?',
     anchorPermalink: stub('t1_strata_brigade2', sub),
+    anchorEntities: [],
     reasoning: '4 distinct authors, 4 comments within a 2-hour window, semantic uniformity 0.62, density 1.00 — coordinated defensive messaging.',
     flagType: 'brigade',
   }
@@ -618,7 +712,8 @@ app.post('/internal/menu/mock-alerts', async (c) => {
       text: 'I live right above the Cambridgeside garage — can vouch for Night Shift. My roommate and I always hit it Tuesdays after his shift ends around 7. He drives, I drink, nobody gets a DUI lol. We park P3, always plenty of space evenings.',
       permalink: stub('t1_strata_flag2a', sub),
       classification: 'contradicts', confidence: 'high', entities: [],
-      reasoning: 'Prior post by same author (April 25): says roommate drives every Tuesday and they park at P3 Cambridgeside.', sameAuthor: true },
+      reasoning: 'Prior post by same author (April 25): says roommate drives every Tuesday and they park at P3 Cambridgeside.',
+      createdAt: days(14), sameAuthor: true },
   ]
   const contradictionAlert: Alert = {
     id: generateAlertId(), mode: 'flag', status: 'pending',
@@ -627,6 +722,7 @@ app.post('/internal/menu/mock-alerts', async (c) => {
     anchorTitle: 'My roommate was hit Tuesday on Mass Ave & Prospect — driver fled — case #2026-04891',
     anchorText: 'I live near Cambridgeside and my roommate was home with me Tuesday night. He doesn\'t even drive to work anymore, he takes the Green Line.',
     anchorPermalink: stub('t1_strata_flag2b', sub),
+    anchorEntities: [],
     reasoning: 'Same author (TKfromCambridge) posted contradictory statement on 2026-04-25: previously said roommate drives Tuesdays + parks P3 Cambridgeside; now claims roommate doesn\'t drive and was home Tuesday.',
     flagType: 'contradiction',
   }
@@ -640,6 +736,7 @@ app.post('/internal/menu/mock-alerts', async (c) => {
     anchorTitle: 'PSA about that person from the neighborhood meeting',
     anchorText: 'That jerk from the neighborhood meeting is Sarah Johnson, 45 Maple Dr unit 2A, Cambridge MA 02139. Her cell is 617-555-0199. Somebody should give her a piece of their mind about what she said.',
     anchorPermalink: stub('t3_mock_rule_violation', sub),
+    anchorEntities: [],
     reasoning: 'Violates rule-1 (No doxxing): post shares a private individual\'s full name, home address, and phone number. Also rule-3 (Be civil): hostile framing inviting retaliation.',
     flagType: 'rule',
   }
@@ -1234,6 +1331,7 @@ app.get('/api/items', async (c) => {
     items.push({
       id: item.id,
       type: item.type,
+      title: item.title,
       text: item.text.slice(0, 200),
       authorName: item.authorName,
       createdAt: item.createdAt,

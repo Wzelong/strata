@@ -1,28 +1,31 @@
+import type { AlertEntity } from '../../engine/types'
 import { cn } from '../lib/utils'
 
 interface HighlightedTextProps {
   text: string
-  entities: string[]
-  activeEntity: string | null
-  onEntityClick: (entity: string) => void
+  entities: AlertEntity[]
+  activeCluster: string | null
+  onClusterClick: (clusterId: string) => void
 }
 
-type Segment = { text: string; entity?: string }
+type Segment = { text: string; clusterId?: string }
 
-function buildSegments(text: string, entities: string[]): Segment[] {
+function buildSegments(text: string, entities: AlertEntity[]): Segment[] {
   if (entities.length === 0) return [{ text }]
 
-  const sorted = [...entities].sort((a, b) => b.length - a.length)
-  const marks: Array<{ start: number; end: number; entity: string }> = []
+  const sorted = [...entities].sort((a, b) => b.text.length - a.text.length)
+  const marks: Array<{ start: number; end: number; clusterId: string }> = []
   const lower = text.toLowerCase()
 
   for (const entity of sorted) {
-    const needle = entity.toLowerCase()
+    if (!entity.text) continue
+    const needle = entity.text.toLowerCase()
     let idx = 0
     while ((idx = lower.indexOf(needle, idx)) !== -1) {
-      const overlaps = marks.some(m => idx < m.end && idx + needle.length > m.start)
-      if (!overlaps) marks.push({ start: idx, end: idx + needle.length, entity })
-      idx += needle.length
+      const end = idx + needle.length
+      const overlaps = marks.some(m => idx < m.end && end > m.start)
+      if (!overlaps) marks.push({ start: idx, end, clusterId: entity.clusterId })
+      idx = end
     }
   }
 
@@ -32,7 +35,7 @@ function buildSegments(text: string, entities: string[]): Segment[] {
   let cursor = 0
   for (const mark of marks) {
     if (mark.start > cursor) segments.push({ text: text.slice(cursor, mark.start) })
-    segments.push({ text: text.slice(mark.start, mark.end), entity: mark.entity })
+    segments.push({ text: text.slice(mark.start, mark.end), clusterId: mark.clusterId })
     cursor = mark.end
   }
   if (cursor < text.length) segments.push({ text: text.slice(cursor) })
@@ -40,22 +43,23 @@ function buildSegments(text: string, entities: string[]): Segment[] {
   return segments
 }
 
-export function HighlightedText({ text, entities, activeEntity, onEntityClick }: HighlightedTextProps) {
+export function HighlightedText({ text, entities, activeCluster, onClusterClick }: HighlightedTextProps) {
   const segments = buildSegments(text, entities)
-  console.log('[HighlightedText]', { text: text.slice(0, 50), entities, activeEntity, segmentCount: segments.length, highlights: segments.filter(s => s.entity).map(s => ({ text: s.text, entity: s.entity })) })
 
   return (
     <span>
       {segments.map((seg, i) =>
-        seg.entity ? (
+        seg.clusterId ? (
           <span
             key={i}
-            onClick={(e) => { e.preventDefault(); e.stopPropagation(); onEntityClick(seg.entity!) }}
+            data-cluster={seg.clusterId}
+            onClick={(e) => { e.preventDefault(); e.stopPropagation(); onClusterClick(seg.clusterId!) }}
             className={cn(
-              'rounded-sm px-0.5 -mx-0.5 cursor-pointer transition-colors',
-              activeEntity === seg.entity
-                ? 'bg-primary/25 text-primary'
-                : 'bg-primary/8 hover:bg-primary/15',
+              'rounded-[3px] px-0.5 -mx-0.5 cursor-pointer transition-colors',
+              '[box-decoration-break:clone] [-webkit-box-decoration-break:clone]',
+              activeCluster === seg.clusterId
+                ? 'bg-amber-300 text-amber-950 dark:bg-amber-300/60 dark:text-amber-50'
+                : 'bg-amber-200/80 text-amber-950 hover:bg-amber-300/90 dark:bg-amber-300/25 dark:text-amber-50 dark:hover:bg-amber-300/40',
             )}
           >
             {seg.text}

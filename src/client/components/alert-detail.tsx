@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { ArrowLeft, ClipboardList, Telescope, Sparkles } from 'lucide-react'
 import { fetchAlertDetail, alertAction, type AlertDetail } from '../lib/api'
 import { ChatPanel } from './chat-panel'
@@ -19,16 +19,30 @@ export function AlertDetailPanel({ alertId, onBack, onStatusChange }: AlertDetai
   const [loading, setLoading] = useState(false)
   const [acting, setActing] = useState(false)
   const [detailTab, setDetailTab] = useState<DetailTab>('overview')
-  const [activeEntity, setActiveEntity] = useState<string | null>(null)
+  const [activeCluster, setActiveCluster] = useState<string | null>(null)
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null)
 
-  const allEntities = useMemo(() => {
-    if (!alert) return []
-    const set = new Set<string>()
-    for (const conn of alert.connections) {
-      for (const e of conn.entities) set.add(e)
-    }
-    return [...set]
-  }, [alert])
+  const toggleCluster = (id: string) => setActiveCluster(prev => prev === id ? null : id)
+
+  // When a cluster becomes active, bring its other occurrences into view.
+  // Skip when (a) cluster cleared, (b) all matches already visible, (c) only
+  // one match exists. Picks the nearest off-screen match by document order.
+  useEffect(() => {
+    if (!activeCluster) return
+    const container = scrollContainerRef.current
+    if (!container) return
+    const matches = Array.from(
+      container.querySelectorAll<HTMLElement>(`[data-cluster="${CSS.escape(activeCluster)}"]`),
+    )
+    if (matches.length < 2) return
+    const cRect = container.getBoundingClientRect()
+    const offscreen = matches.find(el => {
+      const r = el.getBoundingClientRect()
+      return r.bottom <= cRect.top + 8 || r.top >= cRect.bottom - 8
+    })
+    if (!offscreen) return
+    offscreen.scrollIntoView({ block: 'center', behavior: 'smooth' })
+  }, [activeCluster])
 
   useEffect(() => {
     if (!alertId) { setAlert(null); return }
@@ -103,7 +117,7 @@ export function AlertDetailPanel({ alertId, onBack, onStatusChange }: AlertDetai
         </div>
       ) : (
         <>
-          <div className={cn('flex-1 overflow-y-auto min-h-0', detailTab !== 'chat' && 'px-3 py-3')}>
+          <div ref={scrollContainerRef} className={cn('flex-1 overflow-y-auto min-h-0', detailTab !== 'chat' && 'px-3 py-3')}>
             {detailTab === 'chat' ? (
               <ChatPanel />
             ) : detailTab === 'overview' ? (
@@ -138,9 +152,9 @@ export function AlertDetailPanel({ alertId, onBack, onStatusChange }: AlertDetai
                 <p className="text-sm leading-relaxed break-words mt-3">
                   <HighlightedText
                     text={alert.anchorText}
-                    entities={allEntities}
-                    activeEntity={activeEntity}
-                    onEntityClick={e => setActiveEntity(activeEntity === e ? null : e)}
+                    entities={alert.anchorEntities ?? []}
+                    activeCluster={activeCluster}
+                    onClusterClick={toggleCluster}
                   />
                 </p>
 
@@ -176,12 +190,18 @@ export function AlertDetailPanel({ alertId, onBack, onStatusChange }: AlertDetai
                         ) : (
                           <p className="text-sm font-medium break-words line-clamp-2 pr-16">{connTitle}</p>
                         )}
-                        <div className="flex items-center gap-1.5 mt-0.5">
-                          <a href={`https://reddit.com/u/${conn.author}`} target="_blank" rel="noopener noreferrer" className="text-[11px] text-muted-foreground hover:text-foreground">
+                        <div className="flex items-center gap-1 mt-0.5 text-[11px] text-muted-foreground">
+                          <a href={`https://reddit.com/u/${conn.author}`} target="_blank" rel="noopener noreferrer" className="hover:text-foreground">
                             u/{conn.author}
                           </a>
+                          {conn.createdAt > 0 && (
+                            <>
+                              <span>·</span>
+                              <span>{formatRelativeTime(conn.createdAt)}</span>
+                            </>
+                          )}
                           {conn.sameAuthor && (
-                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400 font-medium">
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400 font-medium ml-1">
                               same author
                             </span>
                           )}
@@ -190,8 +210,8 @@ export function AlertDetailPanel({ alertId, onBack, onStatusChange }: AlertDetai
                           <HighlightedText
                             text={conn.text}
                             entities={conn.entities}
-                            activeEntity={activeEntity}
-                            onEntityClick={e => setActiveEntity(activeEntity === e ? null : e)}
+                            activeCluster={activeCluster}
+                            onClusterClick={toggleCluster}
                           />
                         </p>
                         {conn.reasoning && (

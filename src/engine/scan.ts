@@ -1,6 +1,6 @@
 import type { KVStore } from './storage/interface.js'
 import type { AlertStore } from './storage/alert-store.js'
-import type { Item, Alert, AlertConnection } from './types.js'
+import type { Item, Alert, AlertConnection, AlertEntity } from './types.js'
 import type { ClassificationResult } from './classify.js'
 import { cosine, dequantize } from './embed.js'
 import { stringSimilarity } from './search.js'
@@ -42,7 +42,7 @@ type EntityEntry = { itemId: string; surfaceText: string; embedding: number[]; t
 export type ScanPair = {
   anchorId: string
   connectionIds: string[]
-  entities: string[]
+  entitiesByItem: Map<string, AlertEntity[]>
 }
 
 function entityMatch(type: string, aSurface: string, aEmb: number[], bSurface: string, bEmb: number[]): number {
@@ -70,7 +70,12 @@ function rrfRank<T>(arr: T[], keyOf: (t: T) => string, metric: (t: T) => number)
   return m
 }
 
-type EntityCluster = { leader: EntityEntry; itemIds: Set<string>; type: string }
+type EntityCluster = {
+  leader: EntityEntry
+  itemIds: Set<string>
+  members: Array<{ itemId: string; surfaceText: string }>
+  type: string
+}
 
 // A merged component is the connected component of clusters in the bipartite
 // (item × cluster) graph — sub-clusters that share at least one item.
@@ -192,11 +197,17 @@ export async function buildScanPairs(store: KVStore): Promise<ScanPair[]> {
       if (cluster.leader.type !== entry.type) continue
       if (entityMatch(entry.type, entry.surfaceText, entry.embedding, cluster.leader.surfaceText, cluster.leader.embedding) > 0) {
         cluster.itemIds.add(entry.itemId)
+        cluster.members.push({ itemId: entry.itemId, surfaceText: entry.surfaceText })
         assigned = true
         break
       }
     }
-    if (!assigned) entityClusters.push({ leader: entry, itemIds: new Set([entry.itemId]), type: entry.type })
+    if (!assigned) entityClusters.push({
+      leader: entry,
+      itemIds: new Set([entry.itemId]),
+      members: [{ itemId: entry.itemId, surfaceText: entry.surfaceText }],
+      type: entry.type,
+    })
   }
 
   // 3) Filter hub entity clusters: drop singletons and any entity cluster whose
@@ -376,11 +387,37 @@ export async function buildScanPairs(store: KVStore): Promise<ScanPair[]> {
     if (fresh.length < 2) continue
     const anchorId = fresh[0]
     const connectionIds = fresh.slice(1)
-    pairs.push({
-      anchorId,
-      connectionIds,
-      entities: c.component.subClusters.map(s => `${s.type}:${s.leader.surfaceText}`),
-    })
+
+    // Highlights only span bridging clusters — those holding the anchor AND
+    // at least one connection. The purpose of a highlight is to explain why
+    // this connection is linked to the anchor, so cross-connection overlaps
+    // that never touch the anchor are intentionally not shown. clusterId is
+    // shared across anchor and connection members so embedding-similar
+    // phrasings ("Subaru Outback" / "dark green Subaru") light up together.
+    const connSet = new Set(connectionIds)
+    const entitiesByItem = new Map<string, AlertEntity[]>()
+    const seenPerItem = new Map<string, Set<string>>()
+    for (const sub of c.component.subClusters) {
+      if (!sub.itemIds.has(anchorId)) continue
+      let hasConn = false
+      for (const id of sub.itemIds) if (connSet.has(id)) { hasConn = true; break }
+      if (!hasConn) continue
+
+      const clusterId = `${sub.type}:${sub.leader.surfaceText}`
+      for (const m of sub.members) {
+        if (m.itemId !== anchorId && !connSet.has(m.itemId)) continue
+        const key = `${clusterId} ${m.surfaceText}`
+        const seen = seenPerItem.get(m.itemId) ?? new Set<string>()
+        if (seen.has(key)) continue
+        seen.add(key)
+        seenPerItem.set(m.itemId, seen)
+        const list = entitiesByItem.get(m.itemId) ?? []
+        list.push({ text: m.surfaceText, clusterId })
+        entitiesByItem.set(m.itemId, list)
+      }
+    }
+
+    pairs.push({ anchorId, connectionIds, entitiesByItem })
     used.add(anchorId)
     for (const id of connectionIds) used.add(id)
   }
@@ -422,6 +459,14 @@ export async function classifyAndCreateAlerts(
 
     const classifications = await classifyBatch(anchor, newCandidates)
 
+    // Body-presence filter: drop entity entries whose surface text isn't in
+    // the body we'll actually render. Extraction reads `title + body` so a
+    // title-only entity has nowhere to highlight on the rendered pane.
+    const inBody = (needle: string, text: string) =>
+      text.toLowerCase().includes(needle.toLowerCase())
+    const filterByBody = (es: AlertEntity[], text: string) =>
+      es.filter(e => inBody(e.text, text))
+
     const connections: AlertConnection[] = []
     for (const cls of classifications) {
       if (cls.relationship === 'UNRELATED') continue
@@ -437,12 +482,20 @@ export async function classifyAndCreateAlerts(
         permalink: buildPermalink(item, subredditName),
         classification: cls.relationship.toLowerCase() as AlertConnection['classification'],
         confidence: cls.confidence ?? 'review',
-        entities: pair.entities.map(e => e.split(':').slice(1).join(':')),
+        entities: filterByBody(pair.entitiesByItem.get(item.id) ?? [], item.text),
         reasoning: cls.reason,
+        createdAt: item.createdAt,
       })
     }
 
     if (connections.length === 0) continue
+
+    // Only emit anchor entities that have a counterpart in some kept connection,
+    // and that appear in the anchor body.
+    const keptClusters = new Set<string>()
+    for (const c of connections) for (const e of c.entities) keptClusters.add(e.clusterId)
+    const anchorEntities = filterByBody(pair.entitiesByItem.get(anchor.id) ?? [], anchor.text)
+      .filter(e => keptClusters.has(e.clusterId))
 
     const alert: Alert = {
       id: generateAlertId(),
@@ -457,6 +510,7 @@ export async function classifyAndCreateAlerts(
       anchorTitle: anchor.title,
       anchorText: anchor.text,
       anchorPermalink: buildPermalink(anchor, subredditName),
+      anchorEntities,
     }
 
     await alertStore.createAlert(alert, connections)

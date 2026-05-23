@@ -171,7 +171,9 @@ export function Dashboard() {
           )}
         </span>
         <div className="flex-1 min-w-0">
-          <div className="text-sm truncate">{alert.anchorText.slice(0, 80)}</div>
+          <div className="text-sm truncate">
+            {(alert.anchorType === 'post' && alert.anchorTitle) ? alert.anchorTitle : alert.anchorText.slice(0, 80)}
+          </div>
           <div className="text-xs text-muted-foreground truncate mt-0.5 flex items-center gap-1">
             <span>{typeLabel}</span>
             <span>·</span>
@@ -187,7 +189,9 @@ export function Dashboard() {
 
   const renderItemRow = (item: ItemListItem) => (
     <div className="min-w-0">
-      <div className="text-sm truncate">{item.text.slice(0, 100)}</div>
+      <div className="text-sm truncate">
+        {(item.type === 'post' && item.title) ? item.title : item.text.slice(0, 100)}
+      </div>
       <div className="text-xs text-muted-foreground truncate mt-0.5">
         {item.type} · u/{item.authorName} · {formatRelativeTime(item.createdAt)}
       </div>

@@ -94,6 +94,11 @@ export type AlertStatus = 'pending' | 'resolved' | 'dismissed'
 export type AlertConfidence = 'high' | 'review'
 export type FlagType = 'rule' | 'pattern' | 'brigade' | 'contradiction'
 
+export type AlertEntity = {
+  text: string
+  clusterId: string
+}
+
 export type Alert = {
   id: string
   mode: AlertMode
@@ -107,6 +112,7 @@ export type Alert = {
   anchorTitle?: string
   anchorText: string
   anchorPermalink: string
+  anchorEntities: AlertEntity[]
   reasoning?: string
   flagType?: FlagType
 }
@@ -120,8 +126,9 @@ export type AlertConnection = {
   permalink: string
   classification: 'confirms' | 'updates' | 'temporal' | 'contradicts'
   confidence: 'high' | 'review'
-  entities: string[]
+  entities: AlertEntity[]
   reasoning: string
+  createdAt: number
   sameAuthor?: boolean
 }
 

@@ -140,7 +140,10 @@ async function main() {
       console.log(`  #${i + 1}  anchor=${pairs[i].anchorId}  connections=${pairs[i].connectionIds.length}  signal=${signalCount}${tag}`)
       if (signalCount >= 2 || i < 3) {
         console.log(`         members: ${groupIds.slice(0, 8).map(id => `${id}${role(id) ? `[${role(id)}]` : ''}`).join(', ')}${groupIds.length > 8 ? '...' : ''}`)
-        console.log(`         via: ${pairs[i].entities.slice(0, 5).join(', ')}${pairs[i].entities.length > 5 ? '...' : ''}`)
+        const allClusters = [...new Set(
+          [...pairs[i].entitiesByItem.values()].flat().map(e => e.clusterId)
+        )]
+        console.log(`         via: ${allClusters.slice(0, 5).join(', ')}${allClusters.length > 5 ? '...' : ''}`)
       }
     }
   }
