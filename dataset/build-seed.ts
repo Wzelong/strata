@@ -165,13 +165,17 @@ async function main() {
     console.log(`  ${id} → removed`)
   }
 
-  // Step 6: Process live items FIRST so their entity embeddings end up in the seed.
-  // (Loaders pull entity embeddings from seed.json keyed by itemId — including for live items.)
-  console.log(`\nProcessing ${LIVE_ITEMS.length} live items...`)
+  // Step 6: Process LIVE items in a SEPARATE store. They must NOT end up in
+  // seed.json — "LIVE" means the user posts them at demo time. The separate
+  // store gives us their embeddings + entities for benchmark hydration via
+  // live-items.json, without polluting the seed.
+  console.log(`\nProcessing ${LIVE_ITEMS.length} live items (separate store, not in seed)...`)
+  const liveStore = new MemoryKVStore()
+  const liveEngine = new StrataEngine(liveStore, client, cost)
   const liveResults: Array<{ id: string; textNormalized: string; embedding: number[]; entities: Entity[] }> = []
 
   for (const raw of LIVE_ITEMS) {
-    const item = await engine.ingest(raw)
+    const item = await liveEngine.ingest(raw)
     liveResults.push({ id: item.id, textNormalized: item.textNormalized, embedding: item.embedding, entities: item.entities })
     console.log(`  ${item.id}: ${item.entities.length} entities`)
   }
@@ -179,7 +183,8 @@ async function main() {
   writeFileSync(LIVE_OUTPUT, JSON.stringify({ items: liveResults }, null, 2))
   console.log(`  ${LIVE_OUTPUT}`)
 
-  // Step 7: Assemble seed.json with all items + all entity embeddings (including live items)
+  // Step 7: Assemble seed.json from the MAIN store (which has backfill + labeled
+  // case items + r/boston, but NOT LIVE_ITEMS).
   console.log('\nAssembling seed.json...')
   const allIds = await store.getItemIds()
   const seedItems: StoredItem[] = []
