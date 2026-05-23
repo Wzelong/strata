@@ -339,7 +339,7 @@ app.post('/internal/menu/load-rules', async (c) => {
 
   try {
     const engine = await getEngine()
-    const subredditRules = await reddit.getSubredditRules(subredditName)
+    const subredditRules = await reddit.getRules(subredditName)
 
     if (!subredditRules || subredditRules.length === 0) {
       return c.json<UiResponse>({ showToast: 'No rules found for this subreddit.' })
@@ -721,7 +721,7 @@ app.post('/internal/forms/ingest-confirm', async (c) => {
     // Load subreddit rules for flag detection
     try {
       const engine = await getEngine()
-      const subredditRules = await reddit.getSubredditRules(context.subredditName)
+      const subredditRules = await reddit.getRules(context.subredditName)
       if (subredditRules && subredditRules.length > 0) {
         const ruleInputs = subredditRules.map((rule: any, i: number) => ({
           id: `rule-${i + 1}`,
