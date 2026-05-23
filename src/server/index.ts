@@ -501,6 +501,153 @@ app.post('/internal/forms/seed-results', async (c) => {
   }
 })
 
+// Mock alerts — drops 5 sample alerts (1 surface + 4 flag types) into Redis
+// so UI work doesn't require triggering anything live. Idempotent: each click
+// creates a fresh batch with new IDs and current timestamps.
+app.post('/internal/menu/mock-alerts', async (c) => {
+  if (!context.subredditName) return c.json<UiResponse>({ showToast: 'No subreddit context.' })
+  const sub = context.subredditName
+  const now = Date.now()
+  const stub = (id: string, sub: string) => `https://reddit.com/r/${sub}/comments/${id.replace(/^t[13]_/, '')}`
+
+  // SURFACE: case post with 4 buried witnesses + 1 case-thread comment
+  const surfaceConnections: AlertConnection[] = [
+    { itemId: 't1_strata_surface1', author: 'ThursdayCommuter', type: 'comment',
+      title: 'Cambridge bike commute - daily thread',
+      text: 'Almost ate it this morning at the Mass Ave / Prospect light — dark green Subaru wagon came flying through the red heading east. Plate started with a K, that\'s all I caught before he was gone.',
+      permalink: stub('t1_strata_surface1', sub),
+      classification: 'updates', confidence: 'high',
+      entities: ['dark green Subaru wagon', 'Mass Ave / Prospect light'],
+      reasoning: 'Same vehicle description (dark green Subaru wagon) and same intersection (Mass Ave / Prospect) running the red light. Plate starts with K, consistent with the case post\'s partial plate ending in -K77.', sameAuthor: false },
+    { itemId: 't3_strata_surface2', author: 'DashcamDave_617', type: 'comment',
+      title: 'Cambridge PD black hole - anyone actually had a detective call back?',
+      text: 'Submitted my dashcam clip to case #2026-04891 close to three weeks ago. Detective on the desk said "we\'ll be in touch within 48 hours" and that was the last contact.',
+      permalink: stub('t3_strata_surface2', sub),
+      classification: 'updates', confidence: 'high',
+      entities: ['case #2026-04891', 'Cambridge PD'],
+      reasoning: 'Directly references the same Cambridge PD case number and reports submitting dashcam footage — actionable evidence the case post is asking for.', sameAuthor: false },
+    { itemId: 't1_strata_surface3', author: 'CambridgeSide_Resident', type: 'comment',
+      title: 'Cambridgeside garage parking complaints',
+      text: 'Whoever\'s parking a dark green Subaru wagon in P3 — your friend clipped my side mirror last Tuesday around 5:30 and just bounced. Partial plate ended in -K77 if anyone has dashcam from P3.',
+      permalink: stub('t1_strata_surface3', sub),
+      classification: 'updates', confidence: 'high',
+      entities: ['partial plate -K77', 'dark green Subaru wagon', 'P3'],
+      reasoning: 'Partial plate -K77 matches the case post exactly. Same vehicle description. Same time of day (Tuesday around 5:30) as the cyclist incident. Possibly the same driver leaving the scene of a second hit.', sameAuthor: false },
+    { itemId: 't3_strata_surface4', author: 'InmanSq_Walker', type: 'post',
+      title: 'Tuesday around 5:30 near Central — what was that crash?',
+      text: 'Was walking down to dinner Tuesday evening and heard a real bad bang from up the street, then someone screaming. By the time I got close it had already cleared out — cops weren\'t there yet. Kept walking like a coward.',
+      permalink: stub('t3_strata_surface4', sub),
+      classification: 'confirms', confidence: 'review',
+      entities: ['Central', 'Tuesday around 5:30'],
+      reasoning: 'Earwitness near Central at the same time as the reported incident. No vehicle or victim details, but the audio narrative (loud bang + screaming) and timing line up.', sameAuthor: false },
+  ]
+  const surfaceAlert: Alert = {
+    id: generateAlertId(), mode: 'surface', status: 'pending',
+    confidence: 'high', connectionCount: surfaceConnections.length, createdAt: now,
+    anchorId: 't3_strata_casepost', anchorAuthor: 'SarahsRoommate2026', anchorType: 'post',
+    anchorTitle: 'My roommate was hit Tuesday on Mass Ave & Prospect — driver fled — case #2026-04891',
+    anchorText: 'Posting on behalf of my roommate Sarah. She was riding home on Mass Ave near the Prospect St intersection in Central around 5:30pm Tuesday when a driver ran the light, hit her, and took off. She\'s at MGH — broken pelvis, broken collarbone, internal bleeding. Stable but it\'s bad.\n\nCambridge PD opened it as case #2026-04891. They have a partial plate ending in -K77 but it isn\'t enough on its own.',
+    anchorPermalink: stub('t3_strata_casepost', sub),
+  }
+  await alertStore.createAlert(surfaceAlert, surfaceConnections)
+
+  // FLAG: pattern match — flag4 against removed flag3a/b/c
+  const patternConnections: AlertConnection[] = [
+    { itemId: 't3_strata_flag3a', author: 'BeaconStWatcher', type: 'post',
+      title: 'PSA: silver Honda running reds on Beacon St',
+      text: 'I don\'t have the plate but someone needs to stop this guy before he kills someone.',
+      permalink: stub('t3_strata_flag3a', sub),
+      classification: 'confirms', confidence: 'high', entities: [], reasoning: 'Similarity to removed item', sameAuthor: false },
+    { itemId: 't3_strata_flag3b', author: 'CambStConcerned', type: 'post',
+      title: 'Suspicious white pickup on Cambridge St every night',
+      text: 'There\'s a white pickup that parks illegally on Cambridge St every night and I\'m pretty sure the driver is dealing.',
+      permalink: stub('t3_strata_flag3b', sub),
+      classification: 'confirms', confidence: 'high', entities: [], reasoning: 'Similarity to removed item', sameAuthor: false },
+    { itemId: 't3_strata_flag3c', author: 'AllstonAlert88', type: 'post',
+      title: 'Blue minivan circling my block in Allston — casing?',
+      text: 'I\'ve seen it 4 days in a row now just slowly driving past. This has to be casing houses right?',
+      permalink: stub('t3_strata_flag3c', sub),
+      classification: 'confirms', confidence: 'high', entities: [], reasoning: 'Similarity to removed item', sameAuthor: false },
+  ]
+  const patternAlert: Alert = {
+    id: generateAlertId(), mode: 'flag', status: 'pending',
+    confidence: 'review', connectionCount: patternConnections.length, createdAt: now - 60_000,
+    anchorId: 't3_strata_flag4', anchorAuthor: 'MassAveSafety', anchorType: 'post',
+    anchorTitle: 'WARNING: dark green SUV running reds on Mass Ave near Central',
+    anchorText: 'There\'s a dark green SUV that\'s been seen blowing through red lights on Mass Ave near Central multiple times. I\'ve personally witnessed it twice. Someone is going to get seriously hurt. Can the mods pin this?',
+    anchorPermalink: stub('t3_strata_flag4', sub),
+    reasoning: 'Matches pattern of previously removed witch-hunt posts (vague vehicle description, no plate, no police case, asking the community to identify a driver).',
+    flagType: 'pattern',
+  }
+  await alertStore.createAlert(patternAlert, patternConnections)
+
+  // FLAG: brigade — brigade2 with 3 other defenders within 4h
+  const brigadeConnections: AlertConnection[] = [
+    { itemId: 't1_strata_brigade1', author: 'BostonDriver2026_1', type: 'comment',
+      title: 'My roommate was hit Tuesday on Mass Ave & Prospect — driver fled — case #2026-04891',
+      text: 'This is getting out of hand. I know the owner of that car and he\'s a good dude who works two jobs. You people are ready to ruin someone\'s life over a description that could match hundreds of green SUVs.',
+      permalink: stub('t1_strata_brigade1', sub),
+      classification: 'confirms', confidence: 'review', entities: [], reasoning: '', sameAuthor: false },
+    { itemId: 't1_strata_brigade3', author: 'BostonDriver2026_3', type: 'comment',
+      title: 'My roommate was hit Tuesday on Mass Ave & Prospect — driver fled — case #2026-04891',
+      text: 'I drive past Cambridgeside garage every day and there\'s no damaged Subaru there. That commenter is either lying or confused.',
+      permalink: stub('t1_strata_brigade3', sub),
+      classification: 'confirms', confidence: 'review', entities: [], reasoning: '', sameAuthor: false },
+    { itemId: 't1_strata_brigade4', author: 'BostonDriver2026_4', type: 'comment',
+      title: 'My roommate was hit Tuesday on Mass Ave & Prospect — driver fled — case #2026-04891',
+      text: 'Has anyone verified this story is even real? No news articles, no police confirmation, just an anonymous Reddit post.',
+      permalink: stub('t1_strata_brigade4', sub),
+      classification: 'confirms', confidence: 'review', entities: [], reasoning: '', sameAuthor: false },
+  ]
+  const brigadeAlert: Alert = {
+    id: generateAlertId(), mode: 'flag', status: 'pending',
+    confidence: 'high', connectionCount: brigadeConnections.length, createdAt: now - 2 * 60_000,
+    anchorId: 't1_strata_brigade2', anchorAuthor: 'BostonDriver2026_2', anchorType: 'comment',
+    anchorTitle: 'My roommate was hit Tuesday on Mass Ave & Prospect — driver fled — case #2026-04891',
+    anchorText: 'Classic Reddit mob mentality. A "green Subaru" — do you know how many of those exist in the Boston area? My neighbor has one. Are we going to harass every Subaru owner in Cambridge now?',
+    anchorPermalink: stub('t1_strata_brigade2', sub),
+    reasoning: '4 distinct authors, 4 comments within a 2-hour window, semantic uniformity 0.62, density 1.00 — coordinated defensive messaging.',
+    flagType: 'brigade',
+  }
+  await alertStore.createAlert(brigadeAlert, brigadeConnections)
+
+  // FLAG: contradiction — flag2b vs flag2a (same author across two weeks)
+  const contradictionConnections: AlertConnection[] = [
+    { itemId: 't1_strata_flag2a', author: 'TKfromCambridge', type: 'comment',
+      title: 'Best bars near Lechmere?',
+      text: 'I live right above the Cambridgeside garage — can vouch for Night Shift. My roommate and I always hit it Tuesdays after his shift ends around 7. He drives, I drink, nobody gets a DUI lol. We park P3, always plenty of space evenings.',
+      permalink: stub('t1_strata_flag2a', sub),
+      classification: 'contradicts', confidence: 'high', entities: [],
+      reasoning: 'Prior post by same author (April 25): says roommate drives every Tuesday and they park at P3 Cambridgeside.', sameAuthor: true },
+  ]
+  const contradictionAlert: Alert = {
+    id: generateAlertId(), mode: 'flag', status: 'pending',
+    confidence: 'high', connectionCount: contradictionConnections.length, createdAt: now - 3 * 60_000,
+    anchorId: 't1_strata_flag2b', anchorAuthor: 'TKfromCambridge', anchorType: 'comment',
+    anchorTitle: 'My roommate was hit Tuesday on Mass Ave & Prospect — driver fled — case #2026-04891',
+    anchorText: 'I live near Cambridgeside and my roommate was home with me Tuesday night. He doesn\'t even drive to work anymore, he takes the Green Line.',
+    anchorPermalink: stub('t1_strata_flag2b', sub),
+    reasoning: 'Same author (TKfromCambridge) posted contradictory statement on 2026-04-25: previously said roommate drives Tuesdays + parks P3 Cambridgeside; now claims roommate doesn\'t drive and was home Tuesday.',
+    flagType: 'contradiction',
+  }
+  await alertStore.createAlert(contradictionAlert, contradictionConnections)
+
+  // FLAG: rule violation — doxxing example, no connections
+  const ruleAlert: Alert = {
+    id: generateAlertId(), mode: 'flag', status: 'pending',
+    confidence: 'high', connectionCount: 0, createdAt: now - 4 * 60_000,
+    anchorId: 't3_mock_rule_violation', anchorAuthor: 'AngryAtNeighborhood', anchorType: 'post',
+    anchorTitle: 'PSA about that person from the neighborhood meeting',
+    anchorText: 'That jerk from the neighborhood meeting is Sarah Johnson, 45 Maple Dr unit 2A, Cambridge MA 02139. Her cell is 617-555-0199. Somebody should give her a piece of their mind about what she said.',
+    anchorPermalink: stub('t3_mock_rule_violation', sub),
+    reasoning: 'Violates rule-1 (No doxxing): post shares a private individual\'s full name, home address, and phone number. Also rule-3 (Be civil): hostile framing inviting retaliation.',
+    flagType: 'rule',
+  }
+  await alertStore.createAlert(ruleAlert, [])
+
+  return c.json<UiResponse>({ showToast: { text: 'Inserted 5 mock alerts (1 surface + 4 flag types).', appearance: 'success' } })
+})
+
 app.post('/internal/menu/surface', async (c) => {
   const request = await c.req.json<MenuItemRequest>()
   const postId = context.postId || request.targetId

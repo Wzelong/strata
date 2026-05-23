@@ -94,6 +94,13 @@
         "location": "subreddit",
         "forUserType": "moderator",
         "endpoint": "/internal/menu/scan"
+      },
+      {
+        "label": "Strata: Mock Alerts",
+        "description": "Insert 5 sample alerts (1 surface + 4 flag types) for UI work",
+        "location": "subreddit",
+        "forUserType": "moderator",
+        "endpoint": "/internal/menu/mock-alerts"
       }
     ]
   },
