@@ -14,8 +14,9 @@ import {
   parseEmbeddingResults, parseExtractionResults, storeResults,
 } from '../engine/batch-ingest.js'
 import { buildScanPairs, classifyAndCreateAlerts, type ScanPair } from '../engine/scan.js'
-import { SEED_DATA_B64 } from './seed-data.js'
 import { gunzipSync } from 'node:zlib'
+
+const SEED_URL = 'https://raw.githubusercontent.com/Wzelong/strata/main/dataset/seed.json.gz'
 
 const app = new Hono()
 
@@ -491,8 +492,10 @@ app.post('/internal/forms/seed-results', async (c) => {
     for (const key of keys) {
       await redis.del(key)
     }
-    console.log('[Strata] Reset complete, decompressing bundled seed data...')
-    const compressed = Buffer.from(SEED_DATA_B64, 'base64')
+    console.log('[Strata] Reset complete, fetching seed from GitHub...')
+    const resp = await fetch(SEED_URL)
+    if (!resp.ok) throw new Error(`Seed fetch failed: ${resp.status}`)
+    const compressed = Buffer.from(await resp.arrayBuffer())
     const json = gunzipSync(compressed).toString('utf8')
     const seed = JSON.parse(json) as {
       items: StoredItem[]
