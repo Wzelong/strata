@@ -7,7 +7,6 @@ import OpenAI from 'openai'
 import { StrataEngine, MemoryKVStore } from '../src/engine/index.js'
 import type { RawItem, StoredItem, Entity, CostTracker } from '../src/engine/types.js'
 import { BACKFILL_ITEMS, LIVE_ITEMS, REMOVED_ITEMS } from './signal-items.js'
-import { LABELED_CASE_ITEMS } from './labeled-cases.js'
 
 if (!process.env.OPENAI_API_KEY) throw new Error('Set OPENAI_API_KEY')
 
@@ -138,12 +137,6 @@ async function main() {
   // Step 4: Ingest backfill signal items + labeled-case items
   console.log(`\nIngesting ${BACKFILL_ITEMS.length} signal items...`)
   for (const raw of BACKFILL_ITEMS) {
-    const item = await engine.ingest(raw)
-    console.log(`  ${item.id}: ${item.entities.length} entities`)
-  }
-
-  console.log(`\nIngesting ${LABELED_CASE_ITEMS.length} labeled-case items (case-thread + buried witnesses + decoys)...`)
-  for (const raw of LABELED_CASE_ITEMS) {
     const item = await engine.ingest(raw)
     console.log(`  ${item.id}: ${item.entities.length} entities`)
   }

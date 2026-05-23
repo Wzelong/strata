@@ -12,7 +12,6 @@ import OpenAI from 'openai'
 import { StrataEngine, MemoryKVStore } from '../src/engine/index.js'
 import type { StoredItem, Entity, CostTracker } from '../src/engine/types.js'
 import { BACKFILL_ITEMS, LIVE_ITEMS, REMOVED_ITEMS } from './signal-items.js'
-import { LABELED_CASE_ITEMS } from './labeled-cases.js'
 
 if (!process.env.OPENAI_API_KEY) throw new Error('Set OPENAI_API_KEY')
 
@@ -91,11 +90,6 @@ async function main() {
   for (const raw of BACKFILL_ITEMS) {
     const item = await engine.ingest(raw)
     console.log(`  ${item.id}: ${item.entities.length} entities`)
-  }
-
-  console.log(`\nIngesting ${LABELED_CASE_ITEMS.length} case-thread items...`)
-  for (const raw of LABELED_CASE_ITEMS) {
-    await engine.ingest(raw)
   }
 
   // Mark FLAG-3 removed
