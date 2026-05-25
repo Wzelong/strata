@@ -27,6 +27,14 @@ export type Item = {
   decisionAt: number | null
   decisionBy: string | null
   decisionReason: string | null
+  position3d?: [number, number, number]
+  clusterId?: number
+}
+
+export type LayoutCluster = {
+  id: number
+  label: string
+  size: number
 }
 
 export type RawItem = {

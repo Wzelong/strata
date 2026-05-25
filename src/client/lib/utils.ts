@@ -2,6 +2,11 @@ export function cn(...classes: (string | boolean | undefined | null)[]): string 
   return classes.filter(Boolean).join(' ')
 }
 
+const compactFormatter = new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 })
+export function compactCount(n: number): string {
+  return compactFormatter.format(n).toLowerCase()
+}
+
 export function formatRelativeTime(timestamp: number): string {
   const diff = Date.now() - timestamp
   const seconds = Math.floor(diff / 1000)

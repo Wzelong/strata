@@ -1,22 +1,31 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
-import { Bell, Database, Stamp, Ban, Check, X, Waypoints } from 'lucide-react'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
+import { Bell, Hash, PenTool, Stamp, Ban, Check, X, Waypoints } from 'lucide-react'
 import { DataList, type FilterConfig } from './data-list'
 import { AlertDetailPanel } from './alert-detail'
 import { ChatPanel } from './chat-panel'
-import { fetchAlerts, fetchItems, alertAction, type AlertListItem, type ItemListItem } from '../lib/api'
-import { cn, formatRelativeTime } from '../lib/utils'
+import { fetchAlerts, fetchItems, fetchClusters, alertAction, type AlertListItem, type ItemListItem, type ClusterListItem } from '../lib/api'
+import { buildClusterColorMap } from '../lib/graph-utils'
+import { useTheme } from '../hooks/use-theme'
+import { cn, formatRelativeTime, compactCount } from '../lib/utils'
 
-type Tab = 'alerts' | 'items'
+type Tab = 'alerts' | 'items' | 'clusters'
 type ContentView = 'list' | 'detail'
 
 const PAGE_SIZE = 50
 
 export function Dashboard() {
+  const { theme } = useTheme()
+  const isDark = theme === 'dark'
   const [tab, setTab] = useState<Tab>('alerts')
   const [contentView, setContentView] = useState<ContentView>('list')
   const [alerts, setAlerts] = useState<AlertListItem[]>([])
   const [alertsLoading, setAlertsLoading] = useState(true)
   const [selectedAlertId, setSelectedAlertId] = useState<string | null>(null)
+  const [selectedItemId, setSelectedItemId] = useState<string | null>(null)
+  const [selectedClusterId, setSelectedClusterId] = useState<string | null>(null)
+
+  const [clusters, setClusters] = useState<ClusterListItem[]>([])
+  const [clustersLoading, setClustersLoading] = useState(false)
 
   // Items — infinite scroll state
   const [items, setItems] = useState<ItemListItem[]>([])
@@ -29,7 +38,6 @@ export function Dashboard() {
   // Filters
   const [statusFilter, setStatusFilter] = useState<string | null>(null)
   const [confidenceFilter, setConfidenceFilter] = useState<string | null>(null)
-  const [typeFilter, setTypeFilter] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
 
@@ -61,7 +69,7 @@ export function Dashboard() {
       const page = await fetchItems({
         limit: PAGE_SIZE,
         cursor: cursor ?? undefined,
-        type: typeFilter || undefined,
+        type: 'post',
         search: search || undefined,
       })
       if (reset) {
@@ -78,13 +86,31 @@ export function Dashboard() {
 
     setItemsLoading(false)
     setItemsFetchingMore(false)
-  }, [typeFilter, search])
+  }, [search])
 
   useEffect(() => { loadAlerts() }, [loadAlerts])
 
+  const loadClusters = useCallback(async () => {
+    setClustersLoading(true)
+    try {
+      setClusters(await fetchClusters())
+    } catch { setClusters([]) }
+    setClustersLoading(false)
+  }, [])
+
+  useEffect(() => {
+    if (tab === 'clusters') loadClusters()
+  }, [tab, loadClusters])
+
   useEffect(() => {
     if (tab === 'items') loadItemsPage(undefined, true)
-  }, [tab, typeFilter])
+  }, [tab])
+
+  useEffect(() => {
+    if (tab !== 'items' || !selectedItemId) return
+    if (items.some(i => i.id === selectedItemId)) return
+    if (itemsHasMore && !itemsFetchingMore && itemsCursor) loadItemsPage(itemsCursor, false)
+  }, [selectedItemId, items, itemsHasMore, itemsFetchingMore, itemsCursor, tab, loadItemsPage])
 
   // Debounced search for items
   useEffect(() => {
@@ -138,17 +164,7 @@ export function Dashboard() {
     },
   ]
 
-  const itemFilters: FilterConfig[] = [
-    {
-      label: 'Type',
-      value: typeFilter,
-      options: [
-        { value: 'post', label: 'Post' },
-        { value: 'comment', label: 'Comment' },
-      ],
-      onChange: v => setTypeFilter(v || null),
-    },
-  ]
+  const itemFilters: FilterConfig[] = []
 
   const renderAlertItem = (alert: AlertListItem) => {
     const reviewed = alert.status === 'resolved' || alert.status === 'dismissed'
@@ -190,13 +206,55 @@ export function Dashboard() {
   const renderItemRow = (item: ItemListItem) => (
     <div className="min-w-0">
       <div className="text-sm truncate">
-        {(item.type === 'post' && item.title) ? item.title : item.text.slice(0, 100)}
+        {item.title || item.text.slice(0, 100)}
       </div>
       <div className="text-xs text-muted-foreground truncate mt-0.5">
-        {item.type} · u/{item.authorName} · {formatRelativeTime(item.createdAt)}
+        u/{item.authorName} · {formatRelativeTime(item.createdAt)} · {compactCount(item.commentCount ?? 0)} comments
       </div>
     </div>
   )
+
+  const clusterColors = useMemo(() => {
+    const pseudoNodes = clusters
+      .filter(c => !c.isOrphan)
+      .map(c => ({ cluster_label: c.label } as never))
+    return buildClusterColorMap(pseudoNodes, isDark)
+  }, [clusters, isDark])
+
+  const orphanDotColor = isDark ? '#94a3b8' : '#64748b'
+
+  const renderClusterRow = (cluster: ClusterListItem) => {
+    const color = cluster.isOrphan ? orphanDotColor : clusterColors.get(cluster.label) ?? orphanDotColor
+    return (
+      <div className="flex items-start gap-1.5 min-w-0">
+        <span className="size-3 shrink-0 inline-flex items-center justify-center mt-[5px]">
+          <span className="size-1.5 rounded-full" style={{ background: color }} />
+        </span>
+        <div className="flex-1 min-w-0">
+          <div className="text-sm truncate">{cluster.label}</div>
+          <div className="text-xs text-muted-foreground truncate mt-0.5">
+            {compactCount(cluster.postCount)} posts · {compactCount(cluster.commentCount)} comments
+            {cluster.recentCount > 0 && ` · ${compactCount(cluster.recentCount)} in 24h`}
+            {cluster.lastActivity > 0 && ` · ${formatRelativeTime(cluster.lastActivity)}`}
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  const sharedTabs = [
+    { label: 'Alerts', value: 'alerts', icon: <Bell className="size-3.5" /> },
+    { label: 'Posts', value: 'items', icon: <PenTool className="size-3.5" /> },
+    { label: 'Topics', value: 'clusters', icon: <Hash className="size-3.5" /> },
+  ]
+
+  const switchTab = (t: string) => {
+    setTab(t as Tab)
+    setSelectedAlertId(null)
+    setSelectedItemId(null)
+    setSelectedClusterId(null)
+    setContentView('list')
+  }
 
   const hasDetail = tab === 'alerts' && selectedAlertId
 
@@ -204,7 +262,7 @@ export function Dashboard() {
     <div className="flex h-full">
       {/* Left panel — list */}
       <div className={cn(
-        'shrink-0 lg:w-[280px] flex-1 lg:flex-none border-r flex-col h-full min-h-0 overflow-hidden',
+        'shrink-0 lg:w-[280px] flex-1 lg:flex-none border-r flex-col h-full min-h-0 relative',
         contentView !== 'list' ? 'hidden lg:flex' : 'flex',
       )}>
         {tab === 'alerts' ? (
@@ -213,16 +271,13 @@ export function Dashboard() {
             getItemId={a => a.id}
             renderItem={renderAlertItem}
             activeId={selectedAlertId ?? undefined}
-            onItemClick={a => { setSelectedAlertId(a.id); setContentView('detail') }}
+            onItemClick={a => { setSelectedAlertId(a.id); setSelectedItemId(null); setSelectedClusterId(null); setContentView('detail') }}
             isLoading={alertsLoading}
             emptyIcon={<Bell className="size-6 text-muted-foreground" />}
             emptyMessage={alertsLoading ? 'Loading alerts...' : 'No alerts yet'}
-            tabs={[
-              { label: 'Alerts', value: 'alerts', icon: <Bell className="size-3.5" /> },
-              { label: 'Items', value: 'items', icon: <Database className="size-3.5" /> },
-            ]}
+            tabs={sharedTabs}
             activeTab={tab}
-            onTabChange={t => { setTab(t as Tab); setSelectedAlertId(null); setContentView('list') }}
+            onTabChange={switchTab}
             filters={alertFilters}
             searchValue={search}
             onSearchChange={setSearch}
@@ -243,20 +298,19 @@ export function Dashboard() {
               { icon: <Ban className="size-3" />, onClick: handleBulkDismiss, ariaLabel: 'Dismiss selected' },
             ]}
           />
-        ) : (
+        ) : tab === 'items' ? (
           <DataList
             data={items}
             getItemId={i => i.id}
             renderItem={renderItemRow}
+            activeId={selectedItemId ?? undefined}
+            onItemClick={i => { setSelectedItemId(i.id); setSelectedAlertId(null); setSelectedClusterId(null); setContentView('detail') }}
             isLoading={itemsLoading}
-            emptyIcon={<Database className="size-6 text-muted-foreground" />}
+            emptyIcon={<PenTool className="size-6 text-muted-foreground" />}
             emptyMessage={itemsLoading ? 'Loading items...' : 'No items ingested'}
-            tabs={[
-              { label: 'Alerts', value: 'alerts', icon: <Bell className="size-3.5" /> },
-              { label: 'Items', value: 'items', icon: <Database className="size-3.5" /> },
-            ]}
+            tabs={sharedTabs}
             activeTab={tab}
-            onTabChange={t => { setTab(t as Tab); setSelectedAlertId(null); setContentView('list') }}
+            onTabChange={switchTab}
             filters={itemFilters}
             searchValue={search}
             onSearchChange={setSearch}
@@ -266,6 +320,24 @@ export function Dashboard() {
               fetchNextPage: fetchNextItemsPage,
               total: itemsTotal,
             }}
+            scrollToId={selectedItemId}
+          />
+        ) : (
+          <DataList
+            data={clusters}
+            getItemId={c => c.id}
+            renderItem={renderClusterRow}
+            activeId={selectedClusterId ?? undefined}
+            onItemClick={c => { setSelectedClusterId(c.id); setSelectedAlertId(null); setSelectedItemId(null); setContentView('detail') }}
+            isLoading={clustersLoading}
+            emptyIcon={<Hash className="size-6 text-muted-foreground" />}
+            emptyMessage={clustersLoading ? 'Loading topics...' : 'No topics'}
+            tabs={sharedTabs}
+            activeTab={tab}
+            onTabChange={switchTab}
+            filters={[]}
+            searchValue={search}
+            onSearchChange={setSearch}
           />
         )}
       </div>
@@ -277,8 +349,12 @@ export function Dashboard() {
       )}>
         <AlertDetailPanel
           alertId={selectedAlertId}
-          onBack={() => { setSelectedAlertId(null); setContentView('list') }}
+          itemId={selectedItemId}
+          clusterId={selectedClusterId}
+          listTab={tab}
+          onBack={() => { setSelectedAlertId(null); setSelectedItemId(null); setSelectedClusterId(null); setContentView('list') }}
           onStatusChange={loadAlerts}
+          onGraphNodeSelect={id => { setSelectedAlertId(null); setSelectedClusterId(null); setSelectedItemId(id); setTab('items'); setContentView('detail') }}
         />
       </div>
 

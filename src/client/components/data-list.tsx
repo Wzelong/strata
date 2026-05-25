@@ -55,6 +55,7 @@ interface DataListProps<T> {
   onClearSelection?: () => void
   bulkActions?: BulkAction[]
   infinite?: InfiniteConfig
+  scrollToId?: string | null
 }
 
 function LoadingBar({ active }: { active: boolean }) {
@@ -91,6 +92,7 @@ export function DataList<T>({
   onClearSelection,
   bulkActions = [],
   infinite,
+  scrollToId,
 }: DataListProps<T>) {
   const [searchOpen, setSearchOpen] = useState(false)
   const listRef = useRef<HTMLDivElement>(null)
@@ -119,6 +121,15 @@ export function DataList<T>({
     estimateSize: () => 56,
     overscan: 10,
   })
+
+  const lastClickedRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (!scrollToId) return
+    if (scrollToId === lastClickedRef.current) return
+    const idx = data.findIndex(d => getItemId(d) === scrollToId)
+    if (idx < 0) return
+    virtualizer.scrollToIndex(idx, { align: 'center' })
+  }, [scrollToId, data, virtualizer, getItemId])
 
   return (
     <div className="flex flex-col h-full">
@@ -271,7 +282,7 @@ export function DataList<T>({
                       onItemClick && 'cursor-pointer',
                     )}
                     style={{ transform: `translateY(${virtual.start}px)` }}
-                    onClick={() => onItemClick?.(item)}
+                    onClick={() => { lastClickedRef.current = id; onItemClick?.(item) }}
                   >
                     {onSelectOne && (
                       <Checkbox

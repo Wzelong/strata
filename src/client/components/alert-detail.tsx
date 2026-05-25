@@ -1,24 +1,60 @@
-import { useState, useEffect, useRef } from 'react'
-import { ArrowLeft, ClipboardList, Telescope, Sparkles } from 'lucide-react'
-import { fetchAlertDetail, alertAction, type AlertDetail } from '../lib/api'
+import { useState, useEffect, useRef, useMemo, lazy, Suspense } from 'react'
+import { ArrowLeft, ClipboardList, Telescope, Sparkles, ChevronDown, ChevronUp } from 'lucide-react'
+import { fetchAlertDetail, alertAction, fetchPostDetail, fetchClusterDetail, type AlertDetail, type PostDetail, type ClusterDetail } from '../lib/api'
+import { buildClusterColorMap } from '../lib/graph-utils'
+import { useTheme } from '../hooks/use-theme'
 import { ChatPanel } from './chat-panel'
 import { HighlightedText } from './highlighted-text'
-import { cn, formatRelativeTime } from '../lib/utils'
+import { cn, formatRelativeTime, compactCount } from '../lib/utils'
+
+const GraphCanvas = lazy(() => import('./graph/graph-canvas').then(m => ({ default: m.GraphCanvas })))
 import { Tooltip, TooltipTrigger, TooltipContent } from './ui/tooltip'
 
 type DetailTab = 'overview' | 'explore' | 'chat'
 
-interface AlertDetailPanelProps {
-  alertId: string | null
-  onBack: () => void
-  onStatusChange: () => void
+function EntityTags({ entities }: { entities: Array<{ text: string }> }) {
+  const tags: string[] = []
+  const seen = new Set<string>()
+  for (const e of entities) {
+    if (!e?.text) continue
+    const key = e.text.toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    tags.push(e.text)
+    if (tags.length >= 8) break
+  }
+  if (tags.length === 0) return null
+  return (
+    <div className="flex flex-wrap gap-1 mt-2">
+      {tags.map(t => (
+        <span key={t} className="text-[10px] text-muted-foreground bg-muted/50 px-1.5 py-0.5 rounded">
+          {t}
+        </span>
+      ))}
+    </div>
+  )
 }
 
-export function AlertDetailPanel({ alertId, onBack, onStatusChange }: AlertDetailPanelProps) {
+interface AlertDetailPanelProps {
+  alertId: string | null
+  itemId?: string | null
+  clusterId?: string | null
+  listTab?: 'alerts' | 'items' | 'clusters'
+  onBack: () => void
+  onStatusChange: () => void
+  onGraphNodeSelect?: (nodeId: string) => void
+}
+
+export function AlertDetailPanel({ alertId, itemId, clusterId, listTab, onBack, onStatusChange, onGraphNodeSelect }: AlertDetailPanelProps) {
+  const { theme } = useTheme()
+  const isDark = theme === 'dark'
   const [alert, setAlert] = useState<AlertDetail | null>(null)
-  const [loading, setLoading] = useState(false)
+  const [postDetail, setPostDetail] = useState<PostDetail | null>(null)
+  const [clusterDetail, setClusterDetail] = useState<ClusterDetail | null>(null)
+  const [expandedPostId, setExpandedPostId] = useState<string | null>(null)
+  const [threadCache, setThreadCache] = useState<Map<string, PostDetail>>(new Map())
   const [acting, setActing] = useState(false)
-  const [detailTab, setDetailTab] = useState<DetailTab>('overview')
+  const [detailTab, setDetailTab] = useState<DetailTab>('explore')
   const [activeCluster, setActiveCluster] = useState<string | null>(null)
   const scrollContainerRef = useRef<HTMLDivElement | null>(null)
 
@@ -46,9 +82,47 @@ export function AlertDetailPanel({ alertId, onBack, onStatusChange }: AlertDetai
 
   useEffect(() => {
     if (!alertId) { setAlert(null); return }
-    setLoading(true)
-    fetchAlertDetail(alertId).then(setAlert).finally(() => setLoading(false))
+    let cancelled = false
+    fetchAlertDetail(alertId).then(d => { if (!cancelled) setAlert(d) })
+    return () => { cancelled = true }
   }, [alertId])
+
+  useEffect(() => {
+    if (alertId || !itemId) { setPostDetail(null); return }
+    let cancelled = false
+    fetchPostDetail(itemId).then(d => { if (!cancelled && d) setPostDetail(d) })
+    return () => { cancelled = true }
+  }, [itemId, alertId])
+
+  useEffect(() => {
+    if (!clusterId) { setClusterDetail(null); return }
+    setExpandedPostId(null)
+    let cancelled = false
+    fetchClusterDetail(clusterId).then(d => { if (!cancelled && d) setClusterDetail(d) })
+    return () => { cancelled = true }
+  }, [clusterId])
+
+  useEffect(() => {
+    if (!expandedPostId) return
+    if (threadCache.has(expandedPostId)) return
+    let cancelled = false
+    fetchPostDetail(expandedPostId).then(d => {
+      if (cancelled || !d) return
+      setThreadCache(prev => {
+        const next = new Map(prev)
+        next.set(expandedPostId, d)
+        return next
+      })
+    })
+    return () => { cancelled = true }
+  }, [expandedPostId, threadCache])
+
+  const clusterDotColor = useMemo(() => {
+    if (!clusterDetail) return null
+    if (clusterDetail.isOrphan) return isDark ? '#94a3b8' : '#64748b'
+    const map = buildClusterColorMap([{ cluster_label: clusterDetail.label } as never], isDark)
+    return map.get(clusterDetail.label) ?? null
+  }, [clusterDetail, isDark])
 
   const handleAction = async (action: 'resolved' | 'dismissed') => {
     if (!alertId) return
@@ -85,42 +159,162 @@ export function AlertDetailPanel({ alertId, onBack, onStatusChange }: AlertDetai
         </div>
         <div className="flex items-center gap-1 shrink-0">
           {tabs.map(t => (
-            <Tooltip key={t.value}>
-              <TooltipTrigger asChild>
-                <button
-                  className={cn(
-                    'h-7 w-7 inline-flex items-center justify-center rounded cursor-pointer text-muted-foreground transition-colors',
-                    detailTab === t.value && 'bg-muted',
-                    t.hideOnXl && 'xl:hidden',
-                  )}
-                  onClick={() => setDetailTab(t.value)}
-                  aria-label={t.label}
-                >
-                  {t.icon}
-                </button>
-              </TooltipTrigger>
-              <TooltipContent side="top">{t.label}</TooltipContent>
-            </Tooltip>
+            <button
+              key={t.value}
+              className={cn(
+                'h-7 w-7 inline-flex items-center justify-center rounded cursor-pointer text-muted-foreground transition-colors',
+                detailTab === t.value && 'bg-muted',
+                t.hideOnXl && 'xl:hidden',
+              )}
+              onClick={() => setDetailTab(t.value)}
+              aria-label={t.label}
+            >
+              {t.icon}
+            </button>
           ))}
         </div>
       </div>
 
       {/* Body */}
-      {!alert ? (
-        <div className="flex-1 flex flex-col items-center justify-center gap-3">
-          <ClipboardList className="h-10 w-10 text-muted-foreground" />
-          <p className="text-sm text-muted-foreground">Select an alert to review</p>
-        </div>
-      ) : loading ? (
-        <div className="flex-1 flex items-center justify-center">
-          <p className="text-sm text-muted-foreground">Loading...</p>
-        </div>
-      ) : (
-        <>
-          <div ref={scrollContainerRef} className={cn('flex-1 overflow-y-auto min-h-0', detailTab !== 'chat' && 'px-3 py-3')}>
+      <>
+          <div ref={scrollContainerRef} className={cn('flex-1 min-h-0', detailTab === 'overview' && (alert || postDetail || clusterDetail) ? 'overflow-y-auto px-3 py-3' : 'flex')}>
             {detailTab === 'chat' ? (
               <ChatPanel />
-            ) : detailTab === 'overview' ? (
+            ) : detailTab === 'explore' ? (
+              <Suspense fallback={<div className="flex-1 flex items-center justify-center text-xs text-muted-foreground">Loading graph...</div>}>
+                <GraphCanvas
+                  highlightIds={alert ? [alert.anchorId, ...alert.connections.map(c => c.itemId)] : clusterId ? (clusterDetail?.posts.map(p => p.id) ?? undefined) : (itemId ? [itemId] : undefined)}
+                  threadAnchorId={!alert && !clusterId && itemId ? itemId : undefined}
+                  hideCard={!!clusterId}
+                  onReset={alert || itemId || clusterId ? onBack : undefined}
+                  onNodeSelect={onGraphNodeSelect}
+                />
+              </Suspense>
+            ) : !alert && clusterDetail ? (
+              <>
+                <div className="flex items-center gap-2">
+                  {clusterDotColor && (
+                    <span className="size-2 rounded-full shrink-0" style={{ background: clusterDotColor }} />
+                  )}
+                  <p className="text-base font-semibold break-words line-clamp-2 flex-1 min-w-0">
+                    {clusterDetail.label}
+                  </p>
+                </div>
+                <div className="mt-1 text-[11px] text-muted-foreground">
+                  {compactCount(clusterDetail.postCount)} posts · {compactCount(clusterDetail.commentCount)} comments
+                  {clusterDetail.recentCount > 0 && ` · ${compactCount(clusterDetail.recentCount)} in 24h`}
+                  {clusterDetail.lastActivity > 0 && ` · ${formatRelativeTime(clusterDetail.lastActivity)}`}
+                </div>
+                <div className="flex flex-col gap-2 mt-6">
+                  {clusterDetail.posts.map(p => {
+                    const expanded = expandedPostId === p.id
+                    const thread = expanded ? threadCache.get(p.id) : undefined
+                    return (
+                      <div key={p.id} className="rounded-md border border-border">
+                        <div className="px-3 py-2.5">
+                          {p.permalink ? (
+                            <a href={`https://reddit.com${p.permalink}`} target="_blank" rel="noopener noreferrer" className="text-sm font-medium break-words hover:underline block">
+                              {p.title || p.text.slice(0, 80)}
+                            </a>
+                          ) : (
+                            <p className="text-sm font-medium break-words">
+                              {p.title || p.text.slice(0, 80)}
+                            </p>
+                          )}
+                          <div className="flex items-center gap-1 mt-0.5 text-[11px] text-muted-foreground">
+                            <a href={`https://reddit.com/u/${p.author}`} target="_blank" rel="noopener noreferrer" className="hover:text-foreground">u/{p.author}</a>
+                            <span>·</span>
+                            <span>{formatRelativeTime(p.createdAt)}</span>
+                          </div>
+                          {p.text && (
+                            <p className="text-sm leading-relaxed break-words mt-2 whitespace-pre-wrap">{p.text}</p>
+                          )}
+                        </div>
+                        {p.commentCount > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => setExpandedPostId(expanded ? null : p.id)}
+                            className="w-full flex items-center justify-between px-3 py-2 border-t border-border text-[11px] text-muted-foreground hover:bg-muted/40 cursor-pointer transition-colors"
+                          >
+                            <span>{compactCount(p.commentCount)} comments</span>
+                            {expanded ? <ChevronUp className="size-3" /> : <ChevronDown className="size-3" />}
+                          </button>
+                        )}
+                        {expanded && (
+                          <div className="px-3 pb-3 border-t border-border">
+                            {!thread ? (
+                              <p className="mt-3 text-[11px] text-muted-foreground">Loading...</p>
+                            ) : thread.comments.length === 0 ? (
+                              <p className="mt-3 text-[11px] text-muted-foreground">No comments</p>
+                            ) : (
+                              <div className="flex flex-col gap-2 mt-3">
+                                {thread.comments.map(c => (
+                                  <div key={c.id} className="rounded-md border border-border px-3 py-2.5">
+                                    <div className="flex items-center gap-1 text-[11px] text-muted-foreground">
+                                      <span>u/{c.author}</span>
+                                      <span>·</span>
+                                      <span>{formatRelativeTime(c.createdAt)}</span>
+                                    </div>
+                                    <p className="text-sm leading-relaxed break-words mt-2 whitespace-pre-wrap">{c.text}</p>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              </>
+            ) : !alert && postDetail ? (
+              <>
+                {postDetail.post.permalink ? (
+                  <a href={`https://reddit.com${postDetail.post.permalink}`} target="_blank" rel="noopener noreferrer" className="text-base font-semibold break-words line-clamp-2 hover:underline block">
+                    {postDetail.post.title || postDetail.post.text.slice(0, 80)}
+                  </a>
+                ) : (
+                  <p className="text-base font-semibold break-words line-clamp-2">
+                    {postDetail.post.title || postDetail.post.text.slice(0, 80)}
+                  </p>
+                )}
+                <div className="flex items-center gap-1 mt-1 text-[11px] text-muted-foreground">
+                  <a href={`https://reddit.com/u/${postDetail.post.author}`} target="_blank" rel="noopener noreferrer" className="hover:text-foreground">
+                    u/{postDetail.post.author}
+                  </a>
+                  <span>·</span>
+                  <span>{formatRelativeTime(postDetail.post.createdAt)}</span>
+                </div>
+                <p className="text-sm leading-relaxed break-words mt-3 whitespace-pre-wrap">
+                  {postDetail.post.text}
+                </p>
+                <EntityTags entities={postDetail.post.entities} />
+                <div className="flex flex-col gap-2 mt-6">
+                  {postDetail.comments.map(c => (
+                    <div key={c.id} className="rounded-md border border-border px-3 py-2.5">
+                      <div className="flex items-center gap-1 text-[11px] text-muted-foreground">
+                        <a href={`https://reddit.com/u/${c.author}`} target="_blank" rel="noopener noreferrer" className="hover:text-foreground">
+                          u/{c.author}
+                        </a>
+                        <span>·</span>
+                        <span>{formatRelativeTime(c.createdAt)}</span>
+                      </div>
+                      <p className="text-sm leading-relaxed break-words mt-2 whitespace-pre-wrap">
+                        {c.text}
+                      </p>
+                      <EntityTags entities={c.entities} />
+                    </div>
+                  ))}
+                </div>
+              </>
+            ) : !alert ? (
+              <div className="flex-1 flex flex-col items-center justify-center gap-3">
+                <ClipboardList className="h-10 w-10 text-muted-foreground" />
+                <p className="text-sm text-muted-foreground">
+                  {listTab === 'items' ? 'Select a post to review' : 'Select an alert to review'}
+                </p>
+              </div>
+            ) : (
               <>
                 {/* Title */}
                 {alert.anchorPermalink ? (
@@ -230,16 +424,11 @@ export function AlertDetailPanel({ alertId, onBack, onStatusChange }: AlertDetai
                   })}
                 </div>
               </>
-            ) : (
-              <div className="flex-1 flex flex-col items-center justify-center gap-3">
-                <Telescope className="h-10 w-10 text-muted-foreground" />
-                <p className="text-sm text-muted-foreground">Explore connections coming soon</p>
-              </div>
             )}
           </div>
 
           {/* Bottom actions */}
-          {alert.status === 'pending' && (
+          {alert && alert.status === 'pending' && detailTab === 'overview' && (
             <div className="shrink-0 border-t px-3 py-2.5 flex items-center gap-2">
               <div className="ml-auto flex items-center gap-2">
                 <button
@@ -260,7 +449,6 @@ export function AlertDetailPanel({ alertId, onBack, onStatusChange }: AlertDetai
             </div>
           )}
         </>
-      )}
     </div>
   )
 }

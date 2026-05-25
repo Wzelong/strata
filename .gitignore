@@ -8,3 +8,6 @@ tests/real-data/cache/
 tests/real-data/*.jsonl
 dataset/*.jsonl
 dataset/live-items.json
+dataset/seed.json
+dataset/seed.json.backup*
+dataset/layout.json

@@ -11,9 +11,10 @@ interface HighlightedTextProps {
 type Segment = { text: string; clusterId?: string }
 
 function buildSegments(text: string, entities: AlertEntity[]): Segment[] {
-  if (entities.length === 0) return [{ text }]
+  const valid = (entities ?? []).filter(e => e && typeof e.text === 'string' && e.text.length > 0)
+  if (valid.length === 0) return [{ text }]
 
-  const sorted = [...entities].sort((a, b) => b.text.length - a.text.length)
+  const sorted = [...valid].sort((a, b) => b.text.length - a.text.length)
   const marks: Array<{ start: number; end: number; clusterId: string }> = []
   const lower = text.toLowerCase()
 

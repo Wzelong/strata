@@ -20,7 +20,47 @@ const LIVE_OUTPUT = process.env.LIVE_OUTPUT
   ? resolve(process.cwd(), process.env.LIVE_OUTPUT)
   : resolve(__dirname, 'live-items.json')
 
-const MAX_ITEMS = parseInt(process.env.SEED_LIMIT ?? '3000', 10)
+const WINDOW_DAYS = parseInt(process.env.SEED_WINDOW_DAYS ?? '14', 10)
+const POST_BUDGET = parseInt(process.env.SEED_POST_BUDGET ?? '180', 10)
+const MIN_TOTAL_ITEMS = parseInt(process.env.SEED_MIN_TOTAL ?? '3000', 10)
+const DAY_MS = 86_400_000
+
+function recencyBoost(daysAgo: number): number {
+  if (daysAgo < 1) return 1.6
+  if (daysAgo < 3) return 1.3
+  if (daysAgo < 7) return 1.0
+  return 0.55
+}
+
+function stratifiedSample(rawItems: RawItem[], postBudget: number): RawItem[] {
+  if (rawItems.length === 0) return []
+  let maxTs = 0
+  for (const i of rawItems) if (i.createdAt > maxTs) maxTs = i.createdAt
+  const minTs = maxTs - WINDOW_DAYS * DAY_MS
+
+  const dayPosts = new Map<number, RawItem[]>()
+  for (const i of rawItems) {
+    if (i.type !== 'post' || i.createdAt < minTs) continue
+    const d = Math.floor((maxTs - i.createdAt) / DAY_MS)
+    const list = dayPosts.get(d)
+    if (list) list.push(i); else dayPosts.set(d, [i])
+  }
+
+  let totalWeight = 0
+  for (const [d, list] of dayPosts) totalWeight += list.length * recencyBoost(d)
+
+  const keptPosts: RawItem[] = []
+  for (const [d, list] of dayPosts) {
+    const target = Math.round((list.length * recencyBoost(d) / totalWeight) * postBudget)
+    const n = Math.min(list.length, Math.max(1, target))
+    const shuffled = [...list].sort(() => Math.random() - 0.5)
+    keptPosts.push(...shuffled.slice(0, n))
+  }
+
+  const keptPostIds = new Set(keptPosts.map(p => p.id))
+  const keptComments = rawItems.filter(i => i.type === 'comment' && keptPostIds.has(i.threadRootId))
+  return [...keptPosts, ...keptComments]
+}
 
 class SimpleCost implements CostTracker {
   total = 0
@@ -115,10 +155,15 @@ async function main() {
     if (item) allRaw.push(item)
   }
 
-  // Sort by time, take newest MAX_ITEMS
-  allRaw.sort((a, b) => b.createdAt - a.createdAt)
-  const selected = allRaw.slice(0, MAX_ITEMS)
-  console.log(`\n  ${allRaw.length} valid items total, selected ${selected.length}`)
+  let selected = stratifiedSample(allRaw, POST_BUDGET)
+  let extraBudget = POST_BUDGET
+  while (selected.length < MIN_TOTAL_ITEMS && extraBudget < POST_BUDGET * 3) {
+    extraBudget += 40
+    selected = stratifiedSample(allRaw, extraBudget)
+  }
+  selected.sort((a, b) => b.createdAt - a.createdAt)
+  const postCount = selected.filter(i => i.type === 'post').length
+  console.log(`\n  ${allRaw.length} valid items total, sampled ${selected.length} (${postCount} posts) across ${WINDOW_DAYS}d window`)
 
   // Step 3: Ingest through the engine (embeds + extracts entities)
   console.log(`\nIngesting ${selected.length} r/boston items (embed + extract)...`)

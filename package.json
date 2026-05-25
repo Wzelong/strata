@@ -6,6 +6,8 @@
   "scripts": {
     "build": "vite build",
     "dev": "vite build --watch",
+    "dev:server": "tsx watch dev-server.ts",
+    "dev:client": "vite",
     "seed": "tsx dataset/build-seed.ts",
     "benchmark": "tsx benchmark/stability-10x.ts",
     "benchmark:viz": "python3 benchmark/viz.py"
@@ -19,12 +21,17 @@
     "@hono/node-server": "^1.19.9",
     "@radix-ui/react-checkbox": "^1.3.3",
     "@radix-ui/react-tooltip": "^1.2.8",
+    "@react-three/drei": "^10.7.7",
+    "@react-three/fiber": "^9.6.1",
+    "@react-three/postprocessing": "^3.0.4",
     "@tanstack/react-virtual": "^3.13.25",
     "hono": "4.11.7",
     "lucide-react": "^1.16.0",
     "openai": "^6.37.0",
+    "postprocessing": "^6.39.1",
     "react": "^19.2.6",
-    "react-dom": "^19.2.6"
+    "react-dom": "^19.2.6",
+    "three": "^0.183.2"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.0",
