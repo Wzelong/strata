@@ -34,7 +34,6 @@ export function ScanProgress() {
     <div className="rounded-lg border border-border p-4 space-y-3">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <Loader2 className="size-3.5 animate-spin text-foreground" />
           <span className="text-sm font-medium">
             Scanning for patterns
           </span>

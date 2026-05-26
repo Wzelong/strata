@@ -93,9 +93,9 @@ export function SettingsView({ onBack, forceForm }: Props) {
             </button>
           )}
 
-          {!isBackfillRunning && bfHistory && bfHistory.records.length > 0 && (
+          {bfHistory && bfHistory.records.filter(r => r.status !== 'running').length > 0 && (
             <div className="rounded-lg border border-border divide-y divide-border">
-              {bfHistory.records.map(r => <BackfillHistoryRow key={r.id} record={r} onCancelled={refreshBfHistory} />)}
+              {bfHistory.records.filter(r => r.status !== 'running').map(r => <BackfillHistoryRow key={r.id} record={r} onCancelled={refreshBfHistory} />)}
             </div>
           )}
         </Section>
@@ -112,9 +112,9 @@ export function SettingsView({ onBack, forceForm }: Props) {
             />
           )}
 
-          {!isScanRunning && scanRecords && scanRecords.length > 0 && (
+          {scanRecords && scanRecords.filter(r => r.status !== 'running').length > 0 && (
             <div className="rounded-lg border border-border divide-y divide-border">
-              {scanRecords.map(r => <ScanHistoryRow key={r.id} record={r} />)}
+              {scanRecords.filter(r => r.status !== 'running').map(r => <ScanHistoryRow key={r.id} record={r} />)}
             </div>
           )}
         </Section>
