@@ -10,6 +10,7 @@ import { PipelineBanner } from './components/pipeline-banner'
 import { useViewer } from './hooks/use-viewer'
 import { useStats } from './hooks/use-stats'
 import { useIngestStatus } from './hooks/use-ingest-status'
+import { cn } from './lib/utils'
 
 export function App() {
   const { isMod, loading, subredditName } = useViewer()
@@ -56,13 +57,17 @@ export function App() {
     )
   }
 
+  const chromeless = needsApiKey || showEmpty || showFullProgress
+
   return (
     <div className="h-dvh flex flex-col">
-      <Header
-        settingsOpen={settingsOpen}
-        onToggleSettings={() => (settingsOpen ? closeSettings() : openSettings(false))}
-      />
-      <main className="flex-1 min-h-0 h-0 pt-10">{body}</main>
+      {!chromeless && (
+        <Header
+          settingsOpen={settingsOpen}
+          onToggleSettings={() => (settingsOpen ? closeSettings() : openSettings(false))}
+        />
+      )}
+      <main className={cn('flex-1 min-h-0 h-0', !chromeless && 'pt-10')}>{body}</main>
     </div>
   )
 }

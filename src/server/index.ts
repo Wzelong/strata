@@ -1925,9 +1925,33 @@ app.get('/api/viewer', async (c) => {
 
 // --- Backfill ---
 
+let seedRawCache: RawItem[] | null = null
+
+async function getSeedRawItems(): Promise<RawItem[]> {
+  if (seedRawCache) return seedRawCache
+  const resp = await fetch(SEED_URL)
+  if (!resp.ok) throw new Error(`Seed fetch failed: ${resp.status}`)
+  const json = gunzipSync(Buffer.from(await resp.arrayBuffer())).toString('utf8')
+  const seed = JSON.parse(json) as { items: StoredItem[] }
+  const maxCreatedAt = seed.items.reduce((m, it) => Math.max(m, it.createdAt), 0)
+  const shift = Date.now() - maxCreatedAt
+  seedRawCache = seed.items.map(it => ({
+    id: it.id,
+    type: it.type,
+    ...(it.title ? { title: it.title } : {}),
+    text: it.text,
+    authorId: it.authorId,
+    authorName: it.authorName,
+    createdAt: it.createdAt + shift,
+    threadRootId: it.threadRootId,
+    parentId: it.parentId,
+  }))
+  return seedRawCache
+}
+
 app.post('/api/backfill/preview', async (c) => {
   if (!context.subredditName) return c.json({ error: 'No subreddit context' }, 400)
-  const { from, to } = await c.req.json<{ from: string; to: string }>()
+  const { from, to, demo } = await c.req.json<{ from: string; to: string; demo?: boolean }>()
   if (!from || !to) return c.json({ error: 'from and to are required' }, 400)
 
   const start = new Date(from).getTime()
@@ -1938,30 +1962,38 @@ app.post('/api/backfill/preview', async (c) => {
 
   const rawItems: RawItem[] = []
   try {
-    const posts = reddit.getNewPosts({ subredditName: context.subredditName, limit: 5000, pageSize: 100 })
-    for await (const post of posts) {
-      if (post.createdAt.getTime() < start) break
-      if (post.createdAt.getTime() > end) continue
-      rawItems.push({
-        id: post.id, type: 'post', title: post.title, text: post.body || '',
-        authorId: post.authorId || post.authorName || 'unknown',
-        authorName: post.authorName || 'unknown',
-        createdAt: post.createdAt.getTime(),
-        threadRootId: post.id, parentId: null,
-      })
-      try {
-        const comments = reddit.getComments({ postId: post.id, limit: 200, sort: 'new' as any })
-        for await (const comment of comments) {
-          if (comment.createdAt.getTime() < start || comment.createdAt.getTime() > end) continue
-          rawItems.push({
-            id: comment.id, type: 'comment', title: post.title, text: comment.body,
-            authorId: comment.authorId || comment.authorName || 'unknown',
-            authorName: comment.authorName || 'unknown',
-            createdAt: comment.createdAt.getTime(),
-            threadRootId: post.id, parentId: comment.parentId || null,
-          })
-        }
-      } catch {}
+    if (demo) {
+      const seedItems = await getSeedRawItems()
+      for (const it of seedItems) {
+        if (it.createdAt < start || it.createdAt > end) continue
+        rawItems.push(it)
+      }
+    } else {
+      const posts = reddit.getNewPosts({ subredditName: context.subredditName, limit: 5000, pageSize: 100 })
+      for await (const post of posts) {
+        if (post.createdAt.getTime() < start) break
+        if (post.createdAt.getTime() > end) continue
+        rawItems.push({
+          id: post.id, type: 'post', title: post.title, text: post.body || '',
+          authorId: post.authorId || post.authorName || 'unknown',
+          authorName: post.authorName || 'unknown',
+          createdAt: post.createdAt.getTime(),
+          threadRootId: post.id, parentId: null,
+        })
+        try {
+          const comments = reddit.getComments({ postId: post.id, limit: 200, sort: 'new' as any })
+          for await (const comment of comments) {
+            if (comment.createdAt.getTime() < start || comment.createdAt.getTime() > end) continue
+            rawItems.push({
+              id: comment.id, type: 'comment', title: post.title, text: comment.body,
+              authorId: comment.authorId || comment.authorName || 'unknown',
+              authorName: comment.authorName || 'unknown',
+              createdAt: comment.createdAt.getTime(),
+              threadRootId: post.id, parentId: comment.parentId || null,
+            })
+          }
+        } catch {}
+      }
     }
   } catch (err) {
     console.error('[Strata] Preview fetch error:', err)

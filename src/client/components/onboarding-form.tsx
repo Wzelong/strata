@@ -33,8 +33,9 @@ export function OnboardingForm({ onStarted, onCancel }: Props) {
   const [estimating, setEstimating] = useState(false)
   const [estError, setEstError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const [demo, setDemo] = useState(true)
 
-  const runPreview = useCallback(async (r: DateRange) => {
+  const runPreview = useCallback(async (r: DateRange, useDemo: boolean) => {
     if (!r.from || !r.to) return
     const f = isoDate(r.from)
     const t = isoDate(r.to)
@@ -42,7 +43,7 @@ export function OnboardingForm({ onStarted, onCancel }: Props) {
     setEstError(null)
     setEstimate(null)
     try {
-      const res = await previewBackfill(f, t)
+      const res = await previewBackfill(f, t, useDemo)
       if ('error' in res) setEstError(res.error)
       else setEstimate(res)
     } catch (err) {
@@ -52,18 +53,24 @@ export function OnboardingForm({ onStarted, onCancel }: Props) {
     }
   }, [])
 
-  useEffect(() => { runPreview(range) }, [])
+  useEffect(() => { runPreview(range, demo) }, [])
 
   const applyPreset = (days: number) => {
     const next: DateRange = { from: offsetDate(-days), to: offsetDate(0) }
     setRange(next)
-    runPreview(next)
+    runPreview(next, demo)
   }
 
   const handleRangeChange = (next: DateRange | undefined) => {
     if (!next) return
     setRange(next)
-    if (next.from && next.to) runPreview(next)
+    if (next.from && next.to) runPreview(next, demo)
+  }
+
+  const toggleDemo = () => {
+    const next = !demo
+    setDemo(next)
+    runPreview(range, next)
   }
 
   const handleConfirm = async () => {
@@ -124,6 +131,21 @@ export function OnboardingForm({ onStarted, onCancel }: Props) {
             </button>
           ))}
         </div>
+        <button
+          onClick={toggleDemo}
+          className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+        >
+          <span className={cn(
+            'flex h-4 w-7 items-center rounded-full px-0.5 transition-colors',
+            demo ? 'bg-foreground' : 'bg-muted',
+          )}>
+            <span className={cn(
+              'size-3 rounded-full bg-background transition-transform',
+              demo && 'translate-x-3',
+            )} />
+          </span>
+          Use demo data (sample subreddit, for testing)
+        </button>
       </div>
 
       <div className={cn(

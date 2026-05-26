@@ -352,11 +352,11 @@ export interface BackfillEstimate {
   to: string
 }
 
-export async function previewBackfill(from: string, to: string): Promise<BackfillEstimate | { error: string }> {
+export async function previewBackfill(from: string, to: string, demo = false): Promise<BackfillEstimate | { error: string }> {
   const res = await fetch('/api/backfill/preview', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ from, to }),
+    body: JSON.stringify({ from, to, demo }),
   })
   return res.json()
 }
