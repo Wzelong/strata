@@ -1044,12 +1044,6 @@ app.post('/internal/scheduler/ingest-batch', async (c) => {
           await redis.hSet('strata:ingest:status', { phase: 'done', endedAt: String(endedAt) })
           if (status.backfillId) await updateBackfillRecord(status.backfillId, { status: 'done', endedAt, totalItems: processedSoFar, processed: processedSoFar })
           console.log(`[Strata] Demo backfill done: ${clusters.length} clusters, ${posEntries.length} positions`)
-          try {
-            const scanId = generateAlertId()
-            await redis.hSet('strata:scan:status', { phase: 'building', startedAt: String(Date.now()), scanId, anchorsProcessed: '0', anchorsTotal: '0' })
-            await putScanRecord({ id: scanId, status: 'running', startedAt: Date.now(), endedAt: null, anchorsTotal: 0, anchorsProcessed: 0, alertsCreated: 0, autoTriggered: true, initiatedBy: 'auto-scan' })
-            await scheduler.runJob({ name: 'scan', runAt: new Date(Date.now() + 1000), data: { step: 'build' } })
-          } catch (err) { console.error('[Strata] Background scan failed:', err) }
         } else {
           console.log(`[Strata] Real-time ingest complete: ${processedSoFar} items, starting recluster`)
           if (status.backfillId) await updateBackfillRecord(status.backfillId, { processed: processedSoFar })
@@ -1503,7 +1497,8 @@ app.get('/api/stats', async (c) => {
   const apiKey = await getOpenAIKey()
   const hasApiKey = typeof apiKey === 'string' && apiKey.trim().length > 0
   const apiKeyInvalid = hasApiKey && (await redis.get(API_KEY_INVALID_FLAG)) === '1'
-  return c.json({ itemCount, capacity: 330_000, seeded, installed, hasApiKey, apiKeyInvalid })
+  const alertCount = await redis.zCard('strata:alerts').catch(() => 0)
+  return c.json({ itemCount, capacity: 330_000, seeded, installed, hasApiKey, apiKeyInvalid, hasAlerts: alertCount > 0 })
 })
 
 app.post('/api/apikey/recheck', async (c) => {
@@ -1683,18 +1678,6 @@ app.post('/internal/scheduler/recluster', async (c) => {
     await redis.hSet('strata:ingest:status', { phase: 'done', endedAt: String(endedAt) })
     if (ingestStatus?.backfillId) await updateBackfillRecord(ingestStatus.backfillId, { status: 'done', endedAt, totalItems: parseInt(ingestStatus.processed || '0'), processed: parseInt(ingestStatus.processed || '0') })
     console.log('[Strata] Backfill complete (processing + clustering)')
-    // Write bundled seed positions to graph layout cache (Python UMAP quality)
-    const posEntries = Object.entries(seedPositions as Record<string, number[]>)
-    if (posEntries.length > 0) {
-      await redis.set('strata:graph:layout', JSON.stringify(posEntries))
-      console.log(`[Strata] Wrote ${posEntries.length} seed positions to graph layout`)
-    }
-    try {
-      const scanId = generateAlertId()
-      await redis.hSet('strata:scan:status', { phase: 'building', startedAt: String(Date.now()), scanId, anchorsProcessed: '0', anchorsTotal: '0' })
-      await putScanRecord({ id: scanId, status: 'running', startedAt: Date.now(), endedAt: null, anchorsTotal: 0, anchorsProcessed: 0, alertsCreated: 0, autoTriggered: true, initiatedBy: 'auto-scan' })
-      await scheduler.runJob({ name: 'scan', runAt: new Date(Date.now() + 1000), data: { step: 'build' } })
-    } catch (err) { console.error('[Strata] Background scan schedule failed:', err) }
   }
   return c.json(result.report)
 })

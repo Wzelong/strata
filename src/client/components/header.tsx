@@ -1,9 +1,10 @@
-import { Moon, Sun, Settings, AlertTriangle, Loader2 } from 'lucide-react'
+import { Moon, Sun, Settings, AlertTriangle, Loader2, Telescope } from 'lucide-react'
 import { useTheme } from '../hooks/use-theme'
 import { useStats, refreshStats } from '../hooks/use-stats'
 import { useViewer } from '../hooks/use-viewer'
 import { useIngestStatus } from '../hooks/use-ingest-status'
-import { recheckApiKey } from '../lib/api'
+import { recheckApiKey, startScan } from '../lib/api'
+import { refreshScanStatus } from '../hooks/use-scan-status'
 import { cn, compactCount } from '../lib/utils'
 import logo from '../assets/logo.png'
 
@@ -49,6 +50,19 @@ export function Header({ settingsOpen, onToggleSettings }: Props) {
           >
             <Loader2 className="size-3 animate-spin" />
             {compactCount(ingest?.processed ?? 0)}/{compactCount(ingest?.totalItems ?? 0)}
+          </button>
+        )}
+        {!isBackfilling && stats && stats.itemCount > 0 && !(stats as any).hasAlerts && (
+          <button
+            onClick={async () => {
+              await startScan()
+              await refreshScanStatus()
+              onToggleSettings?.()
+            }}
+            className="h-7 px-2 inline-flex items-center gap-1.5 rounded-md text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-colors cursor-pointer"
+          >
+            <Telescope className="size-3" />
+            Scan
           </button>
         )}
         {apiKeyInvalid && (
