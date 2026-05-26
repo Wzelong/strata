@@ -1399,8 +1399,7 @@ app.post('/internal/scheduler/scan', async (c) => {
         return c.json({ status: 'ok' })
       }
 
-      // Classify up to 4 anchor groups in parallel per tick (~7s each, fits in 30s)
-      const PARALLEL = 4
+      const PARALLEL = 20
       const batch = pairs.slice(index, index + PARALLEL)
       const engine = await getEngine()
       const subredditName = context.subredditName || ''
