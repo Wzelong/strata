@@ -9,7 +9,6 @@ tests/real-data/*.jsonl
 dataset/*.jsonl
 dataset/live-items.json
 dataset/seed.json
-dataset/seed.json.gz
 dataset/seed.json.backup*
 dataset/layout.json
 dataset/cluster-test.ts

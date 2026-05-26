@@ -24,7 +24,7 @@ import { dequantize } from '../engine/embed.js'
 import { encrypt, decrypt } from './crypto.js'
 import { gunzipSync } from 'node:zlib'
 
-const SEED_URL = 'https://github.com/Wzelong/strata/releases/download/seed-v1/seed.json.gz'
+const SEED_URL = 'https://raw.githubusercontent.com/Wzelong/strata/main/dataset/seed.json.gz'
 
 const app = new Hono()
 
