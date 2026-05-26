@@ -30,12 +30,11 @@
     }
   },
   "settings": {
-    "installation": {
+    "global": {
       "openaiApiKey": {
         "type": "string",
         "label": "OpenAI API Key",
-        "isSecret": true,
-        "scope": "app"
+        "isSecret": true
       }
     }
   },

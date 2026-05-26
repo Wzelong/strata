@@ -27,17 +27,6 @@ export default defineConfig(({ command }) => {
           if (warning.code === 'MODULE_LEVEL_DIRECTIVE' && warning.message.includes('use client')) return
           warn(warning)
         },
-        output: {
-          manualChunks(id) {
-            if (!id.includes('node_modules')) return
-            if (id.includes('three') || id.includes('@react-three') || id.includes('postprocessing')) return 'three'
-            if (id.includes('@radix-ui')) return 'radix'
-            if (id.includes('lucide-react')) return 'icons'
-            if (id.includes('react-dom') || id.includes('/react/')) return 'react'
-            if (id.includes('openai')) return 'openai'
-            return 'vendor'
-          },
-        },
       },
     },
   }
