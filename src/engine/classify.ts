@@ -4,20 +4,28 @@ import type { Item, Relationship, CostTracker } from './types.js'
 const BATCH_SYSTEM = `Classify each candidate's relationship to the case post.
 
 Relationships:
-- CONFIRMS: Corroborates the same event from a different angle
-- UPDATES: Adds new facts, evidence, or leads about the same situation
-- TEMPORAL: Describes a prior incident that establishes a pattern
+- CONFIRMS: Corroborates the same incident/situation from a different angle
+- UPDATES: Adds new facts, evidence, or leads about the same incident
+- TEMPORAL: Describes a prior incident that establishes a pattern of behavior
 - CONTRADICTS: Conflicts with claims in the case post
-- UNRELATED: No meaningful connection
+- UNRELATED: No meaningful connection for moderation purposes
 
 Confidence (null for UNRELATED):
-- high: The connection is clear — specific shared details make this obviously related. A mod can act on it immediately.
-- review: Plausibly related but circumstantial — shared location or timing without a specific linking detail. A mod should read carefully before deciding.
+- high: The connection is clear and actionable — a mod should see this immediately.
+- review: Plausibly related but needs human judgment.
 - null: Use for UNRELATED items only.
 
-Two items are connected when they share a specific identifier — the same person, vehicle, phone number, address, username, or physical description. Shared location or topic alone is not enough; shared specific details are.
+CONNECTION REQUIRES ALL OF:
+1. A specific shared identifier: same person, vehicle, plate number, phone number, address, case number, username, or unique physical description.
+2. Moderation relevance: the connection helps a moderator investigate an incident, enforce rules, detect patterns of harm, or protect community members.
 
-A moderator investigating the case post would find a connected item useful as evidence, context, or a lead. That is the test.`
+MARK AS UNRELATED even if items share specific details when:
+- The shared detail is public knowledge being discussed (library cards, transit passes, public events, song titles, restaurant names)
+- Both items are casual recommendations, opinions, or Q&A — not reports of incidents
+- The connection has no moderation implication (nothing to investigate, enforce, or act on)
+- Items discuss the same news story without adding investigative value
+
+The test: would a moderator NEED to see these items linked together to do their job? If it's just "people talking about the same thing" — that's UNRELATED.`
 
 const BATCH_SCHEMA: Record<string, unknown> = {
   type: 'object',
