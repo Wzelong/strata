@@ -22,6 +22,7 @@ import { runRecluster, assignItemLive, ClusterRepo } from './cluster-pipeline.js
 import { LOUVAIN_RESOLUTION, MIN_CLUSTER_SIZE } from '../engine/cluster.js'
 import { dequantize } from '../engine/embed.js'
 import { encrypt, decrypt } from './crypto.js'
+import seedRawItems from './seed-raw.json' with { type: 'json' }
 import { gunzipSync } from 'node:zlib'
 
 const SEED_URL = 'https://raw.githubusercontent.com/Wzelong/strata/main/dataset/seed.json.gz'
@@ -1927,25 +1928,12 @@ app.get('/api/viewer', async (c) => {
 
 let seedRawCache: RawItem[] | null = null
 
-async function getSeedRawItems(): Promise<RawItem[]> {
+function getSeedRawItems(): RawItem[] {
   if (seedRawCache) return seedRawCache
-  const resp = await fetch(SEED_URL)
-  if (!resp.ok) throw new Error(`Seed fetch failed: ${resp.status}`)
-  const json = gunzipSync(Buffer.from(await resp.arrayBuffer())).toString('utf8')
-  const seed = JSON.parse(json) as { items: StoredItem[] }
-  const maxCreatedAt = seed.items.reduce((m, it) => Math.max(m, it.createdAt), 0)
+  const items = seedRawItems as RawItem[]
+  const maxCreatedAt = items.reduce((m, it) => Math.max(m, it.createdAt), 0)
   const shift = Date.now() - maxCreatedAt
-  seedRawCache = seed.items.map(it => ({
-    id: it.id,
-    type: it.type,
-    ...(it.title ? { title: it.title } : {}),
-    text: it.text,
-    authorId: it.authorId,
-    authorName: it.authorName,
-    createdAt: it.createdAt + shift,
-    threadRootId: it.threadRootId,
-    parentId: it.parentId,
-  }))
+  seedRawCache = items.map(it => ({ ...it, createdAt: it.createdAt + shift }))
   return seedRawCache
 }
 
@@ -1963,7 +1951,7 @@ app.post('/api/backfill/preview', async (c) => {
   const rawItems: RawItem[] = []
   try {
     if (demo) {
-      const seedItems = await getSeedRawItems()
+      const seedItems = getSeedRawItems()
       for (const it of seedItems) {
         if (it.createdAt < start || it.createdAt > end) continue
         rawItems.push(it)
