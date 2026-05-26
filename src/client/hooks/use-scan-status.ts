@@ -32,12 +32,19 @@ export function useScanStatus() {
       } catch {}
     }
 
-    tick()
-    timer.current = setInterval(tick, POLL_INTERVAL_MS)
+    const startPolling = () => {
+      if (timer.current) return
+      tick()
+      timer.current = setInterval(tick, POLL_INTERVAL_MS)
+    }
+
+    restartPolling = startPolling
+    startPolling()
 
     return () => {
       cancelled = true
       subscribers.delete(setStatus)
+      restartPolling = null
       if (timer.current) clearInterval(timer.current)
     }
   }, [])
@@ -45,7 +52,10 @@ export function useScanStatus() {
   return status
 }
 
+let restartPolling: (() => void) | null = null
+
 export async function refreshScanStatus() {
   const s = await fetchScanStatus()
   publish(s)
+  if (!TERMINAL.has(s.phase) && restartPolling) restartPolling()
 }
