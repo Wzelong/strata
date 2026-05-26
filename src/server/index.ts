@@ -1334,7 +1334,9 @@ app.post('/internal/scheduler/scan', async (c) => {
     }
 
     if (step === 'build') {
-      const pairs = await buildScanPairs(store)
+      const cachedItems = await getAllItems()
+      const itemsMap = new Map(cachedItems.map(it => [it.id, { threadRootId: it.threadRootId, entities: it.entities }]))
+      const pairs = await buildScanPairs(store, itemsMap)
       if (pairs.length === 0) {
         const endedAt = Date.now()
         await redis.hSet('strata:scan:status', { phase: 'done', alerts: '0', endedAt: String(endedAt), anchorsTotal: '0', anchorsProcessed: '0' })

@@ -151,7 +151,7 @@ function componentsByItemOverlap(clusters: EntityCluster[], maxComponentSize: nu
   return result
 }
 
-export async function buildScanPairs(store: KVStore): Promise<ScanPair[]> {
+export async function buildScanPairs(store: KVStore, allItemsMap?: Map<string, { threadRootId: string; entities: { type: string; surfaceText: string }[] }>): Promise<ScanPair[]> {
   const N = await store.getItemCount()
   if (N < 2) return []
 
@@ -223,14 +223,26 @@ export async function buildScanPairs(store: KVStore): Promise<ScanPair[]> {
   const components = componentsByItemOverlap(preMerge, componentCap)
   if (components.length === 0) return []
 
-  // 5) Load thread + embedding metadata for items in surviving components
+  // 5) Load all embeddings + item metadata needed for narrative satellites
   const allEmbeddings = await store.getAllEmbeddings()
   const itemThread = new Map<string, string>()
-  const itemsNeeded = new Set<string>()
-  for (const c of components) for (const id of c.itemIds) itemsNeeded.add(id)
-  for (const id of itemsNeeded) {
-    const stored = await store.getItem(id)
-    if (stored) itemThread.set(id, stored.threadRootId)
+  const itemEntities = new Map<string, { type: string; surfaceText: string }[]>()
+  if (allItemsMap) {
+    for (const [id, it] of allItemsMap) {
+      itemThread.set(id, it.threadRootId)
+      itemEntities.set(id, it.entities)
+    }
+  } else {
+    const itemsNeeded = new Set<string>()
+    for (const c of components) for (const id of c.itemIds) itemsNeeded.add(id)
+    for (const id of allEmbeddings.keys()) itemsNeeded.add(id)
+    for (const id of itemsNeeded) {
+      const stored = await store.getItem(id)
+      if (stored) {
+        itemThread.set(id, stored.threadRootId)
+        itemEntities.set(id, stored.entities)
+      }
+    }
   }
 
   // 5.5) Narrative satellites — mirror of surface()'s safety net. ONLY runs
@@ -252,9 +264,9 @@ export async function buildScanPairs(store: KVStore): Promise<ScanPair[]> {
     for (const id of c.itemIds) {
       const b = c.bridgeScore.get(id) ?? 0
       if (b < NARRATIVE_MIN_BRIDGE) continue
-      const stored = await store.getItem(id)
-      if (!stored) continue
-      const entCount = stored.entities.length
+      const ents = itemEntities.get(id)
+      if (!ents) continue
+      const entCount = ents.length
       if (b > bestBridge || (b === bestBridge && entCount > bestEntities)) {
         bestBridge = b
         bestEntities = entCount
@@ -270,8 +282,8 @@ export async function buildScanPairs(store: KVStore): Promise<ScanPair[]> {
     const candidates: Array<{ id: string; cos: number }> = []
     for (const [id, emb] of allEmbeddings) {
       if (id === bridgeItem || c.itemIds.has(id)) continue
-      const stored = await store.getItem(id)
-      if (!stored || (bridgeThread && stored.threadRootId === bridgeThread)) continue
+      const thread = itemThread.get(id)
+      if (bridgeThread && thread === bridgeThread) continue
       const cos = cosine(bridgeEmb, emb)
       cosines.push(cos)
       candidates.push({ id, cos })
@@ -286,8 +298,6 @@ export async function buildScanPairs(store: KVStore): Promise<ScanPair[]> {
       if (cand.cos < threshold) break
       if (added >= NARRATIVE_MAX_SATELLITES) break
       c.itemIds.add(cand.id)
-      const stored = await store.getItem(cand.id)
-      if (stored) itemThread.set(cand.id, stored.threadRootId)
       added++
     }
   }
