@@ -25,6 +25,7 @@ import { dequantize } from '../engine/embed.js'
 import { encrypt, decrypt } from './crypto.js'
 import seedRawItems from './seed-raw.json' with { type: 'json' }
 import seedPositions from './seed-positions.json' with { type: 'json' }
+import seedClusterData from './seed-clusters.json' with { type: 'json' }
 import { gunzipSync } from 'node:zlib'
 
 
@@ -1014,13 +1015,48 @@ app.post('/internal/scheduler/ingest-batch', async (c) => {
       if (chunkIds.length === 0) {
         await redis.del('strata:ingest:raw')
         await redis.del('strata:ingest:order')
-        await redis.hSet('strata:ingest:status', { phase: 'clustering', processed: String(processedSoFar), lastPolledAt: String(Date.now()) })
         await redis.set('strata:backfill:complete', '1')
-        if (status.backfillId) await updateBackfillRecord(status.backfillId, { processed: processedSoFar })
-        console.log(`[Strata] Real-time ingest complete: ${processedSoFar} items, starting recluster`)
-        try {
-          await scheduler.runJob({ name: 'recluster', runAt: new Date(Date.now() + 1000), data: { fromBackfill: true } })
-        } catch (err) { console.error('[Strata] Post-backfill recluster schedule failed:', err) }
+        await redis.hSet('strata:ingest:status', { phase: 'clustering', processed: String(processedSoFar), lastPolledAt: String(Date.now()) })
+
+        const isDemo = status.demo === '1'
+        if (isDemo) {
+          console.log(`[Strata] Real-time ingest complete: ${processedSoFar} items, loading seed clusters + positions`)
+          const { clusters, assignments } = seedClusterData as { clusters: Array<{ id: number; label: string; size: number }>; assignments: Record<string, number> }
+          const clusterRepo = new ClusterRepo(redis)
+          for (const c of clusters) {
+            await clusterRepo.writeCluster({ id: c.id, label: c.label, size: c.size, createdAt: Date.now(), updatedAt: Date.now() }, [0])
+          }
+          const itemFields: Record<string, string> = {}
+          const cachedItems = await getAllItems()
+          for (const item of cachedItems) {
+            const cid = assignments[item.id]
+            if (cid !== undefined) {
+              (item as any).clusterId = cid
+              itemFields[item.id] = JSON.stringify(item)
+            }
+          }
+          if (Object.keys(itemFields).length > 0) await redis.hSet('strata:items', itemFields)
+          await redis.hSet('strata:cluster:status', { lastRun: String(Date.now()), totalItems: String(processedSoFar), clusters: String(clusters.length), orphans: String(processedSoFar - Object.keys(assignments).length), relabeled: '0', elapsedMs: '0' })
+          const posEntries = Object.entries(seedPositions as Record<string, number[]>)
+          if (posEntries.length > 0) await redis.set('strata:graph:layout', JSON.stringify(posEntries))
+          invalidateItemCache()
+          const endedAt = Date.now()
+          await redis.hSet('strata:ingest:status', { phase: 'done', endedAt: String(endedAt) })
+          if (status.backfillId) await updateBackfillRecord(status.backfillId, { status: 'done', endedAt, totalItems: processedSoFar, processed: processedSoFar })
+          console.log(`[Strata] Demo backfill done: ${clusters.length} clusters, ${posEntries.length} positions`)
+          try {
+            const scanId = generateAlertId()
+            await redis.hSet('strata:scan:status', { phase: 'building', startedAt: String(Date.now()), scanId, anchorsProcessed: '0', anchorsTotal: '0' })
+            await putScanRecord({ id: scanId, status: 'running', startedAt: Date.now(), endedAt: null, anchorsTotal: 0, anchorsProcessed: 0, alertsCreated: 0, autoTriggered: true, initiatedBy: 'auto-scan' })
+            await scheduler.runJob({ name: 'scan', runAt: new Date(Date.now() + 1000), data: { step: 'build' } })
+          } catch (err) { console.error('[Strata] Background scan failed:', err) }
+        } else {
+          console.log(`[Strata] Real-time ingest complete: ${processedSoFar} items, starting recluster`)
+          if (status.backfillId) await updateBackfillRecord(status.backfillId, { processed: processedSoFar })
+          try {
+            await scheduler.runJob({ name: 'recluster', runAt: new Date(Date.now() + 1000), data: { fromBackfill: true } })
+          } catch (err) { console.error('[Strata] Post-backfill recluster schedule failed:', err) }
+        }
         return c.json({ status: 'ok' })
       }
 
@@ -2310,7 +2346,7 @@ app.post('/api/backfill/preview', async (c) => {
 
   const token = generateAlertId()
   const TTL_MS = 10 * 60 * 1000
-  await redis.set(`strata:backfill:preview:${token}`, JSON.stringify({ from, to, items: rawItems }), {
+  await redis.set(`strata:backfill:preview:${token}`, JSON.stringify({ from, to, demo: !!demo, items: rawItems }), {
     expiration: new Date(Date.now() + TTL_MS),
   })
 
@@ -2338,7 +2374,7 @@ app.post('/api/backfill/confirm', async (c) => {
 
   const cachedJson = await redis.get(`strata:backfill:preview:${token}`)
   if (!cachedJson) return c.json({ error: 'Preview expired — generate a new estimate' }, 410)
-  const cached = JSON.parse(cachedJson) as { from: string; to: string; items: RawItem[] }
+  const cached = JSON.parse(cachedJson) as { from: string; to: string; demo?: boolean; items: RawItem[] }
   const rawItems = cached.items
 
   if (rawItems.length === 0) return c.json({ error: 'No items in the selected range' }, 400)
@@ -2367,6 +2403,7 @@ app.post('/api/backfill/confirm', async (c) => {
     await redis.hSet('strata:ingest:status', {
       phase: mode === 'realtime' ? 'realtime-ingest' : 'submit',
       mode,
+      demo: cached.demo ? '1' : '',
       totalItems: String(rawItems.length),
       processed: '0',
       chunkIndex: '0',
