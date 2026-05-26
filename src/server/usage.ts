@@ -5,14 +5,16 @@ interface PricePerMillion {
   output: number
 }
 
+// Prices in USD per million tokens (standard tier, not batch)
 const PRICING: Record<string, PricePerMillion> = {
-  'gpt-5.5': { input: 250, output: 2000 },
-  'gpt-5.4': { input: 200, output: 1600 },
-  'gpt-5.4-mini': { input: 25, output: 200 },
-  'gpt-4.1': { input: 200, output: 800 },
-  'gpt-4.1-mini': { input: 40, output: 160 },
-  'text-embedding-3-small': { input: 2, output: 0 },
-  'text-embedding-3-large': { input: 13, output: 0 },
+  'gpt-5.5': { input: 2.50, output: 10.00 },
+  'gpt-5.4': { input: 2.00, output: 8.00 },
+  'gpt-5.4-mini': { input: 0.20, output: 0.80 },
+  'gpt-5.4-nano': { input: 0.10, output: 0.40 },
+  'gpt-4.1': { input: 2.00, output: 8.00 },
+  'gpt-4.1-mini': { input: 0.40, output: 1.60 },
+  'text-embedding-3-small': { input: 0.02, output: 0 },
+  'text-embedding-3-large': { input: 0.13, output: 0 },
 }
 
 function priceFor(model: string): PricePerMillion {
@@ -81,7 +83,7 @@ function parseBucket(hash: Record<string, string>): ModelUsage[] {
   }
   for (const m of byModel.values()) {
     const p = priceFor(m.model)
-    m.costCents = (m.inputTokens * p.input + m.outputTokens * p.output) / 1_000_000 / 100
+    m.costCents = (m.inputTokens * p.input + m.outputTokens * p.output) / 1_000_000 * 100
   }
   return Array.from(byModel.values()).sort((a, b) => b.costCents - a.costCents)
 }
