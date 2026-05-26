@@ -193,10 +193,10 @@ export function OnboardingForm({ onStarted, onCancel }: Props) {
               </div>
             )}
             {!estimate.willExceed && estimate.egressRisk && (
-              <div className="flex items-start gap-1.5 text-xs text-amber-600 dark:text-amber-400 pt-1">
+              <div className="flex items-start gap-1.5 text-xs text-muted-foreground pt-1">
                 <AlertTriangle className="size-3.5 shrink-0 mt-px" />
                 <span>
-                  Large backfill. Reddit limits how much data an app can send to OpenAI at once, so this may stall or fail. A window under {(estimate.egressSafeItems ?? 1500).toLocaleString()} items is safer.
+                  Large backfill — processed in chunks to stay under Reddit's data limits. It runs unattended but may take a while.
                 </span>
               </div>
             )}

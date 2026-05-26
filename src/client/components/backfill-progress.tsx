@@ -58,20 +58,24 @@ export function BackfillProgress({ backfillId, subredditName }: Props) {
   const extractR = ratio(status.extractCompleted, status.extractTotal)
   const entR = ratio(status.entCompleted, status.entTotal)
 
-  // Weighted overall: embed+extract = 70%, entity-embed = 20%, storing = 10%.
-  let overall = 0
-  let phaseLabel = 'Submitting to OpenAI…'
-  if (status.phase === 'embedding' || status.phase === 'extracting') {
-    overall = ((embR + extractR) / 2) * 0.7
-    phaseLabel = 'Embedding & extracting entities'
-  } else if (status.phase === 'entity-embedding') {
-    overall = 0.7 + entR * 0.2
-    phaseLabel = 'Embedding entities'
-  } else if (status.phase === 'storing') {
-    overall = 0.92
-    phaseLabel = 'Writing to store'
-  }
+  const chunkCount = status.chunkCount ?? 0
+  const chunkIndex = status.chunkIndex ?? 0
+  const chunked = chunkCount > 1
+
+  // Within-chunk fraction (submit 0 → embed+extract .7 → entity-embed .9 → store 1).
+  let chunkFrac = 0
+  let phaseLabel = 'Preparing…'
+  if (status.phase === 'submit') { chunkFrac = 0; phaseLabel = 'Submitting to OpenAI' }
+  else if (status.phase === 'embedding' || status.phase === 'extracting') { chunkFrac = ((embR + extractR) / 2) * 0.7; phaseLabel = 'Embedding & extracting entities' }
+  else if (status.phase === 'entity-embedding') { chunkFrac = 0.7 + entR * 0.2; phaseLabel = 'Embedding entities' }
+  else if (status.phase === 'storing') { chunkFrac = 0.95; phaseLabel = 'Writing to store' }
+
+  // Overall = completed chunks + current chunk's fraction, over total chunks.
+  const overall = chunkCount > 0 ? (chunkIndex + chunkFrac) / chunkCount : chunkFrac
   const pct = Math.round(overall * 100)
+
+  const waitingMs = status.waitingUntil ? status.waitingUntil - Date.now() : 0
+  const waiting = status.phase === 'submit' && waitingMs > 1000
 
   const rows: Array<{ label: string; done: number; total: number; active: boolean }> = [
     { label: 'Embeddings', done: status.embCompleted ?? 0, total: status.embTotal ?? status.totalItems, active: status.phase === 'embedding' || status.phase === 'extracting' },
@@ -92,7 +96,9 @@ export function BackfillProgress({ backfillId, subredditName }: Props) {
             Processing {status.totalItems.toLocaleString()} items
             {subredditName ? ` from r/${subredditName}` : ''}
           </p>
-          <p className="text-xs text-muted-foreground">{phaseLabel}</p>
+          <p className="text-xs text-muted-foreground">
+            {chunked ? `Chunk ${Math.min(chunkIndex + 1, chunkCount)} of ${chunkCount} · ` : ''}{phaseLabel}
+          </p>
         </div>
 
         <div className="space-y-1.5">
@@ -126,8 +132,9 @@ export function BackfillProgress({ backfillId, subredditName }: Props) {
         </div>
 
         <p className="text-[11px] text-muted-foreground text-center leading-relaxed">
-          Runs on OpenAI's batch queue — can take several minutes.
-          {lastPolledAgo ? ` Last checked ${lastPolledAgo} ago; refreshes every ~2 min.` : ' Checking periodically.'}
+          {waiting
+            ? `Paused for Reddit's data limit — resuming in ~${duration(waitingMs)}.`
+            : `Runs on OpenAI's batch queue — can take several minutes.${lastPolledAgo ? ` Last checked ${lastPolledAgo} ago; refreshes every ~2 min.` : ''}`}
         </p>
 
         {backfillId && (

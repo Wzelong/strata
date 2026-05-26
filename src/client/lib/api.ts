@@ -313,7 +313,7 @@ export async function fetchClusterDetail(id: string): Promise<ClusterDetail | nu
 
 // --- Backfill ---
 
-export type IngestPhase = 'idle' | 'embedding' | 'extracting' | 'entity-embedding' | 'storing' | 'done' | 'error' | 'cancelled'
+export type IngestPhase = 'idle' | 'submit' | 'embedding' | 'extracting' | 'entity-embedding' | 'storing' | 'done' | 'error' | 'cancelled'
 
 export interface IngestStatus {
   phase: IngestPhase
@@ -329,6 +329,9 @@ export interface IngestStatus {
   entCompleted?: number
   entTotal?: number
   lastPolledAt?: number | null
+  chunkIndex?: number
+  chunkCount?: number
+  waitingUntil?: number | null
 }
 
 export async function fetchIngestStatus(): Promise<IngestStatus> {
@@ -341,6 +344,16 @@ export async function fetchIngestStatus(): Promise<IngestStatus> {
     startedAt: raw.startedAt ?? 0,
     endedAt: raw.endedAt ?? null,
     error: raw.error ?? null,
+    embCompleted: raw.embCompleted ?? 0,
+    embTotal: raw.embTotal ?? 0,
+    extractCompleted: raw.extractCompleted ?? 0,
+    extractTotal: raw.extractTotal ?? 0,
+    entCompleted: raw.entCompleted ?? 0,
+    entTotal: raw.entTotal ?? 0,
+    lastPolledAt: raw.lastPolledAt ?? null,
+    chunkIndex: raw.chunkIndex ?? 0,
+    chunkCount: raw.chunkCount ?? 0,
+    waitingUntil: raw.waitingUntil ?? null,
   }
 }
 

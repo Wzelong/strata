@@ -1,67 +1,45 @@
 import type OpenAI from 'openai'
 import type { Entity, CostTracker } from './types.js'
 
-export const ENTITY_EXTRACTION_SYSTEM = `Extract entities that could link this post to a DIFFERENT post about the same real-world referent (incident, person, place, thing).
+export const ENTITY_EXTRACTION_SYSTEM = `Extract entities that could link this post to a DIFFERENT post about the same real-world referent — a specific person, place, business, product, object, or event.
 
-Atomize: each distinguishing feature is its own entity. Do NOT combine multiple features into one string, even when they appear in the same sentence. A post that mentions a vehicle's color, damage, and identifying mark contributes three object entities — not one long description.
+Atomize: each distinguishing feature is its own entity. Do not combine multiple features into one string, even when they appear in the same sentence. An item plus a notable marking plus damage is three object entities, not one long description.
 
-Each entity must include its head noun — the actual thing being described. Modifiers, colors, numbers, and measurements alone do not qualify. "cracked taillight" (noun: taillight) yes; "cracked" alone no. "marathon stickers" yes; "26.2" alone no. "dark green Subaru" yes; "dark green" alone no.
+Each entity must include its head noun — the actual thing named. Modifiers, colors, numbers, and measurements alone never qualify: "cracked screen" yes, "cracked" no; "model 3047" yes, "3047" no.
 
-Use only words from the input.
-
-A single common noun is never enough. The entity must narrow to one specific referent: "the car" never qualifies; "dark green Subaru Outback" does.
+A single common noun is never enough; the entity must narrow to one referent. "the store" never qualifies; "Harvard Coop on Mass Ave" does. Use only words from the input.
 
 Types: person, location, object, organization, phone, email, url, username, quantity
-
-Per type:
-- object: each distinct feature gets its own entity — vehicle make/color/model is one, damage is one, identifying mark is one
-- person: name preferred; otherwise role with specific affiliation
-- location: specific street, intersection, landmark, garage, neighborhood
-- organization: include qualifiers that narrow which one ("non-emergency", "P3 garage")
-- quantity: identifiers only — case numbers, badges, license plates. Not durations, amounts, ages.
+- object: each distinct physical feature is its own entity — the item, a marking, damage
+- person: name preferred; otherwise a role with a specific affiliation
+- location: specific street, intersection, landmark, address, or neighborhood
+- organization: include qualifiers that narrow which one ("non-emergency line", "South Station branch")
+- quantity: identifiers only — case/order/reference numbers, license plates, badges. Not durations, amounts, or ages.
 - phone, email, url, username: as written
 
 Return an empty array when nothing qualifies. Most posts have zero linkable entities.
 
 <example>
-Input: "I saw a guy in a red Toyota Camry with a dented rear door cut off a cyclist near the Elm St and 5th Ave intersection"
-Output: [object: "red Toyota Camry", object: "dented rear door", location: "Elm St and 5th Ave intersection"]
-Atomized: vehicle and damage are two separate features even though adjacent in the text. "guy" and "cyclist" excluded — generic.
+Input: "Selling a matte black Trek hardtail, has a cracked left pedal and a faded UMass sticker on the down tube."
+Output: [object: "matte black Trek hardtail", object: "cracked left pedal", object: "faded UMass sticker"]
+Atomized: the bike, the damage, and the marking are separate. "cracked" alone would not qualify — head noun "pedal" included.
 </example>
 
 <example>
-Input: "Someone has a dark green Subaru Outback on P3 with gnarly front bumper damage and a cracked passenger headlight. The bumper is hanging off on one side."
-Output: [object: "dark green Subaru Outback", object: "gnarly front bumper damage", object: "cracked passenger headlight", object: "bumper hanging off on one side", location: "P3"]
-Atomized: vehicle, three damage features, and location each become separate entities.
+Input: "Filed a complaint with the Cambridge License Commission about The Plough on Mass Ave, reference #2026-1187."
+Output: [organization: "Cambridge License Commission", organization: "The Plough", location: "Mass Ave", quantity: "reference #2026-1187"]
 </example>
 
 <example>
-Input: "Some asshole in a dark green Subaru Outback blew through the crosswalk — had a cracked taillight and one of those '26.2' marathon stickers on the back window."
-Output: [object: "dark green Subaru Outback", object: "cracked taillight", object: "26.2 marathon stickers on the back window"]
-Head-noun rule: "26.2" alone is just a number — must include the noun it modifies ("stickers"). Same for "cracked" → "cracked taillight".
+Input: "Got scammed reselling a concert ticket to u/fastflip_deals — their Venmo is @flipdeals22."
+Output: [username: "u/fastflip_deals", username: "@flipdeals22"]
+"concert ticket" excluded — generic, narrows to no specific referent.
 </example>
 
 <example>
-Input: "Need an auto body shop. Friend's car has significant front-passenger damage on a 2017 Subaru — cracked headlight, bumper hanging loose on the driver-side too. Closer to Inman/Cambridgeside ideally."
-Output: [object: "2017 Subaru", object: "significant front-passenger damage", object: "cracked headlight", object: "bumper hanging loose on the driver-side", location: "Inman/Cambridgeside"]
-Atomized across sentences: each damage feature is its own entity record.
-</example>
-
-<example>
-Input: "Honestly stay off Mass Ave near Central. Some asshole in a dark green Subaru Outback blew through the crosswalk at Prospect. Reported it to Cambridge PD non-emergency."
-Output: [object: "dark green Subaru Outback", location: "Mass Ave near Central", location: "Prospect", organization: "Cambridge PD non-emergency"]
-"crosswalk" excluded — generic.
-</example>
-
-<example>
-Input: "Hope you didn't like IPAs. I still drink them but they are the most common factor if I have a flare up."
+Input: "Honestly the coffee scene around here has gotten so much better in the last few years."
 Output: []
-"IPAs" is a generic beverage category. No specific referent.
-</example>
-
-<example>
-Input: "Three weeks and counting since I submitted dashcam footage to Cambridge PD for case #2026-04891."
-Output: [organization: "Cambridge PD", quantity: "case #2026-04891"]
+Generic topic, no specific referent.
 </example>`
 
 export const ENTITY_SCHEMA: Record<string, unknown> = {

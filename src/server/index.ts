@@ -1027,6 +1027,29 @@ app.post('/internal/forms/similar-decisions-results', async (c) => {
 
 // --- Scheduler: Poll Batch Status ---
 
+// Devvit caps outbound bytes per app per domain. Submit the backfill in chunks
+// small enough to fit one egress window; the scheduler advances chunk-by-chunk
+// and backs off when the cap is hit, so arbitrarily large backfills complete
+// over time instead of failing.
+const INGEST_CHUNK_SIZE = 500
+const INGEST_POLL_MS = 120_000
+const EGRESS_BACKOFF_MAX_MS = 60 * 60_000
+const EGRESS_BACKOFF_MIN_MS = 60_000
+
+function parseRetryAfterMs(err: unknown): number | null {
+  const text = flattenError(err).toLowerCase()
+  const m = text.match(/retry after\s+(?:([0-9.]+)\s*h)?\s*(?:([0-9.]+)\s*m)?\s*(?:([0-9.]+)\s*s)?/)
+  if (!m || (!m[1] && !m[2] && !m[3])) return null
+  const h = parseFloat(m[1] || '0'), min = parseFloat(m[2] || '0'), s = parseFloat(m[3] || '0')
+  const ms = (h * 3600 + min * 60 + s) * 1000
+  return ms > 0 ? Math.min(EGRESS_BACKOFF_MAX_MS, Math.max(EGRESS_BACKOFF_MIN_MS, ms)) : null
+}
+
+function isEgressOrRateError(err: unknown): boolean {
+  const text = flattenError(err).toLowerCase()
+  return text.includes('http_egress_bytes') || text.includes('rate limit') || text.includes('429') || text.includes('connection error')
+}
+
 app.post('/internal/scheduler/ingest-batch', async (c) => {
   try {
     const status = await redis.hGetAll('strata:ingest:status')
@@ -1039,19 +1062,61 @@ app.post('/internal/scheduler/ingest-batch', async (c) => {
     const openai = new OpenAI({ apiKey })
 
     const phase = status.phase as string
+    const chunkIndex = parseInt(status.chunkIndex || '0', 10)
+    const chunkCount = parseInt(status.chunkCount || '1', 10)
+    const processedSoFar = parseInt(status.processed || '0', 10)
+    const order: string[] = JSON.parse((await redis.get('strata:ingest:order')) || '[]')
+    const chunkIds = order.slice(chunkIndex * INGEST_CHUNK_SIZE, (chunkIndex + 1) * INGEST_CHUNK_SIZE)
+
+    const loadChunkRaw = async (): Promise<RawItem[]> => {
+      const out: RawItem[] = []
+      for (const id of chunkIds) {
+        const v = await redis.hGet('strata:ingest:raw', id)
+        if (v) out.push(JSON.parse(v))
+      }
+      return out
+    }
+
+    // --- Submit the current chunk's embed + extract batches (egress-gated) ---
+    if (phase === 'submit') {
+      const chunkRaw = await loadChunkRaw()
+      const normalizedItems = chunkRaw.map(r => ({ id: r.id, text: normalize(r.title ? `${r.title}\n\n${r.text}` : r.text) }))
+      try {
+        const [embBatchId, extractBatchId] = await Promise.all([
+          submitBatch(openai, buildEmbeddingJsonl(normalizedItems), '/v1/embeddings', 'ingest-emb.jsonl'),
+          submitBatch(openai, buildExtractionJsonl(normalizedItems), '/v1/responses', 'ingest-extract.jsonl'),
+        ])
+        await redis.hSet('strata:ingest:status', {
+          phase: 'embedding', embBatchId, extractBatchId,
+          embCompleted: '0', embTotal: String(chunkRaw.length),
+          extractCompleted: '0', extractTotal: String(chunkRaw.length),
+          lastPolledAt: String(Date.now()),
+        })
+        console.log(`[Strata] Chunk ${chunkIndex + 1}/${chunkCount} submitted (${chunkRaw.length} items)`)
+        await scheduler.runJob({ name: 'ingest-batch', runAt: new Date(Date.now() + INGEST_POLL_MS), data: {} })
+      } catch (err) {
+        if (isEgressOrRateError(err)) {
+          const backoff = parseRetryAfterMs(err) ?? EGRESS_BACKOFF_MIN_MS
+          await redis.hSet('strata:ingest:status', { waitingUntil: String(Date.now() + backoff), lastError: 'egress' })
+          console.warn(`[Strata] Chunk ${chunkIndex + 1}: egress limit, retrying in ${Math.round(backoff / 1000)}s`)
+          await scheduler.runJob({ name: 'ingest-batch', runAt: new Date(Date.now() + backoff), data: {} })
+        } else {
+          throw err
+        }
+      }
+      return c.json({ status: 'ok' })
+    }
 
     if (phase === 'embedding' || phase === 'extracting') {
-      // Check both batches
       const embStatus = await checkBatch(openai, status.embBatchId)
       const extractStatus = await checkBatch(openai, status.extractBatchId)
-
-      console.log(`[Strata] Poll: emb=${embStatus.status}(${embStatus.completed}/${embStatus.total}), extract=${extractStatus.status}(${extractStatus.completed}/${extractStatus.total})`)
+      console.log(`[Strata] Chunk ${chunkIndex + 1}/${chunkCount} poll: emb=${embStatus.status}(${embStatus.completed}/${embStatus.total}), extract=${extractStatus.status}(${extractStatus.completed}/${extractStatus.total})`)
 
       await redis.hSet('strata:ingest:status', {
         embCompleted: String(embStatus.completed),
-        embTotal: String(embStatus.total || status.totalItems || 0),
+        embTotal: String(embStatus.total || chunkIds.length),
         extractCompleted: String(extractStatus.completed),
-        extractTotal: String(extractStatus.total || status.totalItems || 0),
+        extractTotal: String(extractStatus.total || chunkIds.length),
         lastPolledAt: String(Date.now()),
       })
 
@@ -1063,56 +1128,46 @@ app.post('/internal/scheduler/ingest-batch', async (c) => {
       }
 
       if (embStatus.status === 'completed' && extractStatus.status === 'completed') {
-        // Both done — download results, build entity embeddings, submit final batch
-        console.log('[Strata] Both batches complete. Downloading results...')
-
         const [embResults, extractResults] = await Promise.all([
           downloadBatchResults(openai, embStatus.outputFileId!),
           downloadBatchResults(openai, extractStatus.outputFileId!),
         ])
-
         const embeddings = parseEmbeddingResults(embResults)
         const entities = parseExtractionResults(extractResults)
-
-        // Store embeddings + extraction results in Redis for final phase
         await redis.set('strata:ingest:embeddings', JSON.stringify([...embeddings.entries()]))
         await redis.set('strata:ingest:entities', JSON.stringify([...entities.entries()]))
 
-        // Build entity embedding batch
         const entityItems: Array<{ id: string; text: string }> = []
-        for (const [itemId, ents] of entities) {
-          for (const e of ents) {
-            entityItems.push({ id: `${itemId}:${e.surfaceText}`, text: e.surfaceText })
-          }
-        }
+        for (const [itemId, ents] of entities) for (const e of ents) entityItems.push({ id: `${itemId}:${e.surfaceText}`, text: e.surfaceText })
 
         if (entityItems.length > 0) {
-          const entityEmbBatchId = await submitBatch(openai, buildEntityEmbeddingJsonl(entityItems), '/v1/embeddings', 'ingest-entity-emb.jsonl')
-          await redis.hSet('strata:ingest:status', { phase: 'entity-embedding', entityEmbBatchId })
-          console.log(`[Strata] Entity embedding batch submitted: ${entityEmbBatchId} (${entityItems.length} entities)`)
+          try {
+            const entityEmbBatchId = await submitBatch(openai, buildEntityEmbeddingJsonl(entityItems), '/v1/embeddings', 'ingest-entity-emb.jsonl')
+            await redis.hSet('strata:ingest:status', { phase: 'entity-embedding', entityEmbBatchId })
+          } catch (err) {
+            if (isEgressOrRateError(err)) {
+              const backoff = parseRetryAfterMs(err) ?? EGRESS_BACKOFF_MIN_MS
+              console.warn(`[Strata] Entity-emb submit: egress limit, retrying in ${Math.round(backoff / 1000)}s`)
+              await scheduler.runJob({ name: 'ingest-batch', runAt: new Date(Date.now() + backoff), data: {} })
+              return c.json({ status: 'ok' })
+            }
+            throw err
+          }
         } else {
           await redis.hSet('strata:ingest:status', { phase: 'storing' })
         }
-
-        // Schedule next poll
-        await scheduler.runJob({ name: 'ingest-batch', runAt: new Date(Date.now() + 120_000), data: {} })
+        await scheduler.runJob({ name: 'ingest-batch', runAt: new Date(Date.now() + INGEST_POLL_MS), data: {} })
         return c.json({ status: 'ok' })
       }
 
-      // Still processing — poll again in 2 min
-      await scheduler.runJob({ name: 'ingest-batch', runAt: new Date(Date.now() + 120_000), data: {} })
+      await scheduler.runJob({ name: 'ingest-batch', runAt: new Date(Date.now() + INGEST_POLL_MS), data: {} })
       return c.json({ status: 'ok' })
     }
 
     if (phase === 'entity-embedding') {
       const entEmbStatus = await checkBatch(openai, status.entityEmbBatchId)
-      console.log(`[Strata] Poll entity-emb: ${entEmbStatus.status}(${entEmbStatus.completed}/${entEmbStatus.total})`)
-
-      await redis.hSet('strata:ingest:status', {
-        entCompleted: String(entEmbStatus.completed),
-        entTotal: String(entEmbStatus.total || 0),
-        lastPolledAt: String(Date.now()),
-      })
+      console.log(`[Strata] Chunk ${chunkIndex + 1}/${chunkCount} entity-emb: ${entEmbStatus.status}(${entEmbStatus.completed}/${entEmbStatus.total})`)
+      await redis.hSet('strata:ingest:status', { entCompleted: String(entEmbStatus.completed), entTotal: String(entEmbStatus.total || 0), lastPolledAt: String(Date.now()) })
 
       if (entEmbStatus.status === 'failed') {
         const endedAt = Date.now()
@@ -1120,65 +1175,60 @@ app.post('/internal/scheduler/ingest-batch', async (c) => {
         if (status.backfillId) await updateBackfillRecord(status.backfillId, { status: 'error', endedAt, error: 'Entity embedding batch failed' })
         return c.json({ status: 'ok' })
       }
-
       if (entEmbStatus.status === 'completed') {
         await redis.hSet('strata:ingest:status', { phase: 'storing' })
-        // Fall through to storing phase
       } else {
-        await scheduler.runJob({ name: 'ingest-batch', runAt: new Date(Date.now() + 120_000), data: {} })
+        await scheduler.runJob({ name: 'ingest-batch', runAt: new Date(Date.now() + INGEST_POLL_MS), data: {} })
         return c.json({ status: 'ok' })
       }
     }
 
     if (status.phase === 'storing' || phase === 'entity-embedding') {
-      console.log('[Strata] Storing results to Redis...')
+      console.log(`[Strata] Storing chunk ${chunkIndex + 1}/${chunkCount}...`)
+      const chunkRaw = await loadChunkRaw()
+      const embeddings = new Map<string, number[]>(JSON.parse((await redis.get('strata:ingest:embeddings')) || '[]'))
+      const entities = new Map<string, Entity[]>(JSON.parse((await redis.get('strata:ingest:entities')) || '[]'))
 
-      // Load cached results
-      const rawItemsJson = await redis.hGetAll('strata:ingest:raw')
-      const rawItems: RawItem[] = Object.values(rawItemsJson).map(v => JSON.parse(v))
-
-      const embJson = await redis.get('strata:ingest:embeddings')
-      const embeddings = new Map<string, number[]>(JSON.parse(embJson || '[]'))
-
-      const entJson = await redis.get('strata:ingest:entities')
-      const entities = new Map<string, Entity[]>(JSON.parse(entJson || '[]'))
-
-      // Download entity embeddings if available
       let entityEmbeddings = new Map<string, number[]>()
       if (status.entityEmbBatchId) {
         const entEmbStatus = await checkBatch(openai, status.entityEmbBatchId)
         if (entEmbStatus.outputFileId) {
-          const entEmbResults = await downloadBatchResults(openai, entEmbStatus.outputFileId)
-          entityEmbeddings = parseEmbeddingResults(entEmbResults)
+          entityEmbeddings = parseEmbeddingResults(await downloadBatchResults(openai, entEmbStatus.outputFileId))
         }
       }
 
-      const stored = await storeResults(store, rawItems, embeddings, entities, entityEmbeddings)
+      const stored = await storeResults(store, chunkRaw, embeddings, entities, entityEmbeddings)
+      const totalStored = processedSoFar + stored
 
-      // Cleanup temp keys
-      await redis.del('strata:ingest:raw')
+      // Per-chunk temp cleanup (raw + order kept until all chunks done)
       await redis.del('strata:ingest:embeddings')
       await redis.del('strata:ingest:entities')
 
+      const nextChunk = chunkIndex + 1
+      if (nextChunk < chunkCount) {
+        await redis.hSet('strata:ingest:status', {
+          phase: 'submit',
+          chunkIndex: String(nextChunk),
+          processed: String(totalStored),
+          entityEmbBatchId: '',
+        })
+        if (status.backfillId) await updateBackfillRecord(status.backfillId, { processed: totalStored })
+        console.log(`[Strata] Chunk ${chunkIndex + 1} stored (${stored}). ${totalStored}/${status.totalItems} done. Next chunk queued.`)
+        await scheduler.runJob({ name: 'ingest-batch', runAt: new Date(Date.now() + 3000), data: {} })
+        return c.json({ status: 'ok' })
+      }
+
+      // All chunks done.
+      await redis.del('strata:ingest:raw')
+      await redis.del('strata:ingest:order')
       const endedAt = Date.now()
-      await redis.hSet('strata:ingest:status', {
-        phase: 'done',
-        processed: String(stored),
-        endedAt: String(endedAt),
-      })
+      await redis.hSet('strata:ingest:status', { phase: 'done', processed: String(totalStored), endedAt: String(endedAt) })
       await redis.set('strata:backfill:complete', '1')
       if (status.backfillId) {
-        await updateBackfillRecord(status.backfillId, {
-          status: 'done',
-          endedAt,
-          totalItems: stored,
-          processed: stored,
-        })
+        await updateBackfillRecord(status.backfillId, { status: 'done', endedAt, totalItems: totalStored, processed: totalStored })
       }
-      console.log(`[Strata] Ingest complete: ${stored} items stored`)
+      console.log(`[Strata] Ingest complete: ${totalStored} items stored across ${chunkCount} chunk(s)`)
 
-      // Auto-fire scan so live items posted during the backfill window get
-      // surfaced against the freshly-populated corpus.
       try {
         const scanId = generateAlertId()
         const scanStartedAt = Date.now()
@@ -1975,6 +2025,9 @@ app.get('/api/ingest/status', async (c) => {
     entCompleted: num('entCompleted'),
     entTotal: num('entTotal'),
     lastPolledAt: status.lastPolledAt ? num('lastPolledAt') : null,
+    chunkIndex: num('chunkIndex'),
+    chunkCount: num('chunkCount'),
+    waitingUntil: status.waitingUntil ? num('waitingUntil') : null,
   })
 })
 
@@ -2100,34 +2153,25 @@ app.post('/api/backfill/confirm', async (c) => {
   }
 
   try {
-    const apiKey = await getOpenAIKey()
-    if (!apiKey) return c.json({ error: 'OpenAI API key not configured' }, 500)
-    const openai = new OpenAI({ apiKey })
-
+    // Store all raw items + an ordered id list so the scheduler can slice it
+    // into egress-sized chunks. No OpenAI upload happens here — the scheduler
+    // submits one chunk at a time and backs off when Devvit's egress cap is hit.
     await redis.hSet('strata:ingest:raw', Object.fromEntries(
       rawItems.map(item => [item.id, JSON.stringify(item)])
     ))
-
-    const normalizedItems = rawItems.map(r => ({
-      id: r.id,
-      text: normalize(r.title ? `${r.title}\n\n${r.text}` : r.text),
-    }))
-
-    const [embBatchId, extractBatchId] = await Promise.all([
-      submitBatch(openai, buildEmbeddingJsonl(normalizedItems), '/v1/embeddings', 'ingest-emb.jsonl'),
-      submitBatch(openai, buildExtractionJsonl(normalizedItems), '/v1/responses', 'ingest-extract.jsonl'),
-    ])
+    await redis.set('strata:ingest:order', JSON.stringify(rawItems.map(i => i.id)))
 
     const backfillId = generateAlertId()
     const estimate = estimateBackfill(rawItems.length, estimateCurrentBytes(currentCount))
     const initiatedBy = context.userId || 'unknown'
+    const chunkCount = Math.ceil(rawItems.length / INGEST_CHUNK_SIZE)
 
     await redis.hSet('strata:ingest:status', {
-      phase: 'embedding',
+      phase: 'submit',
       totalItems: String(rawItems.length),
       processed: '0',
-      embBatchId,
-      extractBatchId,
+      chunkIndex: '0',
+      chunkCount: String(chunkCount),
       startedAt: String(Date.now()),
       backfillId,
     })
@@ -2146,9 +2190,9 @@ app.post('/api/backfill/confirm', async (c) => {
     })
 
     await redis.del(`strata:backfill:preview:${token}`)
-    await scheduler.runJob({ name: 'ingest-batch', runAt: new Date(Date.now() + 60_000), data: {} })
+    await scheduler.runJob({ name: 'ingest-batch', runAt: new Date(Date.now() + 2000), data: {} })
 
-    console.log(`[Strata] Backfill ${backfillId} started: ${rawItems.length} items`)
+    console.log(`[Strata] Backfill ${backfillId} queued: ${rawItems.length} items in ${chunkCount} chunk(s)`)
     return c.json({ id: backfillId, totalItems: rawItems.length })
   } catch (err) {
     console.error('[Strata] Confirm error:', err)
