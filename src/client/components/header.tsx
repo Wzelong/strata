@@ -48,7 +48,7 @@ export function Header({ settingsOpen, onToggleSettings }: Props) {
             className="h-7 px-2 inline-flex items-center gap-1.5 rounded-md text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-colors cursor-pointer tabular-nums"
           >
             <Loader2 className="size-3 animate-spin" />
-            {(ingest.processed ?? 0)}/{compactCount(ingest.totalItems)}
+            {compactCount(ingest?.processed ?? 0)}/{compactCount(ingest?.totalItems ?? 0)}
           </button>
         )}
         {apiKeyInvalid && (
