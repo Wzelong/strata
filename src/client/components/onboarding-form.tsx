@@ -142,14 +142,14 @@ export function OnboardingForm({ onStarted, onCancel }: Props) {
   return (
     <div className="space-y-5">
       <div className="space-y-3">
-        <div className="flex items-center gap-2">
+        <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto_1fr] items-center gap-2">
           <DatePicker
             value={from}
             onChange={handleFromChange}
             label="from"
             disabled={(d) => d > new Date()}
           />
-          <span className="text-muted-foreground text-sm">→</span>
+          <span className="text-muted-foreground text-sm hidden sm:block">→</span>
           <DatePicker
             value={to}
             onChange={handleToChange}
