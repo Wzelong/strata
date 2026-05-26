@@ -620,7 +620,7 @@ export function AlertDetailPanel({ alertId, itemId, clusterId, listTab, requeste
       ? clusterDetail.label
       : postDetail
         ? (postDetail.post.title || postDetail.post.text.slice(0, 80))
-        : ''
+        : detailTab === 'explore' ? 'Explore' : detailTab === 'chat' ? 'Chat' : ''
   const publishedDraft = alert?.publishedPostId ? {
     title: alert.publishedPostTitle ?? '',
     body: alert.publishedPostBody ?? '',
