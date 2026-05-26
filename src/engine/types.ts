@@ -8,8 +8,6 @@ export type Entity = {
   surfaceText: string
 }
 
-export type Scope = 'global' | 'local'
-
 export type Item = {
   id: string
   type: 'post' | 'comment'
@@ -29,12 +27,6 @@ export type Item = {
   decisionReason: string | null
   position3d?: [number, number, number]
   clusterId?: number
-}
-
-export type LayoutCluster = {
-  id: number
-  label: string
-  size: number
 }
 
 export type RawItem = {
@@ -100,7 +92,7 @@ export type CostTracker = {
 export type AlertMode = 'surface' | 'flag'
 export type AlertStatus = 'pending' | 'resolved' | 'dismissed'
 export type AlertConfidence = 'high' | 'review'
-export type FlagType = 'rule' | 'pattern' | 'brigade' | 'contradiction'
+export type FlagType = 'rule' | 'pattern' | 'brigade'
 
 export type AlertEntity = {
   text: string
@@ -111,6 +103,7 @@ export type Alert = {
   id: string
   mode: AlertMode
   status: AlertStatus
+  statusUpdatedAt?: number
   confidence: AlertConfidence
   connectionCount: number
   createdAt: number
@@ -123,6 +116,16 @@ export type Alert = {
   anchorEntities: AlertEntity[]
   reasoning?: string
   flagType?: FlagType
+  draftPostTitle?: string
+  draftPostBody?: string
+  draftedAt?: number
+  draftedBy?: string
+  publishedPostId?: string
+  publishedPostTitle?: string
+  publishedPostBody?: string
+  publishedPostPermalink?: string
+  publishedAt?: number
+  publishedBy?: string
 }
 
 export type AlertConnection = {

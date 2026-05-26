@@ -6,12 +6,13 @@ export type RedisClient = {
   hGet(key: string, field: string): Promise<string | undefined>
   hGetAll(key: string): Promise<Record<string, string>>
   hIncrBy(key: string, field: string, value: number): Promise<number>
-  hScan(key: string, cursor: number, pattern?: string | undefined, count?: number): Promise<{ cursor: number; fieldValues: Record<string, string> }>
+  hScan(key: string, cursor: number, pattern?: string | undefined, count?: number): Promise<{ cursor: number; fieldValues: Record<string, string> | Array<{ field: string; value: string }> }>
   hDel(key: string, fields: string[]): Promise<number>
   zAdd(key: string, ...members: Array<{ member: string; score: number }>): Promise<number>
   zRange(key: string, start: number | string, stop: number | string, options?: { by?: 'score'; reverse?: boolean; limit?: { offset: number; count: number } }): Promise<Array<{ member: string; score: number }>>
   zRem(key: string, members: string[]): Promise<number>
   zCard(key: string): Promise<number>
+  del(key: string): Promise<void>
 }
 
 export class RedisKVStore implements KVStore {

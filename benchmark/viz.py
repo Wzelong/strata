@@ -21,7 +21,6 @@ ROLE_COLORS = {
     "decoy":           "#d62728",
     "brigade":         "#d62728",
     "thread":          "#cccccc",
-    "contradiction":   "#ff8800",
     "removed":         "#ff8800",
     "pattern":         "#ff8800",
     "corpus":          "#e0e0e0",

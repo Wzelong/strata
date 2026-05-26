@@ -8,7 +8,7 @@ import { normalize } from './normalize.js'
 import { embedBatch, embedSingle, cosine, quantize } from './embed.js'
 import { extractEntities } from './extract.js'
 import { hybridRetrieve, findSimilar, type HybridResult } from './search.js'
-import { classifyRelationship, classifyBatch, classifyContradictions, type ClassificationResult } from './classify.js'
+import { classifyRelationship, classifyBatch, type ClassificationResult } from './classify.js'
 import { recommendDecision } from './recommend.js'
 
 export class StrataEngine {
@@ -78,96 +78,6 @@ export class StrataEngine {
     return { ...stored, embedding }
   }
 
-  async ingestBatch(raws: RawItem[]): Promise<Item[]> {
-    const normalized = raws
-      .map(raw => ({
-        raw,
-        textNormalized: normalize(raw.title ? `${raw.title}\n\n${raw.text}` : raw.text),
-      }))
-      .filter(n => n.textNormalized.length > 0)
-
-    // Batch embed all texts
-    const embeddings = await embedBatch(
-      this.client,
-      normalized.map(n => n.textNormalized),
-      this.cost,
-    )
-
-    // Extract entities concurrently
-    const CONCURRENCY = 100
-    const allEntities: Array<import('./types.js').Entity[]> = new Array(normalized.length)
-
-    for (let i = 0; i < normalized.length; i += CONCURRENCY) {
-      const batch = normalized.slice(i, i + CONCURRENCY)
-      const results = await Promise.all(
-        batch.map(n => extractEntities(this.client, n.textNormalized, this.cost))
-      )
-      for (let j = 0; j < results.length; j++) {
-        allEntities[i + j] = results[j]
-      }
-    }
-
-    // Batch embed only descriptive entity types
-    const EMBED_TYPES = new Set(['object', 'person', 'location', 'organization'])
-    const entityMeta: Array<{ itemIdx: number; entityIdx: number }> = []
-    const entityTexts: string[] = []
-    for (let i = 0; i < allEntities.length; i++) {
-      for (let j = 0; j < allEntities[i].length; j++) {
-        if (!EMBED_TYPES.has(allEntities[i][j].type)) continue
-        entityMeta.push({ itemIdx: i, entityIdx: j })
-        entityTexts.push(allEntities[i][j].surfaceText)
-      }
-    }
-    const entityEmbeddings = entityTexts.length > 0
-      ? await embedBatch(this.client, entityTexts, this.cost)
-      : []
-
-    // Store everything
-    const items: Item[] = []
-    for (let i = 0; i < normalized.length; i++) {
-      const { raw, textNormalized } = normalized[i]
-      const entities = allEntities[i]
-      const embedding = embeddings[i]
-
-      const stored: StoredItem = {
-        id: raw.id,
-        type: raw.type,
-        ...(raw.title && { title: raw.title }),
-        text: raw.text,
-        textNormalized,
-        authorId: raw.authorId,
-        authorName: raw.authorName,
-        createdAt: raw.createdAt,
-        threadRootId: raw.threadRootId,
-        parentId: raw.parentId,
-        entities,
-        decision: 'pending',
-        decisionAt: null,
-        decisionBy: null,
-        decisionReason: null,
-      }
-
-      await this.store.setItem(stored)
-      await this.store.setEmbedding(raw.id, embedding)
-      await this.store.addToEntityIndex(entities, raw.id, raw.createdAt)
-
-      const itemEntityEmbs = entityMeta
-        .map((m, idx) => ({ ...m, idx }))
-        .filter(m => m.itemIdx === i)
-      if (itemEntityEmbs.length > 0) {
-        await this.store.setEntityEmbeddings(raw.id, itemEntityEmbs.map(m => ({
-          type: entities[m.entityIdx].type,
-          surfaceText: entities[m.entityIdx].surfaceText,
-          embedding: quantize(entityEmbeddings[m.idx]),
-        })))
-      }
-
-      items.push({ ...stored, embedding })
-    }
-
-    return items
-  }
-
   async surface(item: Item, opts?: { topK?: number }): Promise<{ candidates: Hit[]; entityMatches: Map<string, string[]> }> {
     const topK = opts?.topK ?? 15
 
@@ -199,7 +109,6 @@ export class StrataEngine {
       this.checkRuleViolation(item),
       this.checkPatternMatch(item),
       this.checkBrigade(item),
-      this.checkContradiction(item),
     ])
     return results.filter((r): r is FlagResult => r !== null)
   }
@@ -291,48 +200,6 @@ export class StrataEngine {
     }
   }
 
-  // Same author posting opposing statements across time. One batched
-  // classifyBatch call (not N serial classifyRelationship calls) checks up
-  // to 5 prefiltered priors and flags the first CONTRADICTS hit.
-  private async checkContradiction(item: Item): Promise<FlagResult | null> {
-    const WINDOW_MS = 30 * 24 * 60 * 60 * 1000
-    const since = item.createdAt - WINDOW_MS
-    const ids = await this.store.getItemIdsByAuthor(item.authorId, [since, item.createdAt])
-    const priorIds = ids.filter(id => id !== item.id)
-    if (priorIds.length === 0) return null
-
-    const priors: Item[] = []
-    for (const id of priorIds) {
-      const p = await this.getItem(id)
-      if (p && p.embedding.length > 0) priors.push(p)
-    }
-    if (priors.length === 0) return null
-
-    // Prefilter by cosine distance from 0.5 — paraphrases and totally unrelated
-    // chitchat are unlikely to be the contradiction; the ambiguous middle is.
-    priors.sort((a, b) => Math.abs(cosine(item.embedding, b.embedding) - 0.5) - Math.abs(cosine(item.embedding, a.embedding) - 0.5))
-    const candidates = priors.slice(0, 5)
-
-    const results = await classifyContradictions(
-      this.client,
-      item,
-      candidates.map(c => ({ id: c.id, text: c.text, createdAt: c.createdAt })),
-      this.cost,
-    )
-    const hit = results.find(r => r.relationship === 'CONTRADICTS')
-    if (!hit) return null
-    const prior = candidates.find(c => c.id === hit.id)
-    if (!prior) return null
-
-    return {
-      type: 'contradiction',
-      confidence: hit.confidence ?? 'review',
-      reasoning: `Same author (${item.authorName}) posted contradictory statement on ${new Date(prior.createdAt).toISOString().slice(0, 10)}: ${hit.reason}`,
-      anchorId: item.id,
-      connectionItems: [prior],
-    }
-  }
-
   // --- Accessors ---
 
   async getItem(id: string): Promise<Item | null> {
@@ -342,37 +209,18 @@ export class StrataEngine {
     return { ...stored, embedding: emb ?? [] }
   }
 
-  async getItems(ids: string[]): Promise<Item[]> {
+  async findSimilar(emb: number[], k?: number, filter?: SearchFilter): Promise<Hit[]> {
+    return findSimilar(this.store, emb, k, filter)
+  }
+
+  async getItemsInThread(threadRootId: string): Promise<Item[]> {
+    const ids = await this.store.getItemIdsByThread(threadRootId)
     const items: Item[] = []
     for (const id of ids) {
       const item = await this.getItem(id)
       if (item) items.push(item)
     }
     return items
-  }
-
-  async findSimilar(emb: number[], k?: number, filter?: SearchFilter): Promise<Hit[]> {
-    return findSimilar(this.store, emb, k, filter)
-  }
-
-  async getItemsByDecision(d: Decision, timeRange?: [number, number]): Promise<Item[]> {
-    const ids = await this.store.getItemIdsByDecision(d, timeRange)
-    return this.getItems(ids)
-  }
-
-  async getItemsByAuthor(authorId: string, timeRange?: [number, number]): Promise<Item[]> {
-    const ids = await this.store.getItemIdsByAuthor(authorId, timeRange)
-    return this.getItems(ids)
-  }
-
-  async getItemsByEntity(type: string, surfaceText: string, timeRange?: [number, number]): Promise<Item[]> {
-    const ids = await this.store.getItemIdsByEntity(type, surfaceText, timeRange)
-    return this.getItems(ids)
-  }
-
-  async getItemsInThread(threadRootId: string): Promise<Item[]> {
-    const ids = await this.store.getItemIdsByThread(threadRootId)
-    return this.getItems(ids)
   }
 
   async classifyRelationship(a: Item, b: Item): Promise<Relationship> {
@@ -394,15 +242,6 @@ export class StrataEngine {
     await this.store.moveDecision(itemId, item.decision, decision, now)
     const updated: StoredItem = { ...item, decision, decisionAt: now, decisionBy: by, decisionReason: reason ?? null }
     await this.store.setItem(updated)
-  }
-
-  async flagAsCase(itemId: string): Promise<void> {
-    await this.store.addCase(itemId, Date.now())
-  }
-
-  async getCases(timeRange?: [number, number]): Promise<Item[]> {
-    const ids = await this.store.getCases(timeRange)
-    return this.getItems(ids)
   }
 
   async loadRules(inputs: RuleInput[]): Promise<void> {

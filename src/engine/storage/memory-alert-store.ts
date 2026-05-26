@@ -46,12 +46,41 @@ export class MemoryAlertStore implements AlertStore {
 
   async updateAlertStatus(id: string, status: AlertStatus): Promise<void> {
     const alert = this.alerts.get(id)
-    if (alert) alert.status = status
+    if (alert) {
+      alert.status = status
+      alert.statusUpdatedAt = Date.now()
+    }
+  }
+
+  async updateAlertDraft(id: string, fields: { draftPostTitle: string; draftPostBody: string; draftedAt: number; draftedBy: string }): Promise<void> {
+    const alert = this.alerts.get(id)
+    if (!alert) return
+    alert.draftPostTitle = fields.draftPostTitle
+    alert.draftPostBody = fields.draftPostBody
+    alert.draftedAt = fields.draftedAt
+    alert.draftedBy = fields.draftedBy
+  }
+
+  async updateAlertPublished(id: string, fields: { publishedPostId: string; publishedPostTitle: string; publishedPostBody: string; publishedPostPermalink: string; publishedAt: number; publishedBy: string }): Promise<void> {
+    const alert = this.alerts.get(id)
+    if (!alert) return
+    alert.publishedPostId = fields.publishedPostId
+    alert.publishedPostTitle = fields.publishedPostTitle
+    alert.publishedPostBody = fields.publishedPostBody
+    alert.publishedPostPermalink = fields.publishedPostPermalink
+    alert.publishedAt = fields.publishedAt
+    alert.publishedBy = fields.publishedBy
   }
 
   async getAlertIdsByAnchor(anchorId: string): Promise<string[]> {
     return [...this.alerts.values()]
       .filter(a => a.anchorId === anchorId)
       .map(a => a.id)
+  }
+
+  async resetAll(): Promise<void> {
+    this.alerts.clear()
+    this.connections.clear()
+    this.timeline = []
   }
 }

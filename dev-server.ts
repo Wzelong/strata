@@ -4,10 +4,12 @@ import { fileURLToPath } from 'node:url'
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { serve } from '@hono/node-server'
+import OpenAI from 'openai'
 import { MemoryKVStore } from './src/engine/storage/memory.js'
 import { MemoryAlertStore } from './src/engine/storage/memory-alert-store.js'
 import { cosine, dequantize } from './src/engine/embed.js'
 import type { StoredItem, Alert, AlertConnection, AlertStatus } from './src/engine/types.js'
+import { createChatHandler } from './src/server/chat/route.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const SEED_PATH = resolve(__dirname, 'dataset/seed.json')
@@ -20,31 +22,52 @@ const alertStore = new MemoryAlertStore()
 console.log('[dev-server] Loading seed.json...')
 const seed = JSON.parse(readFileSync(SEED_PATH, 'utf8')) as {
   items: StoredItem[]
+  embeddings?: Record<string, number[]>
   entityEmbeddings?: Record<string, Record<string, string>>
+  clusters?: Array<{ id: number; label: string; size: number }>
 }
-for (const item of seed.items) {
-  await store.setItem(item)
-  if (item.entities?.length) await store.addToEntityIndex(item.entities, item.id, item.createdAt)
+
+const itemEmbeddings = new Map<string, number[]>()
+if (seed.embeddings) {
+  for (const [id, vec] of Object.entries(seed.embeddings)) itemEmbeddings.set(id, vec)
+  console.log(`[dev-server] Loaded ${itemEmbeddings.size} item embeddings`)
 }
-if (seed.entityEmbeddings) {
-  const byItem = new Map<string, Array<{ type: string; surfaceText: string; embedding: string }>>()
-  for (const [type, entries] of Object.entries(seed.entityEmbeddings)) {
-    for (const [key, embedding] of Object.entries(entries)) {
-      const colonIdx = key.indexOf(':')
-      if (colonIdx === -1) continue
-      const itemId = key.slice(0, colonIdx)
-      const surfaceText = key.slice(colonIdx + 1)
-      if (!byItem.has(itemId)) byItem.set(itemId, [])
-      byItem.get(itemId)!.push({ type, surfaceText, embedding })
-    }
+
+const clusterLabelById = new Map<number, string>()
+for (const c of seed.clusters ?? []) clusterLabelById.set(c.id, c.label)
+
+async function loadSeedIntoStore() {
+  for (const item of seed.items) {
+    await store.setItem(item)
+    if (item.entities?.length) await store.addToEntityIndex(item.entities, item.id, item.createdAt)
   }
-  for (const [itemId, embs] of byItem) await store.setEntityEmbeddings(itemId, embs)
-  console.log(`[dev-server] Loaded entity embeddings for ${byItem.size} items`)
+  if (seed.entityEmbeddings) {
+    const byItem = new Map<string, Array<{ type: string; surfaceText: string; embedding: string }>>()
+    for (const [type, entries] of Object.entries(seed.entityEmbeddings)) {
+      for (const [key, embedding] of Object.entries(entries)) {
+        const colonIdx = key.indexOf(':')
+        if (colonIdx === -1) continue
+        const itemId = key.slice(0, colonIdx)
+        const surfaceText = key.slice(colonIdx + 1)
+        if (!byItem.has(itemId)) byItem.set(itemId, [])
+        byItem.get(itemId)!.push({ type, surfaceText, embedding })
+      }
+    }
+    for (const [itemId, embs] of byItem) await store.setEntityEmbeddings(itemId, embs)
+  }
 }
+
+async function clearAllItems() {
+  const ids = await store.getItemIds()
+  if (ids.length > 0) await store.deleteItems(ids)
+}
+
+await loadSeedIntoStore()
 console.log(`[dev-server] Loaded ${seed.items.length} items into memory store`)
 
 const stub = (id: string) => `https://reddit.com/r/${SUB}/comments/${id.replace(/^t[13]_/, '')}`
-const alertId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8)
+const MOCK_SURFACE_ALERT_ID = 'dev-alert-surface'
+const MOCK_BRIGADE_ALERT_ID = 'dev-alert-brigade'
 
 function jitter(p: [number, number, number], r = 0.6): [number, number, number] {
   return [p[0] + (Math.random() - 0.5) * r, p[1] + (Math.random() - 0.5) * r, p[2] + (Math.random() - 0.5) * r]
@@ -88,16 +111,6 @@ async function ensurePlantedItems() {
     threadRootId: 't3_strata_flag4', parentId: null, position: jitter(flag4Pos),
   })
 
-  const flag2aPos = await positionOf('t1_strata_flag2a')
-  const flag2bBase = flag2aPos ?? [0, 0, 0]
-  planted.push({
-    id: 't1_strata_flag2b', type: 'comment',
-    title: undefined,
-    text: 'I live near Cambridgeside and my roommate was home with me Tuesday night. He doesn\'t even drive to work anymore, he takes the Green Line.',
-    author: 'TKfromCambridge', createdAt: Date.now() - 3 * 60_000,
-    threadRootId: 't3_strata_casepost', parentId: 't3_strata_casepost', position: jitter(flag2bBase),
-  })
-
   const surfaceThreadRoots: Array<{ id: string; title: string; childId: string }> = [
     { id: 't3_bike_commute_daily', title: 'Cambridge bike commute - daily thread', childId: 't1_strata_surface1' },
     { id: 't3_cambridge_pd_blackhole', title: 'Cambridge PD black hole - anyone actually had a detective call back?', childId: 't3_strata_surface2' },
@@ -128,14 +141,6 @@ async function ensurePlantedItems() {
       threadRootId: 't3_strata_casepost', parentId: 't3_strata_casepost', position: jitter(brigadeBase, 0.9),
     })
   }
-
-  planted.push({
-    id: 't3_mock_rule_violation', type: 'post',
-    title: 'PSA about that person from the neighborhood meeting',
-    text: 'That jerk from the neighborhood meeting is Sarah Johnson, 45 Maple Dr unit 2A, Cambridge MA 02139. Her cell is 617-555-0199.',
-    author: 'AngryAtNeighborhood', createdAt: Date.now() - 4 * 60_000,
-    threadRootId: 't3_mock_rule_violation', parentId: null, position: [casePos[0] + 4, casePos[1] + 4, casePos[2] + 4],
-  })
 
   for (const p of planted) {
     if (await store.getItem(p.id)) continue
@@ -196,7 +201,7 @@ async function insertMockAlerts() {
       createdAt: days(6), sameAuthor: false },
   ]
   await alertStore.createAlert({
-    id: alertId(), mode: 'surface', status: 'pending', confidence: 'high',
+    id: MOCK_SURFACE_ALERT_ID, mode: 'surface', status: 'pending', confidence: 'high',
     connectionCount: surfaceConnections.length, createdAt: now,
     anchorId: 't3_strata_casepost', anchorAuthor: 'SarahsRoommate2026', anchorType: 'post',
     anchorTitle: 'My roommate was hit Tuesday on Mass Ave & Prospect — driver fled — case #2026-04891',
@@ -209,34 +214,6 @@ async function insertMockAlerts() {
       { text: 'partial plate ending in -K77', clusterId: 'obj:plate' },
     ],
   }, surfaceConnections)
-
-  const patternConnections: AlertConnection[] = [
-    { itemId: 't3_strata_flag3a', author: 'BeaconStWatcher', type: 'post',
-      title: 'PSA: silver Honda running reds on Beacon St',
-      text: 'I don\'t have the plate but someone needs to stop this guy before he kills someone.',
-      permalink: stub('t3_strata_flag3a'), classification: 'confirms', confidence: 'high',
-      entities: [], reasoning: 'Similarity to removed item', createdAt: days(14), sameAuthor: false },
-    { itemId: 't3_strata_flag3b', author: 'CambStConcerned', type: 'post',
-      title: 'Suspicious white pickup on Cambridge St every night',
-      text: 'There\'s a white pickup that parks illegally on Cambridge St every night and I\'m pretty sure the driver is dealing.',
-      permalink: stub('t3_strata_flag3b'), classification: 'confirms', confidence: 'high',
-      entities: [], reasoning: 'Similarity to removed item', createdAt: days(21), sameAuthor: false },
-    { itemId: 't3_strata_flag3c', author: 'AllstonAlert88', type: 'post',
-      title: 'Blue minivan circling my block in Allston — casing?',
-      text: 'I\'ve seen it 4 days in a row now just slowly driving past. This has to be casing houses right?',
-      permalink: stub('t3_strata_flag3c'), classification: 'confirms', confidence: 'high',
-      entities: [], reasoning: 'Similarity to removed item', createdAt: days(10), sameAuthor: false },
-  ]
-  await alertStore.createAlert({
-    id: alertId(), mode: 'flag', status: 'pending', confidence: 'review',
-    connectionCount: patternConnections.length, createdAt: now - 60_000,
-    anchorId: 't3_strata_flag4', anchorAuthor: 'MassAveSafety', anchorType: 'post',
-    anchorTitle: 'WARNING: dark green SUV running reds on Mass Ave near Central',
-    anchorText: 'There\'s a dark green SUV that\'s been seen blowing through red lights on Mass Ave near Central multiple times. I\'ve personally witnessed it twice. Someone is going to get seriously hurt. Can the mods pin this?',
-    anchorPermalink: stub('t3_strata_flag4'), anchorEntities: [],
-    reasoning: 'Matches pattern of previously removed witch-hunt posts (vague vehicle description, no plate, no police case, asking the community to identify a driver).',
-    flagType: 'pattern',
-  }, patternConnections)
 
   const brigadeConnections: AlertConnection[] = [
     { itemId: 't1_strata_brigade1', author: 'BostonDriver2026_1', type: 'comment',
@@ -256,7 +233,7 @@ async function insertMockAlerts() {
       entities: [], reasoning: '', createdAt: minutes(75), sameAuthor: false },
   ]
   await alertStore.createAlert({
-    id: alertId(), mode: 'flag', status: 'pending', confidence: 'high',
+    id: MOCK_BRIGADE_ALERT_ID, mode: 'flag', status: 'pending', confidence: 'high',
     connectionCount: brigadeConnections.length, createdAt: now - 2 * 60_000,
     anchorId: 't1_strata_brigade2', anchorAuthor: 'BostonDriver2026_2', anchorType: 'comment',
     anchorTitle: 'My roommate was hit Tuesday on Mass Ave & Prospect — driver fled — case #2026-04891',
@@ -266,37 +243,7 @@ async function insertMockAlerts() {
     flagType: 'brigade',
   }, brigadeConnections)
 
-  const contradictionConnections: AlertConnection[] = [
-    { itemId: 't1_strata_flag2a', author: 'TKfromCambridge', type: 'comment',
-      title: 'Best bars near Lechmere?',
-      text: 'I live right above the Cambridgeside garage — can vouch for Night Shift. My roommate and I always hit it Tuesdays after his shift ends around 7. He drives, I drink, nobody gets a DUI lol. We park P3, always plenty of space evenings.',
-      permalink: stub('t1_strata_flag2a'), classification: 'contradicts', confidence: 'high', entities: [],
-      reasoning: 'Prior post by same author (April 25): says roommate drives every Tuesday and they park at P3 Cambridgeside.',
-      createdAt: days(14), sameAuthor: true },
-  ]
-  await alertStore.createAlert({
-    id: alertId(), mode: 'flag', status: 'pending', confidence: 'high',
-    connectionCount: contradictionConnections.length, createdAt: now - 3 * 60_000,
-    anchorId: 't1_strata_flag2b', anchorAuthor: 'TKfromCambridge', anchorType: 'comment',
-    anchorTitle: 'My roommate was hit Tuesday on Mass Ave & Prospect — driver fled — case #2026-04891',
-    anchorText: 'I live near Cambridgeside and my roommate was home with me Tuesday night. He doesn\'t even drive to work anymore, he takes the Green Line.',
-    anchorPermalink: stub('t1_strata_flag2b'), anchorEntities: [],
-    reasoning: 'Same author (TKfromCambridge) posted contradictory statement on 2026-04-25: previously said roommate drives Tuesdays + parks P3 Cambridgeside; now claims roommate doesn\'t drive and was home Tuesday.',
-    flagType: 'contradiction',
-  }, contradictionConnections)
-
-  await alertStore.createAlert({
-    id: alertId(), mode: 'flag', status: 'pending', confidence: 'high',
-    connectionCount: 0, createdAt: now - 4 * 60_000,
-    anchorId: 't3_mock_rule_violation', anchorAuthor: 'AngryAtNeighborhood', anchorType: 'post',
-    anchorTitle: 'PSA about that person from the neighborhood meeting',
-    anchorText: 'That jerk from the neighborhood meeting is Sarah Johnson, 45 Maple Dr unit 2A, Cambridge MA 02139. Her cell is 617-555-0199. Somebody should give her a piece of their mind about what she said.',
-    anchorPermalink: stub('t3_mock_rule_violation'), anchorEntities: [],
-    reasoning: 'Violates rule-1 (No doxxing): post shares a private individual\'s full name, home address, and phone number. Also rule-3 (Be civil): hostile framing inviting retaliation.',
-    flagType: 'rule',
-  }, [])
-
-  console.log('[dev-server] Inserted 5 mock alerts (1 surface + 4 flag types)')
+  console.log('[dev-server] Inserted 2 mock alerts (1 surface + 1 brigade)')
 }
 
 await ensurePlantedItems()
@@ -310,9 +257,392 @@ app.get('/api/stats', async c => {
   return c.json({ itemCount, capacity: 330_000, seeded: '1', installed: '1' })
 })
 
-app.get('/api/viewer', async c => c.json({ isMod: true }))
+app.get('/api/viewer', async c => c.json({ isMod: true, subredditName: SUB }))
 
-app.get('/api/ingest/status', async c => c.json({ phase: 'idle' }))
+// ----- Mock backfill simulator -----
+
+type Phase = 'idle' | 'embedding' | 'extracting' | 'entity-embedding' | 'storing' | 'done' | 'error' | 'cancelled'
+
+type DevRecord = {
+  id: string
+  status: 'running' | 'done' | 'error' | 'cancelled'
+  from: string
+  to: string
+  startedAt: number
+  endedAt: number | null
+  totalItems: number
+  processed: number
+  initiatedBy: string
+  error?: string
+  costUsdEstimated?: number
+}
+
+const sim = {
+  phase: 'idle' as Phase,
+  totalItems: 0,
+  processed: 0,
+  startedAt: 0,
+  endedAt: null as number | null,
+  error: null as string | null,
+  backfillId: null as string | null,
+  timers: [] as ReturnType<typeof setTimeout>[],
+  history: new Map<string, DevRecord>(),
+  previews: new Map<string, { itemCount: number; from: string; to: string }>(),
+}
+
+function clearSimTimers() {
+  for (const t of sim.timers) clearTimeout(t)
+  sim.timers = []
+}
+
+function updateRecord(id: string, patch: Partial<DevRecord>) {
+  const existing = sim.history.get(id)
+  if (!existing) return
+  sim.history.set(id, { ...existing, ...patch })
+}
+
+// Seed a couple of historical records so the StorageView's history list isn't empty.
+{
+  const now = Date.now()
+  const r1: DevRecord = {
+    id: 'demo-bf-1', status: 'done',
+    from: '2026-03-01', to: '2026-03-14',
+    startedAt: now - 14 * 86400_000, endedAt: now - 14 * 86400_000 + 11 * 60_000,
+    totalItems: 1890, processed: 1890, initiatedBy: 'u/jane', costUsdEstimated: 0.18,
+  }
+  const r2: DevRecord = {
+    id: 'demo-bf-2', status: 'error',
+    from: '2026-02-01', to: '2026-02-28',
+    startedAt: now - 21 * 86400_000, endedAt: now - 21 * 86400_000 + 4 * 60_000,
+    totalItems: 0, processed: 0, initiatedBy: 'u/zelong',
+    error: 'rate-limit exceeded', costUsdEstimated: 0.0,
+  }
+  sim.history.set(r1.id, r1)
+  sim.history.set(r2.id, r2)
+}
+
+function startSimulatedBackfill(itemCount: number, from: string, to: string, initiatedBy: string): string {
+  clearSimTimers()
+  const id = `demo-bf-${Date.now().toString(36)}`
+  sim.phase = 'embedding'
+  sim.totalItems = itemCount
+  sim.processed = 0
+  sim.startedAt = Date.now()
+  sim.endedAt = null
+  sim.error = null
+  sim.backfillId = id
+  sim.history.set(id, {
+    id, status: 'running', from, to,
+    startedAt: sim.startedAt, endedAt: null,
+    totalItems: itemCount, processed: 0,
+    initiatedBy, costUsdEstimated: 0.34,
+  })
+
+  // Phase walk: 8s embedding → 8s extracting → 8s entity-embedding → 4s storing → done
+  // Bump processed monotonically across all phases.
+  const phases: Array<{ phase: Phase; delay: number; processedAt: number }> = [
+    { phase: 'extracting', delay: 8000, processedAt: itemCount * 0.4 },
+    { phase: 'entity-embedding', delay: 16000, processedAt: itemCount * 0.7 },
+    { phase: 'storing', delay: 24000, processedAt: itemCount * 0.9 },
+    { phase: 'done', delay: 28000, processedAt: itemCount },
+  ]
+
+  // Smooth processed updates every second.
+  for (let t = 1; t <= 28; t++) {
+    sim.timers.push(setTimeout(() => {
+      sim.processed = Math.min(itemCount, Math.round((t / 28) * itemCount))
+      updateRecord(id, { processed: sim.processed })
+    }, t * 1000))
+  }
+
+  for (const step of phases) {
+    sim.timers.push(setTimeout(async () => {
+      sim.phase = step.phase
+      sim.processed = Math.round(step.processedAt)
+      if (step.phase === 'done') {
+        sim.endedAt = Date.now()
+        await loadSeedIntoStore()
+        updateRecord(id, { status: 'done', endedAt: sim.endedAt, processed: itemCount })
+      } else {
+        updateRecord(id, { processed: sim.processed })
+      }
+    }, step.delay))
+  }
+
+  return id
+}
+
+function cancelSimulatedBackfill(): boolean {
+  if (!sim.backfillId || sim.phase === 'done' || sim.phase === 'idle' || sim.phase === 'error' || sim.phase === 'cancelled') {
+    return false
+  }
+  clearSimTimers()
+  const id = sim.backfillId
+  sim.phase = 'cancelled'
+  sim.endedAt = Date.now()
+  updateRecord(id, { status: 'cancelled', endedAt: sim.endedAt })
+  return true
+}
+
+app.get('/api/ingest/status', async c => {
+  return c.json({
+    phase: sim.phase,
+    totalItems: sim.totalItems,
+    processed: sim.processed,
+    startedAt: sim.startedAt,
+    endedAt: sim.endedAt,
+    error: sim.error,
+  })
+})
+
+app.post('/api/backfill/preview', async c => {
+  const { from, to } = await c.req.json<{ from: string; to: string }>()
+  // Item count proportional to date range so previews feel real.
+  const days = Math.max(1, Math.ceil((new Date(to).getTime() - new Date(from).getTime()) / 86400_000))
+  const itemCount = Math.min(5000, Math.max(50, days * 35))
+  const estimatedBytes = itemCount * 2500
+  const currentCount = await store.getItemCount()
+  const currentBytes = currentCount * 2500
+  const token = `dev-${Date.now().toString(36)}`
+  sim.previews.set(token, { itemCount, from, to })
+  return c.json({
+    token,
+    itemCount,
+    estimatedMinutes: Math.max(3, Math.ceil(itemCount / 500)),
+    estimatedCostUsd: Math.round(itemCount * 0.00011 * 100) / 100,
+    estimatedBytes,
+    currentBytes,
+    capacityBytes: 500 * 1024 * 1024,
+    willExceed: false,
+    currentItemCount: currentCount,
+    itemCapacity: 330_000,
+    from,
+    to,
+  })
+})
+
+app.post('/api/backfill/confirm', async c => {
+  const { token } = await c.req.json<{ token: string }>()
+  const preview = sim.previews.get(token)
+  if (!preview) return c.json({ error: 'Preview expired — generate a new estimate' }, 410)
+  if (sim.phase !== 'idle' && sim.phase !== 'done' && sim.phase !== 'error' && sim.phase !== 'cancelled') {
+    return c.json({ error: 'A backfill is already running' }, 409)
+  }
+  const id = startSimulatedBackfill(preview.itemCount, preview.from, preview.to, 'u/dev')
+  sim.previews.delete(token)
+  return c.json({ id, totalItems: preview.itemCount })
+})
+
+app.post('/api/backfill/cancel', async c => {
+  const ok = cancelSimulatedBackfill()
+  return c.json({ ok })
+})
+
+app.get('/api/backfill/history', async c => {
+  const records = [...sim.history.values()].sort((a, b) => b.startedAt - a.startedAt)
+  const currentCount = await store.getItemCount()
+  return c.json({
+    records,
+    currentItemCount: currentCount,
+    currentBytes: currentCount * 2500,
+    itemCapacity: 330_000,
+  })
+})
+
+// ----- Mock rules -----
+
+const mockRules = [
+  { id: 'rule-1', shortName: 'No doxxing', description: 'Posting personal information about other users is not allowed.', priority: 1 },
+  { id: 'rule-2', shortName: 'Be civil', description: 'Personal attacks, hostility, and hate speech will be removed.', priority: 2 },
+  { id: 'rule-3', shortName: 'No witch hunts', description: 'Posts identifying individuals without a police case will be removed.', priority: 3 },
+  { id: 'rule-4', shortName: 'Local content only', description: 'Off-topic content unrelated to Boston will be removed.', priority: 4 },
+]
+let loadedRules = [...mockRules]
+app.get('/api/rules', async c => c.json({ rules: loadedRules }))
+app.post('/api/rules/reload', async c => {
+  loadedRules = [...mockRules]
+  return c.json({ count: loadedRules.length })
+})
+
+// ----- Mock danger zone -----
+
+app.post('/api/items/delete-all', async c => {
+  const before = await store.getItemCount()
+  await clearAllItems()
+  return c.json({ deleted: before })
+})
+app.post('/api/alerts/reset', async c => {
+  await alertStore.resetAll()
+  return c.json({ ok: true })
+})
+
+app.post('/api/strata/reset', async c => {
+  const before = await store.getItemCount()
+  await clearAllItems()
+  await alertStore.resetAll()
+  loadedRules = []
+  sim.history.clear()
+  scanSim.history.clear()
+  clearSimTimers()
+  clearScanTimers()
+  sim.phase = 'idle'
+  scanSim.phase = 'idle'
+  return c.json({ ok: true, deleted: before })
+})
+
+// ----- Mock scan simulator -----
+
+type ScanPhase = 'idle' | 'building' | 'classifying' | 'done' | 'error' | 'cancelled'
+
+type ScanDevRecord = {
+  id: string
+  status: 'running' | 'done' | 'error' | 'cancelled'
+  startedAt: number
+  endedAt: number | null
+  anchorsTotal: number
+  anchorsProcessed: number
+  alertsCreated: number
+  autoTriggered: boolean
+  initiatedBy: string
+  error?: string
+}
+
+const scanSim = {
+  phase: 'idle' as ScanPhase,
+  scanId: null as string | null,
+  startedAt: 0,
+  endedAt: null as number | null,
+  anchorsTotal: 0,
+  anchorsProcessed: 0,
+  alertsCreated: 0,
+  error: null as string | null,
+  timers: [] as ReturnType<typeof setTimeout>[],
+  history: new Map<string, ScanDevRecord>(),
+}
+
+// Seed one completed scan so history has content.
+{
+  const now = Date.now()
+  const sr: ScanDevRecord = {
+    id: 'demo-scan-1', status: 'done',
+    startedAt: now - 2 * 86400_000, endedAt: now - 2 * 86400_000 + 75_000,
+    anchorsTotal: 18, anchorsProcessed: 18, alertsCreated: 4,
+    autoTriggered: true, initiatedBy: 'auto-scan',
+  }
+  scanSim.history.set(sr.id, sr)
+}
+
+function clearScanTimers() {
+  for (const t of scanSim.timers) clearTimeout(t)
+  scanSim.timers = []
+}
+
+function startSimulatedScan(): string {
+  clearScanTimers()
+  const id = `demo-scan-${Date.now().toString(36)}`
+  const anchorsTotal = 20
+  scanSim.phase = 'building'
+  scanSim.scanId = id
+  scanSim.startedAt = Date.now()
+  scanSim.endedAt = null
+  scanSim.anchorsTotal = 0
+  scanSim.anchorsProcessed = 0
+  scanSim.alertsCreated = 0
+  scanSim.error = null
+  scanSim.history.set(id, {
+    id, status: 'running',
+    startedAt: scanSim.startedAt, endedAt: null,
+    anchorsTotal: 0, anchorsProcessed: 0, alertsCreated: 0,
+    autoTriggered: false, initiatedBy: 'u/dev',
+  })
+
+  // Build phase: 3s. Then classifying: 4 anchors per tick, 2s per tick, until done.
+  scanSim.timers.push(setTimeout(() => {
+    scanSim.phase = 'classifying'
+    scanSim.anchorsTotal = anchorsTotal
+    const rec = scanSim.history.get(id)
+    if (rec) scanSim.history.set(id, { ...rec, anchorsTotal })
+    const ticks = Math.ceil(anchorsTotal / 4)
+    for (let i = 1; i <= ticks; i++) {
+      scanSim.timers.push(setTimeout(() => {
+        scanSim.anchorsProcessed = Math.min(anchorsTotal, i * 4)
+        if (Math.random() < 0.5) scanSim.alertsCreated += 1
+        const r = scanSim.history.get(id)
+        if (r) scanSim.history.set(id, { ...r, anchorsProcessed: scanSim.anchorsProcessed, alertsCreated: scanSim.alertsCreated })
+      }, i * 2000))
+    }
+    scanSim.timers.push(setTimeout(() => {
+      scanSim.phase = 'done'
+      scanSim.endedAt = Date.now()
+      scanSim.anchorsProcessed = anchorsTotal
+      const r = scanSim.history.get(id)
+      if (r) scanSim.history.set(id, {
+        ...r, status: 'done', endedAt: scanSim.endedAt,
+        anchorsProcessed: anchorsTotal, alertsCreated: scanSim.alertsCreated,
+      })
+    }, ticks * 2000 + 500))
+  }, 3000))
+
+  return id
+}
+
+app.get('/api/scan/status', async c => c.json({
+  phase: scanSim.phase,
+  scanId: scanSim.scanId,
+  startedAt: scanSim.startedAt,
+  endedAt: scanSim.endedAt,
+  anchorsTotal: scanSim.anchorsTotal,
+  anchorsProcessed: scanSim.anchorsProcessed,
+  alertsCreated: scanSim.alertsCreated,
+  error: scanSim.error,
+}))
+
+app.post('/api/scan/start', async c => {
+  const itemCount = await store.getItemCount()
+  if (itemCount === 0) return c.json({ error: 'No items to scan' }, 400)
+  if (scanSim.phase === 'building' || scanSim.phase === 'classifying') {
+    return c.json({ error: 'A scan is already running' }, 409)
+  }
+  const id = startSimulatedScan()
+  return c.json({ id })
+})
+
+app.post('/api/scan/cancel', async c => {
+  if (scanSim.phase !== 'building' && scanSim.phase !== 'classifying') {
+    return c.json({ error: 'No active scan' }, 404)
+  }
+  clearScanTimers()
+  scanSim.phase = 'cancelled'
+  scanSim.endedAt = Date.now()
+  if (scanSim.scanId) {
+    const r = scanSim.history.get(scanSim.scanId)
+    if (r) scanSim.history.set(scanSim.scanId, { ...r, status: 'cancelled', endedAt: scanSim.endedAt })
+  }
+  return c.json({ ok: true })
+})
+
+app.get('/api/scan/history', async c => {
+  const records = [...scanSim.history.values()].sort((a, b) => b.startedAt - a.startedAt)
+  return c.json({ records })
+})
+
+// Dev-only state controls for reviewing UI states.
+app.post('/api/dev/reset-items', async c => {
+  await clearAllItems()
+  sim.phase = 'idle'
+  sim.totalItems = 0
+  sim.processed = 0
+  sim.startedAt = 0
+  sim.endedAt = null
+  sim.backfillId = null
+  clearSimTimers()
+  return c.json({ ok: true })
+})
+
+app.post('/api/dev/reseed', async c => {
+  await loadSeedIntoStore()
+  return c.json({ ok: true })
+})
 
 app.get('/api/alerts', async c => {
   const status = c.req.query('status') as AlertStatus | undefined
@@ -332,7 +662,16 @@ app.get('/api/alerts/:id', async c => {
     if (b.confidence === 'high' && a.confidence !== 'high') return 1
     return 0
   })
-  return c.json({ ...alert, connections })
+  const anchorItem = await store.getItem(alert.anchorId)
+  const hydrated = await Promise.all(connections.map(async conn => {
+    const it = await store.getItem(conn.itemId)
+    return { ...conn, decision: it?.decision ?? 'pending' }
+  }))
+  return c.json({
+    ...alert,
+    connections: hydrated,
+    anchorDecision: anchorItem?.decision ?? 'pending',
+  })
 })
 
 app.post('/api/alerts/:id/action', async c => {
@@ -343,6 +682,141 @@ app.post('/api/alerts/:id/action', async c => {
   if (!alert) return c.json({ error: 'Not found' }, 404)
   await alertStore.updateAlertStatus(id, action)
   return c.json({ ok: true })
+})
+
+async function writeDevDecision(itemId: string, decision: 'removed' | 'approved'): Promise<boolean> {
+  const item = await store.getItem(itemId)
+  if (!item) return false
+  if (item.decision === decision) return true
+  const now = Date.now()
+  await store.moveDecision(itemId, item.decision, decision, now)
+  await store.setItem({
+    ...item,
+    decision,
+    decisionAt: now,
+    decisionBy: 'dev-mod',
+    decisionReason: 'Strata brigade action (dev)',
+  })
+  return true
+}
+
+app.post('/api/items/:id/remove', async c => {
+  const id = c.req.param('id')
+  const ok = await writeDevDecision(id, 'removed')
+  if (!ok) return c.json({ error: 'Not found' }, 404)
+  console.log(`[dev-server] remove ${id}`)
+  return c.json({ ok: true })
+})
+
+app.post('/api/items/:id/approve', async c => {
+  const id = c.req.param('id')
+  const ok = await writeDevDecision(id, 'approved')
+  if (!ok) return c.json({ error: 'Not found' }, 404)
+  console.log(`[dev-server] approve ${id}`)
+  return c.json({ ok: true })
+})
+
+app.post('/api/alerts/:id/bulk-remove', async c => {
+  const id = c.req.param('id')
+  const alert = await alertStore.getAlert(id)
+  if (!alert) return c.json({ error: 'Not found' }, 404)
+  const connections = await alertStore.getAlertConnections(id)
+  const candidateIds = [alert.anchorId, ...connections.map(conn => conn.itemId)]
+  let removed = 0
+  for (const cid of candidateIds) {
+    const item = await store.getItem(cid)
+    if (item && item.decision !== 'pending') continue
+    if (await writeDevDecision(cid, 'removed')) removed++
+  }
+  await alertStore.updateAlertStatus(id, 'resolved')
+  console.log(`[dev-server] bulk-remove ${id}: ${removed} removed`)
+  return c.json({ ok: true, removed })
+})
+
+app.post('/api/alerts/:id/bulk-lock', async c => {
+  const id = c.req.param('id')
+  const alert = await alertStore.getAlert(id)
+  if (!alert) return c.json({ error: 'Not found' }, 404)
+  const anchorItem = await store.getItem(alert.anchorId)
+  if (!anchorItem) return c.json({ error: 'Anchor item not found' }, 404)
+  await alertStore.updateAlertStatus(id, 'resolved')
+  console.log(`[dev-server] bulk-lock ${id} on thread ${anchorItem.threadRootId}`)
+  return c.json({ ok: true, threadRootId: anchorItem.threadRootId })
+})
+
+app.post('/api/alerts/:id/compose', async c => {
+  try {
+    const id = c.req.param('id')
+    const alert = await alertStore.getAlert(id)
+    if (!alert) return c.json({ error: 'Not found' }, 404)
+    const connections = await alertStore.getAlertConnections(id)
+    const body = await c.req.json<{ refinementPrompt?: string; currentDraft?: { title: string; body: string } }>().catch(() => ({}))
+
+    await new Promise(res => setTimeout(res, 600))
+
+    const title = body.currentDraft && body.refinementPrompt
+      ? body.currentDraft.title
+      : alert.anchorTitle
+        ? `Update — ${alert.anchorTitle.slice(0, 70)}`
+        : 'Community update from your mod team'
+
+    const bulletLines = connections.slice(0, 4).map(c => `- ${c.reasoning || c.text.slice(0, 120)}`)
+    const draftBody = [
+      body.refinementPrompt
+        ? `[Refined per: "${body.refinementPrompt}"]`
+        : `Hi r/${SUB}, posting an update on a situation several of you have already reached out about.`,
+      '',
+      alert.anchorText.slice(0, 280),
+      '',
+      'Here is what the community has surfaced so far:',
+      ...bulletLines,
+      '',
+      'If you saw or heard anything related, please reach out. Thanks for looking out for each other.',
+    ].join('\n')
+
+    await alertStore.updateAlertDraft(id, {
+      draftPostTitle: title,
+      draftPostBody: draftBody,
+      draftedAt: Date.now(),
+      draftedBy: 'dev-mod',
+    })
+
+    console.log(`[dev-server] compose ${id} (refinement="${body.refinementPrompt ?? ''}")`)
+    return c.json({ title, body: draftBody })
+  } catch (err) {
+    console.error('[dev-server] compose failed:', err)
+    return c.json({ error: err instanceof Error ? err.message : String(err) }, 500)
+  }
+})
+
+app.post('/api/alerts/:id/publish', async c => {
+  const id = c.req.param('id')
+  const alert = await alertStore.getAlert(id)
+  if (!alert) return c.json({ error: 'Not found' }, 404)
+  if (alert.publishedPostId) return c.json({ error: 'Alert already published' }, 409)
+
+  const payload = await c.req.json<{ title: string; body: string }>().catch(() => ({} as { title?: string; body?: string }))
+  if (!payload.title?.trim() || !payload.body?.trim()) {
+    return c.json({ error: 'Title and body are required' }, 400)
+  }
+
+  const postId = 't3_' + Math.random().toString(36).slice(2, 10)
+  const permalink = `/r/${SUB}/comments/${postId.replace(/^t3_/, '')}`
+  const at = Date.now()
+  const by = 'dev-mod'
+
+  await alertStore.updateAlertPublished(id, {
+    publishedPostId: postId,
+    publishedPostTitle: payload.title.trim(),
+    publishedPostBody: payload.body,
+    publishedPostPermalink: permalink,
+    publishedAt: at,
+    publishedBy: by,
+  })
+  await alertStore.updateAlertStatus(id, 'resolved')
+
+  console.log(`[dev-server] publish ${id} → ${postId}`)
+  return c.json({ ok: true, postId, permalink, publishedAt: at, publishedBy: by })
 })
 
 let sortedItemsCache: StoredItem[] | null = null
@@ -652,6 +1126,100 @@ app.get('/api/graph', async c => {
     clusterSizeByLabel: Object.fromEntries(clustersMeta.map(c => [c.label, c.size])),
   }
   return c.json({ nodes, edges: [], meta })
+})
+
+const openaiClient = process.env.OPENAI_API_KEY ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) : null
+
+if (!openaiClient) {
+  console.warn('[dev-server] OPENAI_API_KEY not set — /api/search and /api/chat will return 503')
+}
+
+app.post('/api/search', async c => {
+  if (!openaiClient) return c.json({ error: 'OPENAI_API_KEY not configured' }, 503)
+  const body = await c.req.json<{ query: string; top_k?: number; time_window?: string }>()
+  if (!body.query) return c.json({ error: 'query required' }, 400)
+  const top_k = Math.max(1, Math.min(body.top_k ?? 8, 20))
+  const cutoff = body.time_window === 'today' ? Date.now() - 86_400_000
+    : body.time_window === '7d' ? Date.now() - 7 * 86_400_000
+    : body.time_window === '30d' ? Date.now() - 30 * 86_400_000
+    : null
+  const res = await openaiClient.embeddings.create({ input: body.query, model: 'text-embedding-3-small', dimensions: 256 })
+  const queryVec = res.data[0].embedding
+  const all = await getSortedItems()
+  const scored: Array<{ item: StoredItem; score: number }> = []
+  for (const item of all) {
+    if (cutoff !== null && item.createdAt < cutoff) continue
+    const emb = itemEmbeddings.get(item.id)
+    if (!emb) continue
+    scored.push({ item, score: cosine(queryVec, emb) })
+  }
+  scored.sort((a, b) => b.score - a.score)
+  const hits = scored.slice(0, top_k).map(({ item, score }) => ({
+    id: item.id,
+    kind: item.type,
+    title: item.title ?? null,
+    snippet: (item.text ?? '').slice(0, 200),
+    cluster_label: item.clusterId !== undefined && item.clusterId !== -1 ? (clusterLabelById.get(item.clusterId) ?? null) : null,
+    created_at: item.createdAt,
+    score: Number(score.toFixed(4)),
+  }))
+  return c.json({ hits })
+})
+
+app.post('/api/graph/extra-nodes', async c => {
+  const body = await c.req.json<{ ids: string[] }>()
+  if (!Array.isArray(body.ids) || body.ids.length === 0) return c.json({ nodes: [] })
+  const all = await getSortedItems()
+  const byId = new Map(all.map(i => [i.id, i]))
+  const replyCount = new Map<string, number>()
+  for (const i of all) if (i.parentId) replyCount.set(i.parentId, (replyCount.get(i.parentId) ?? 0) + 1)
+  const maxReplies = Math.max(1, ...replyCount.values())
+  const clustersMeta = (seed.clusters ?? [])
+  const labelById = new Map<number, string>()
+  for (const c of clustersMeta) labelById.set(c.id, c.label)
+  const titleById = new Map<string, string | null>()
+  for (const i of all) if (i.type === 'post') titleById.set(i.id, i.title ?? null)
+  const nodes = body.ids
+    .map(id => byId.get(id))
+    .filter((i): i is StoredItem => !!i && !!i.position3d)
+    .map(i => ({
+      id: i.id,
+      qualname: i.id,
+      symbol_name: i.title ?? i.text.slice(0, 60),
+      title: i.title ?? null,
+      text: i.text,
+      author: i.authorName,
+      created_at: i.createdAt,
+      reply_count: replyCount.get(i.id) ?? 0,
+      kind: i.type,
+      cluster_label: i.clusterId !== undefined && i.clusterId !== -1 ? (labelById.get(i.clusterId) ?? null) : null,
+      hub_score: (replyCount.get(i.id) ?? 0) / maxReplies,
+      thread_root_id: i.threadRootId,
+      thread_title: i.type === 'comment' ? (titleById.get(i.threadRootId) ?? null) : null,
+      parent_id: i.parentId,
+      x2d: i.position3d![0],
+      y2d: i.position3d![1],
+      x3d: i.position3d![0],
+      y3d: i.position3d![1],
+      z3d: i.position3d![2],
+    }))
+  return c.json({ nodes })
+})
+
+app.post('/api/chat', async c => {
+  if (!openaiClient) return c.json({ error: 'OPENAI_API_KEY not configured' }, 503)
+  const handler = createChatHandler({
+    openai: openaiClient,
+    getAllItems: () => getSortedItems(),
+    getItem: (id) => store.getItem(id),
+    getEmbedding: (id) => itemEmbeddings.get(id) ?? null,
+    clusterLabelById,
+    listAlerts: (opts) => alertStore.listAlerts(opts),
+    getAlert: (id) => alertStore.getAlert(id),
+    getAlertConnections: (id) => alertStore.getAlertConnections(id),
+    subreddit: SUB,
+  })
+  return handler(c)
 })
 
 serve({ fetch: app.fetch, port: PORT })

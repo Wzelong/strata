@@ -433,8 +433,8 @@ export async function classifyAndCreateAlerts(
   subredditName: string,
   buildPermalink: (item: Item, sub: string) => string,
   generateAlertId: () => string,
-): Promise<number> {
-  let alertsCreated = 0
+): Promise<string[]> {
+  const newAlertIds: string[] = []
 
   for (const pair of pairs) {
     const anchor = await getItem(pair.anchorId)
@@ -499,7 +499,7 @@ export async function classifyAndCreateAlerts(
 
     const alert: Alert = {
       id: generateAlertId(),
-      mode: 'flag',
+      mode: 'surface',
       status: 'pending',
       confidence: connections.some(c => c.confidence === 'high') ? 'high' : 'review',
       connectionCount: connections.length,
@@ -514,8 +514,8 @@ export async function classifyAndCreateAlerts(
     }
 
     await alertStore.createAlert(alert, connections)
-    alertsCreated++
+    newAlertIds.push(alert.id)
   }
 
-  return alertsCreated
+  return newAlertIds
 }

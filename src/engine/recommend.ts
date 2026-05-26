@@ -1,6 +1,28 @@
 import type OpenAI from 'openai'
 import type { Item, Hit, Rule, Recommendation, CostTracker } from './types.js'
-import { RECOMMENDATION_SYSTEM, RECOMMENDATION_SCHEMA } from './prompts.js'
+
+export const RECOMMENDATION_SYSTEM = `Given a pending item, similar precedents with their moderation decisions, and community rules, recommend a moderation action.
+
+Actions:
+- remove: Item violates a rule. You MUST specify which ruleId.
+- approve: Item follows all rules and is acceptable.
+- skip: Borderline or insufficient confidence.
+
+Process:
+1. Check if the item directly violates any rule (independent of precedents).
+2. If similar items were removed for a rule violation and this item shows the same pattern, recommend removal citing that rule.
+3. If evidence is mixed or borderline, recommend skip.`
+
+export const RECOMMENDATION_SCHEMA: Record<string, unknown> = {
+  type: 'object',
+  properties: {
+    recommendation: { type: 'string', enum: ['remove', 'approve', 'skip'] },
+    rationale: { type: 'string' },
+    ruleId: { type: ['string', 'null'] },
+  },
+  required: ['recommendation', 'rationale', 'ruleId'],
+  additionalProperties: false,
+}
 
 export async function recommendDecision(
   client: OpenAI,

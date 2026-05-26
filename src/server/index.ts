@@ -14,6 +14,13 @@ import {
   parseEmbeddingResults, parseExtractionResults, storeResults,
 } from '../engine/batch-ingest.js'
 import { buildScanPairs, classifyAndCreateAlerts, type ScanPair } from '../engine/scan.js'
+import { routeFlag, formatReportReason, brigadeLockKey, BRIGADE_LOCK_TTL_MS } from '../engine/flag-routing.js'
+import { estimateBackfill, estimateCurrentBytes, ITEM_CAPACITY } from './backfill-estimates.js'
+import { recordUsage, getUsageSummary } from './usage.js'
+import { createChatHandler } from './chat/route.js'
+import { runRecluster, assignItemLive, ClusterRepo } from './cluster-pipeline.js'
+import { LOUVAIN_RESOLUTION, MIN_CLUSTER_SIZE } from '../engine/cluster.js'
+import { dequantize } from '../engine/embed.js'
 import { gunzipSync } from 'node:zlib'
 
 const SEED_URL = 'https://raw.githubusercontent.com/Wzelong/strata/main/dataset/seed.json.gz'
@@ -31,6 +38,7 @@ const redisClient: RedisClient = {
   zRange: (key, start, stop, options) => redis.zRange(key, start as any, stop as any, options as any),
   zRem: (key, members) => redis.zRem(key, members),
   zCard: (key) => redis.zCard(key),
+  del: (key) => redis.del(key) as Promise<void>,
 }
 
 const store = new RedisKVStore(redisClient)
@@ -47,6 +55,51 @@ function buildPermalink(item: Item, subredditName: string): string {
   return `/r/${subredditName}/comments/${item.id}`
 }
 
+function buildDashboardUrl(postId: string, subredditName: string): string {
+  return `https://reddit.com/r/${subredditName}/comments/${postId.replace(/^t3_/, '')}`
+}
+
+async function isMod(userId: string | undefined, subredditName: string): Promise<boolean> {
+  if (!userId || !subredditName) return false
+  const cacheKey = `strata:mod:${userId}`
+  const cached = await redis.get(cacheKey)
+  if (cached === '1') return true
+  if (cached === '0') return false
+  try {
+    const listing = await reddit.getModerators({ subredditName })
+    const mods = typeof (listing as any).all === 'function' ? await (listing as any).all() : await listing
+    const ok = (mods as Array<{ id: string }>).some(m => m.id === userId)
+    await redis.set(cacheKey, ok ? '1' : '0', { expiration: new Date(Date.now() + 5 * 60_000) })
+    return ok
+  } catch (err) {
+    console.error('[Strata] isMod check failed:', err)
+    return false
+  }
+}
+
+async function ensureDashboardPost(subredditName: string): Promise<string> {
+  const stored = await redis.get('strata:dashboard-post-id')
+  if (stored) {
+    const existing = await reddit.getPostById(stored as `t3_${string}`).catch(() => null)
+    if (existing && !existing.removed) return stored
+  }
+  const post = await reddit.submitCustomPost({
+    subredditName,
+    title: 'Strata · Moderator Dashboard',
+    entry: 'default',
+    postData: {},
+    styles: {
+      backgroundColor: '#FFFFFFFF',
+      backgroundColorDark: '#1a1a1bFF',
+      height: 'TALL' as any,
+    },
+  })
+  await redis.set('strata:dashboard-post-id', post.id)
+  try { await post.distinguish() } catch (err) { console.error('[Strata] distinguish failed:', err) }
+  try { await post.lock() } catch (err) { console.error('[Strata] lock failed:', err) }
+  return post.id
+}
+
 async function getEngine(): Promise<StrataEngine> {
   const apiKey = await settings.get('openaiApiKey')
   if (!apiKey) throw new Error('OpenAI API key not configured')
@@ -54,13 +107,103 @@ async function getEngine(): Promise<StrataEngine> {
   return new StrataEngine(store, client)
 }
 
-function formatConnections(hits: Array<{ item: Item; relationship: string; weight: number }>): string {
-  if (hits.length === 0) return 'No connections found.'
-  return hits.map((h, i) => {
-    const snippet = h.item.text.replace(/\n/g, ' ').slice(0, 150)
-    const date = new Date(h.item.createdAt).toLocaleDateString()
-    return `**${i + 1}. ${h.relationship}** (similarity: ${h.weight.toFixed(3)}) — u/${h.item.authorName} (${date})\n> ${snippet}...`
+function relativeAge(createdAt: number): string {
+  const ms = Date.now() - createdAt
+  const m = Math.round(ms / 60_000)
+  if (m < 60) return `${m}m ago`
+  const h = Math.round(m / 60)
+  if (h < 24) return `${h}h ago`
+  const d = Math.round(h / 24)
+  return `${d}d ago`
+}
+
+function renderDigestMarkdown(
+  alerts: Array<{ alert: Alert; connections: AlertConnection[] }>,
+  subredditName: string,
+  dashboardUrl: string,
+): string {
+  const n = alerts.length
+  const intro = `Strata found **${n} case anchor${n === 1 ? '' : 's'}** with buried cross-thread connections on r/${subredditName}.`
+  const blocks = alerts.map(({ alert, connections }, i) => {
+    const title = alert.anchorTitle || alert.anchorText.slice(0, 80)
+    const threadCount = new Set(connections.map(c => c.itemId)).size
+    const strongest = [...connections].sort((a, b) => {
+      if (a.confidence === 'high' && b.confidence !== 'high') return -1
+      if (b.confidence === 'high' && a.confidence !== 'high') return 1
+      return 0
+    })[0]
+    const summary = strongest?.reasoning?.split(/[.\n]/)[0]?.trim() || 'See dashboard for details.'
+    return [
+      `### ${i + 1}. ${title}`,
+      `- **${connections.length} connection${connections.length === 1 ? '' : 's'}** across ${threadCount} thread${threadCount === 1 ? '' : 's'} · posted ${relativeAge(alert.createdAt)} by u/${alert.anchorAuthor}`,
+      `- ${summary}`,
+      `- Confidence: ${alert.confidence}`,
+    ].join('\n')
   }).join('\n\n')
+  return [
+    intro,
+    '---',
+    blocks,
+    '---',
+    `**Open the dashboard:** [Strata · Moderator Dashboard](${dashboardUrl})`,
+    `*Automated by Strata. Configure under r/${subredditName}/about/edit/modules.*`,
+  ].join('\n\n')
+}
+
+type BackfillRecord = {
+  id: string
+  status: 'running' | 'done' | 'error' | 'cancelled'
+  from: string
+  to: string
+  startedAt: number
+  endedAt: number | null
+  totalItems: number
+  processed: number
+  initiatedBy: string
+  error?: string
+  costUsdEstimated?: number
+}
+
+async function getBackfillRecord(id: string): Promise<BackfillRecord | null> {
+  const raw = await redis.hGet('strata:backfill:history', id)
+  return raw ? JSON.parse(raw) as BackfillRecord : null
+}
+
+async function putBackfillRecord(record: BackfillRecord): Promise<void> {
+  await redis.hSet('strata:backfill:history', { [record.id]: JSON.stringify(record) })
+}
+
+async function updateBackfillRecord(id: string, patch: Partial<BackfillRecord>): Promise<void> {
+  const existing = await getBackfillRecord(id)
+  if (!existing) return
+  await putBackfillRecord({ ...existing, ...patch })
+}
+
+async function listBackfillRecords(): Promise<BackfillRecord[]> {
+  const all = await redis.hGetAll('strata:backfill:history')
+  return Object.values(all)
+    .map(v => JSON.parse(v) as BackfillRecord)
+    .sort((a, b) => b.startedAt - a.startedAt)
+}
+
+async function sendSurfaceDigest(subredditName: string, newAlertIds: string[]): Promise<void> {
+  if (newAlertIds.length === 0) return
+  const loaded = await Promise.all(newAlertIds.map(async id => {
+    const alert = await alertStore.getAlert(id)
+    if (!alert || alert.mode !== 'surface') return null
+    const connections = await alertStore.getAlertConnections(id)
+    return { alert, connections }
+  }))
+  const present = loaded.filter((x): x is { alert: Alert; connections: AlertConnection[] } => !!x)
+  if (present.length === 0) return
+  const postId = await ensureDashboardPost(subredditName)
+  const dashboardUrl = buildDashboardUrl(postId, subredditName)
+  await reddit.modMail.createConversation({
+    subredditName,
+    subject: `Strata: ${present.length} case anchor${present.length === 1 ? '' : 's'} found`,
+    body: renderDigestMarkdown(present, subredditName, dashboardUrl),
+    to: null as any,
+  })
 }
 
 // --- Triggers ---
@@ -73,25 +216,41 @@ app.post('/internal/triggers/app-install', async (c) => {
 
   if (subredditName) {
     try {
-      const post = await reddit.submitCustomPost({
-        subredditName,
-        title: 'Strata Dashboard',
-        entry: 'default',
-        postData: {},
-        styles: {
-          backgroundColor: '#FFFFFFFF',
-          backgroundColorDark: '#1a1a1bFF',
-          height: 'TALL',
-        },
-      })
-      await redis.set('strata:dashboard-post-id', post.id)
-      await post.sticky()
-      console.log(`[Strata] Dashboard post created: ${post.id}`)
+      const postId = await ensureDashboardPost(subredditName)
+      console.log(`[Strata] Dashboard post: ${postId}`)
     } catch (err) {
       console.error('[Strata] Failed to create dashboard post:', err)
     }
   }
 
+  return c.json<TriggerResponse>({ status: 'ok' })
+})
+
+app.post('/internal/triggers/post-delete', async (c) => {
+  try {
+    const input = await c.req.json<any>()
+    const postId: string | undefined = input?.postId || input?.post?.id
+    if (postId) {
+      await store.deleteItems([postId])
+      console.log(`[Strata] Purged deleted post ${postId}`)
+    }
+  } catch (err) {
+    console.error('[Strata] post-delete trigger failed:', err)
+  }
+  return c.json<TriggerResponse>({ status: 'ok' })
+})
+
+app.post('/internal/triggers/comment-delete', async (c) => {
+  try {
+    const input = await c.req.json<any>()
+    const commentId: string | undefined = input?.commentId || input?.comment?.id
+    if (commentId) {
+      await store.deleteItems([commentId])
+      console.log(`[Strata] Purged deleted comment ${commentId}`)
+    }
+  } catch (err) {
+    console.error('[Strata] comment-delete trigger failed:', err)
+  }
   return c.json<TriggerResponse>({ status: 'ok' })
 })
 
@@ -132,6 +291,9 @@ app.post('/internal/triggers/post-submit', async (c) => {
 
     console.log(`[Strata] Ingesting post ${post.id} by ${authorName}: "${text.slice(0, 60)}..."`)
     const item = await engine.ingest(raw)
+
+    assignItemLive(redis, store, item.id, item.embedding).catch(err => console.error('[Strata] live cluster assign failed:', err))
+    bumpIngestCounter()
 
     const [surfaceResult, flagResults] = await Promise.all([
       engine.surface(item),
@@ -257,20 +419,30 @@ app.post('/internal/triggers/post-submit', async (c) => {
       await alertStore.createAlert(alert, alertConnections)
       console.log(`[Strata] Alert ${alert.id} created — ${alertConnections.length} connections`)
 
-      const body = `Strata found **${connections.length} buried connection(s)** related to a new post:\n\n**"${post.title}"** by u/${post.author}\n\n---\n\n${formatConnections(connections)}\n\n---\n\n*These items were posted in unrelated threads but share key details with this post.*`
-
-      await reddit.modMail.createConversation({
-        subredditName,
-        subject: `[Strata] ${connections.length} connections found: "${post.title.slice(0, 50)}"`,
-        body,
-        to: null as any,
-      })
+      try {
+        await sendSurfaceDigest(subredditName, [alert.id])
+      } catch (err) {
+        console.error('[Strata] Surface digest modmail failed:', err)
+      }
     }
 
     // Flag alerts
     if (flagResults.length > 0 && context.subredditName) {
       const subredditName = context.subredditName
       for (const flag of flagResults) {
+        const route = routeFlag(flag)
+        if (route === 'queue') {
+          try {
+            const target = await reddit.getPostById(item.id as `t3_${string}`)
+            await reddit.report(target, { reason: formatReportReason(flag) })
+            console.log(`[Strata] Reported post ${item.id} — ${flag.type}`)
+          } catch (err) {
+            console.error(`[Strata] Failed to report post ${item.id}:`, err)
+          }
+          continue
+        }
+        if (route === 'drop') continue
+
         const flagConnections: AlertConnection[] = flag.connectionItems.map(ci => ({
           itemId: ci.id,
           author: ci.authorName,
@@ -281,7 +453,7 @@ app.post('/internal/triggers/post-submit', async (c) => {
           classification: 'confirms' as const,
           confidence: flag.confidence,
           entities: [],
-          reasoning: flag.type === 'pattern' ? `Similarity to removed item` : '',
+          reasoning: '',
           createdAt: ci.createdAt,
           sameAuthor: ci.authorId === item.authorId,
         }))
@@ -305,7 +477,7 @@ app.post('/internal/triggers/post-submit', async (c) => {
         }
 
         await alertStore.createAlert(flagAlert, flagConnections)
-        console.log(`[Strata] Flag alert ${flagAlert.id} — ${flag.type}${flag.ruleId ? ` (${flag.ruleId})` : ''}`)
+        console.log(`[Strata] Flag alert ${flagAlert.id} — ${flag.type}`)
       }
     }
   } catch (err) {
@@ -347,10 +519,36 @@ app.post('/internal/triggers/comment-submit', async (c) => {
     const item = await engine.ingest(raw)
     console.log(`[Strata] Ingested comment ${comment.id}`)
 
+    assignItemLive(redis, store, item.id, item.embedding).catch(err => console.error('[Strata] live cluster assign failed:', err))
+    bumpIngestCounter()
+
     const flagResults = await engine.flag(item)
     if (flagResults.length > 0 && context.subredditName) {
       const subredditName = context.subredditName
       for (const flag of flagResults) {
+        const route = routeFlag(flag)
+        if (route === 'queue') {
+          try {
+            const target = await reddit.getCommentById(item.id as `t1_${string}`)
+            await reddit.report(target, { reason: formatReportReason(flag) })
+            console.log(`[Strata] Reported comment ${item.id} — ${flag.type}`)
+          } catch (err) {
+            console.error(`[Strata] Failed to report comment ${item.id}:`, err)
+          }
+          continue
+        }
+        if (route === 'drop') continue
+
+        if (flag.type === 'brigade') {
+          const lockKey = brigadeLockKey(item.threadRootId)
+          const exists = await redis.get(lockKey)
+          if (exists) {
+            console.log(`[Strata] Brigade lock active for thread ${item.threadRootId}, skipping`)
+            continue
+          }
+          await redis.set(lockKey, '1', { expiration: new Date(Date.now() + BRIGADE_LOCK_TTL_MS) })
+        }
+
         const flagConnections: AlertConnection[] = flag.connectionItems.map(ci => ({
           itemId: ci.id,
           author: ci.authorName,
@@ -361,7 +559,7 @@ app.post('/internal/triggers/comment-submit', async (c) => {
           classification: 'confirms' as const,
           confidence: flag.confidence,
           entities: [],
-          reasoning: flag.type === 'pattern' ? `Similarity to removed item` : '',
+          reasoning: '',
           createdAt: ci.createdAt,
           sameAuthor: ci.authorId === item.authorId,
         }))
@@ -397,59 +595,17 @@ app.post('/internal/triggers/comment-submit', async (c) => {
 
 // --- Menu Actions ---
 
-app.post('/internal/menu/load-rules', async (c) => {
-  const subredditName = context.subredditName
-  if (!subredditName) return c.json<UiResponse>({ showToast: 'No subreddit context.' })
-
-  try {
-    const engine = await getEngine()
-    const subredditRules = await reddit.getRules(subredditName)
-
-    if (!subredditRules || subredditRules.length === 0) {
-      return c.json<UiResponse>({ showToast: 'No rules found for this subreddit.' })
-    }
-
-    const ruleInputs = subredditRules.map((rule: any, i: number) => ({
-      id: `rule-${i + 1}`,
-      shortName: rule.shortName || rule.violationReason || `Rule ${i + 1}`,
-      description: rule.description || rule.shortName || '',
-      priority: i + 1,
-    }))
-
-    await engine.loadRules(ruleInputs)
-    return c.json<UiResponse>({
-      showToast: { text: `Loaded ${ruleInputs.length} rules.`, appearance: 'success' },
-    })
-  } catch (err) {
-    console.error('[Strata] Load rules error:', err)
-    return c.json<UiResponse>({ showToast: `Failed: ${err}` })
-  }
-})
-
 app.post('/internal/menu/dashboard', async (c) => {
   const subredditName = context.subredditName
   if (!subredditName) return c.json<UiResponse>({ showToast: 'No subreddit context.' })
 
   try {
-    const existing = await redis.get('strata:dashboard-post-id')
-    if (existing) {
-      return c.json<UiResponse>({ showToast: 'Dashboard already exists. Check your stickied posts.' })
-    }
-
-    const post = await reddit.submitCustomPost({
-      subredditName,
-      title: 'Strata Dashboard',
-      entry: 'default',
-      postData: {},
-      styles: {
-        backgroundColor: '#FFFFFFFF',
-        backgroundColorDark: '#1a1a1bFF',
-        height: 'TALL',
-      },
+    const before = await redis.get('strata:dashboard-post-id')
+    const postId = await ensureDashboardPost(subredditName)
+    const created = postId !== before
+    return c.json<UiResponse>({
+      showToast: created ? 'Dashboard post created.' : 'Dashboard already exists.',
     })
-    await redis.set('strata:dashboard-post-id', post.id)
-    await post.sticky()
-    return c.json<UiResponse>({ showToast: 'Dashboard post created and stickied.' })
   } catch (err) {
     console.error('[Strata] Dashboard creation error:', err)
     return c.json<UiResponse>({ showToast: `Failed: ${err}` })
@@ -567,9 +723,10 @@ app.post('/internal/forms/seed-results', async (c) => {
   }
 })
 
-// Mock alerts — drops 5 sample alerts (1 surface + 4 flag types) into Redis
+// Mock alerts — drops 2 sample alerts (1 surface + 1 brigade) into Redis
 // so UI work doesn't require triggering anything live. Idempotent: each click
 // creates a fresh batch with new IDs and current timestamps.
+// Rule and pattern flags don't show up here — they route to the Reddit mod queue.
 app.post('/internal/menu/mock-alerts', async (c) => {
   if (!context.subredditName) return c.json<UiResponse>({ showToast: 'No subreddit context.' })
   const sub = context.subredditName
@@ -640,40 +797,6 @@ app.post('/internal/menu/mock-alerts', async (c) => {
   }
   await alertStore.createAlert(surfaceAlert, surfaceConnections)
 
-  // FLAG: pattern match — flag4 against removed flag3a/b/c
-  const patternConnections: AlertConnection[] = [
-    { itemId: 't3_strata_flag3a', author: 'BeaconStWatcher', type: 'post',
-      title: 'PSA: silver Honda running reds on Beacon St',
-      text: 'I don\'t have the plate but someone needs to stop this guy before he kills someone.',
-      permalink: stub('t3_strata_flag3a', sub),
-      classification: 'confirms', confidence: 'high', entities: [], reasoning: 'Similarity to removed item',
-      createdAt: days(14), sameAuthor: false },
-    { itemId: 't3_strata_flag3b', author: 'CambStConcerned', type: 'post',
-      title: 'Suspicious white pickup on Cambridge St every night',
-      text: 'There\'s a white pickup that parks illegally on Cambridge St every night and I\'m pretty sure the driver is dealing.',
-      permalink: stub('t3_strata_flag3b', sub),
-      classification: 'confirms', confidence: 'high', entities: [], reasoning: 'Similarity to removed item',
-      createdAt: days(21), sameAuthor: false },
-    { itemId: 't3_strata_flag3c', author: 'AllstonAlert88', type: 'post',
-      title: 'Blue minivan circling my block in Allston — casing?',
-      text: 'I\'ve seen it 4 days in a row now just slowly driving past. This has to be casing houses right?',
-      permalink: stub('t3_strata_flag3c', sub),
-      classification: 'confirms', confidence: 'high', entities: [], reasoning: 'Similarity to removed item',
-      createdAt: days(10), sameAuthor: false },
-  ]
-  const patternAlert: Alert = {
-    id: generateAlertId(), mode: 'flag', status: 'pending',
-    confidence: 'review', connectionCount: patternConnections.length, createdAt: now - 60_000,
-    anchorId: 't3_strata_flag4', anchorAuthor: 'MassAveSafety', anchorType: 'post',
-    anchorTitle: 'WARNING: dark green SUV running reds on Mass Ave near Central',
-    anchorText: 'There\'s a dark green SUV that\'s been seen blowing through red lights on Mass Ave near Central multiple times. I\'ve personally witnessed it twice. Someone is going to get seriously hurt. Can the mods pin this?',
-    anchorPermalink: stub('t3_strata_flag4', sub),
-    anchorEntities: [],
-    reasoning: 'Matches pattern of previously removed witch-hunt posts (vague vehicle description, no plate, no police case, asking the community to identify a driver).',
-    flagType: 'pattern',
-  }
-  await alertStore.createAlert(patternAlert, patternConnections)
-
   // FLAG: brigade — brigade2 with 3 other defenders within 4h
   const brigadeConnections: AlertConnection[] = [
     { itemId: 't1_strata_brigade1', author: 'BostonDriver2026_1', type: 'comment',
@@ -708,44 +831,7 @@ app.post('/internal/menu/mock-alerts', async (c) => {
   }
   await alertStore.createAlert(brigadeAlert, brigadeConnections)
 
-  // FLAG: contradiction — flag2b vs flag2a (same author across two weeks)
-  const contradictionConnections: AlertConnection[] = [
-    { itemId: 't1_strata_flag2a', author: 'TKfromCambridge', type: 'comment',
-      title: 'Best bars near Lechmere?',
-      text: 'I live right above the Cambridgeside garage — can vouch for Night Shift. My roommate and I always hit it Tuesdays after his shift ends around 7. He drives, I drink, nobody gets a DUI lol. We park P3, always plenty of space evenings.',
-      permalink: stub('t1_strata_flag2a', sub),
-      classification: 'contradicts', confidence: 'high', entities: [],
-      reasoning: 'Prior post by same author (April 25): says roommate drives every Tuesday and they park at P3 Cambridgeside.',
-      createdAt: days(14), sameAuthor: true },
-  ]
-  const contradictionAlert: Alert = {
-    id: generateAlertId(), mode: 'flag', status: 'pending',
-    confidence: 'high', connectionCount: contradictionConnections.length, createdAt: now - 3 * 60_000,
-    anchorId: 't1_strata_flag2b', anchorAuthor: 'TKfromCambridge', anchorType: 'comment',
-    anchorTitle: 'My roommate was hit Tuesday on Mass Ave & Prospect — driver fled — case #2026-04891',
-    anchorText: 'I live near Cambridgeside and my roommate was home with me Tuesday night. He doesn\'t even drive to work anymore, he takes the Green Line.',
-    anchorPermalink: stub('t1_strata_flag2b', sub),
-    anchorEntities: [],
-    reasoning: 'Same author (TKfromCambridge) posted contradictory statement on 2026-04-25: previously said roommate drives Tuesdays + parks P3 Cambridgeside; now claims roommate doesn\'t drive and was home Tuesday.',
-    flagType: 'contradiction',
-  }
-  await alertStore.createAlert(contradictionAlert, contradictionConnections)
-
-  // FLAG: rule violation — doxxing example, no connections
-  const ruleAlert: Alert = {
-    id: generateAlertId(), mode: 'flag', status: 'pending',
-    confidence: 'high', connectionCount: 0, createdAt: now - 4 * 60_000,
-    anchorId: 't3_mock_rule_violation', anchorAuthor: 'AngryAtNeighborhood', anchorType: 'post',
-    anchorTitle: 'PSA about that person from the neighborhood meeting',
-    anchorText: 'That jerk from the neighborhood meeting is Sarah Johnson, 45 Maple Dr unit 2A, Cambridge MA 02139. Her cell is 617-555-0199. Somebody should give her a piece of their mind about what she said.',
-    anchorPermalink: stub('t3_mock_rule_violation', sub),
-    anchorEntities: [],
-    reasoning: 'Violates rule-1 (No doxxing): post shares a private individual\'s full name, home address, and phone number. Also rule-3 (Be civil): hostile framing inviting retaliation.',
-    flagType: 'rule',
-  }
-  await alertStore.createAlert(ruleAlert, [])
-
-  return c.json<UiResponse>({ showToast: { text: 'Inserted 5 mock alerts (1 surface + 4 flag types).', appearance: 'success' } })
+  return c.json<UiResponse>({ showToast: { text: 'Inserted 2 mock alerts (1 surface + 1 brigade).', appearance: 'success' } })
 })
 
 app.post('/internal/menu/surface', async (c) => {
@@ -777,7 +863,7 @@ app.post('/internal/menu/surface', async (c) => {
         }
         item = await engine.ingest(raw)
       } else if (postId) {
-        const post = await reddit.getPostById(postId)
+        const post = await reddit.getPostById(postId as `t3_${string}`)
         const text = post.body ? `${post.title}\n\n${post.body}` : post.title
         const raw: RawItem = {
           id: postId,
@@ -836,199 +922,100 @@ app.post('/internal/forms/surface-results', async (c) => {
   return c.json<UiResponse>({ showToast: 'Done.' })
 })
 
-// --- Ingest ---
-
-app.post('/internal/menu/ingest', async (c) => {
-  return c.json<UiResponse>({
-    showForm: {
-      name: 'ingestDates',
-      form: {
-        title: 'Strata: Ingest Subreddit',
-        acceptLabel: 'Get Estimate',
-        fields: [
-          { name: 'startDate', label: 'Start date (YYYY-MM-DD)', type: 'string' as const, defaultValue: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10) },
-          { name: 'endDate', label: 'End date (YYYY-MM-DD)', type: 'string' as const, defaultValue: new Date().toISOString().slice(0, 10) },
-        ],
-      },
-    },
-  })
-})
-
-// Step 1: Collect dates → count items → show estimate as toast → show confirm form
-app.post('/internal/forms/ingest-dates', async (c) => {
-  const { startDate, endDate } = await c.req.json<{ startDate: string; endDate: string }>()
-  if (!context.subredditName) return c.json<UiResponse>({ showToast: 'No subreddit context.' })
+// Mod queue action: "Strata: Similar prior decisions"
+// Mirrors the on-demand pattern check for queue items so mods can see precedent
+// before acting on a user report. Renders results in a read-only Devvit form.
+app.post('/internal/menu/similar-decisions', async (c) => {
+  const request = await c.req.json<MenuItemRequest>()
+  const postId = context.postId || request.targetId
+  const commentId = context.commentId
+  const targetId = commentId || postId
+  if (!targetId) return c.json<UiResponse>({ showToast: 'No post or comment context.' })
 
   try {
-    const start = new Date(startDate).getTime()
-    const end = new Date(endDate).getTime() + 24 * 60 * 60 * 1000
+    const engine = await getEngine()
+    let item = await engine.getItem(targetId)
 
-    let itemCount = 0
-    try {
-      const posts = reddit.getNewPosts({ subredditName: context.subredditName, limit: 5000, pageSize: 100 })
-      for await (const post of posts) {
-        if (post.createdAt.getTime() < start) break
-        if (post.createdAt.getTime() > end) continue
-        itemCount += 1 + (post.numberOfComments ?? 0)
+    if (!item) {
+      if (commentId) {
+        const comment = await reddit.getCommentById(commentId)
+        item = await engine.ingest({
+          id: commentId, type: 'comment', text: comment.body,
+          authorId: comment.authorName || 'unknown', authorName: comment.authorName || 'unknown',
+          createdAt: Date.now(), threadRootId: postId || commentId, parentId: comment.parentId || null,
+        })
+      } else if (postId) {
+        const post = await reddit.getPostById(postId as `t3_${string}`)
+        item = await engine.ingest({
+          id: postId, type: 'post',
+          text: post.body ? `${post.title}\n\n${post.body}` : post.title,
+          authorId: post.authorName || 'unknown', authorName: post.authorName || 'unknown',
+          createdAt: Date.now(), threadRootId: postId, parentId: null,
+        })
       }
-    } catch {}
+    }
+    if (!item) return c.json<UiResponse>({ showToast: 'Could not load item.' })
+    if (item.embedding.length === 0) return c.json<UiResponse>({ showToast: 'Item has no embedding yet.' })
 
-    if (itemCount === 0) itemCount = 10
+    const hits = await engine.findSimilar(item.embedding, 10, {
+      decision: ['removed'],
+      excludeIds: new Set([item.id]),
+    })
+    const strong = hits.filter(h => h.weight >= 0.4)
+    if (strong.length === 0) {
+      return c.json<UiResponse>({ showToast: 'No similar prior removals found.' })
+    }
 
-    const currentCount = await store.getItemCount()
-    const estCost = (itemCount * 0.00011).toFixed(2)
-    const estMinutes = Math.max(3, Math.ceil(itemCount / 500))
+    let recLine = ''
+    try {
+      const rules = await store.getRules()
+      const result = await engine.recommendDecision(item, strong, rules)
+      const verb = result.recommendation === 'remove' ? 'Remove'
+        : result.recommendation === 'approve' ? 'Approve' : 'Insufficient signal'
+      recLine = `Recommendation: ${verb}${result.ruleId ? ` (${result.ruleId})` : ''}\n\n${result.rationale}`
+    } catch (err) {
+      console.error('[Strata] similar-decisions recommendDecision failed:', err)
+      recLine = `Recommendation unavailable: ${err}`
+    }
 
     return c.json<UiResponse>({
       showForm: {
-        name: 'ingestConfirm',
+        name: 'similarDecisionsResults',
         form: {
-          title: `Ingest ~${itemCount} items (${startDate} to ${endDate})`,
-          description: `~$${estCost} cost · ~${estMinutes} min · Storage: ${currentCount.toLocaleString()} → ${(currentCount + itemCount).toLocaleString()} / 330K`,
-          acceptLabel: 'Start Ingest',
+          title: `Strata: ${strong.length} similar prior removal${strong.length === 1 ? '' : 's'}`,
           fields: [
-            { name: 'startDate', label: 'start', type: 'string' as const, defaultValue: startDate, disabled: true },
-            { name: 'endDate', label: 'end', type: 'string' as const, defaultValue: endDate, disabled: true },
+            { name: 'rec', label: 'Recommendation', type: 'paragraph' as const, defaultValue: recLine },
+            ...strong.slice(0, 5).map((h, i) => ({
+              name: `precedent${i}`,
+              label: `${(h.weight * 100).toFixed(0)}% — u/${h.item.authorName} · ${new Date(h.item.createdAt).toLocaleDateString()}${h.item.decisionReason ? ` · ${h.item.decisionReason}` : ''}`,
+              type: 'paragraph' as const,
+              defaultValue: (h.item.title ? `${h.item.title}\n\n` : '') + h.item.text.slice(0, 400),
+            })),
           ],
         },
       },
     })
   } catch (err) {
-    console.error('[Strata] Ingest estimate error:', err)
-    return c.json<UiResponse>({ showToast: `Something went wrong: ${err}` })
-  }
-})
-
-// Step 2: Mod confirmed → fetch items → submit batch jobs
-app.post('/internal/forms/ingest-confirm', async (c) => {
-  const { startDate, endDate } = await c.req.json<{ startDate: string; endDate: string; summary?: string }>()
-  if (!context.subredditName) return c.json<UiResponse>({ showToast: 'No subreddit context.' })
-
-  try {
-    const start = new Date(startDate).getTime()
-    const end = new Date(endDate).getTime() + 24 * 60 * 60 * 1000
-    const rawItems: RawItem[] = []
-
-    // Fetch from Reddit
-    try {
-      const posts = reddit.getNewPosts({ subredditName: context.subredditName, limit: 5000, pageSize: 100 })
-      for await (const post of posts) {
-        if (post.createdAt.getTime() < start) break
-        if (post.createdAt.getTime() > end) continue
-
-        rawItems.push({
-          id: post.id, type: 'post', title: post.title, text: post.body || '',
-          authorId: post.authorId || post.authorName || 'unknown',
-          authorName: post.authorName || 'unknown',
-          createdAt: post.createdAt.getTime(),
-          threadRootId: post.id, parentId: null,
-        })
-
-        try {
-          const comments = reddit.getComments({ postId: post.id, limit: 200, sort: 'new' as any })
-          for await (const comment of comments) {
-            if (comment.createdAt.getTime() < start || comment.createdAt.getTime() > end) continue
-            rawItems.push({
-              id: comment.id, type: 'comment', title: post.title, text: comment.body,
-              authorId: comment.authorId || comment.authorName || 'unknown',
-              authorName: comment.authorName || 'unknown',
-              createdAt: comment.createdAt.getTime(),
-              threadRootId: post.id, parentId: comment.parentId || null,
-            })
-          }
-        } catch {}
-      }
-    } catch {}
-
-    // Fallback: demo items
-    if (rawItems.length === 0) {
-      const demoData: RawItem[] = [
-        { id: 'demo-1', type: 'post', title: 'Near-miss on Mass Ave crosswalk — dark green Subaru', text: 'Honestly stay off Mass Ave near Central if you can. Last Tuesday around 6pm some asshole in a dark green Subaru Outback blew through the crosswalk at Prospect while I was mid-crossing. Had to jump back onto the curb. Cracked taillight and one of those "26.2" marathon stickers on the back window. Reported it to Cambridge PD non-emergency but they said without a plate there\'s nothing they can do.', authorId: 'u1', authorName: 'ThursdayCommuter', createdAt: start + 7 * 86400000, threadRootId: 'demo-1', parentId: null },
-        { id: 'demo-2', type: 'comment', title: 'Cambridge PD complaint thread', text: 'Three weeks and counting since I submitted dashcam footage to Cambridge PD for case #2026-04891. They told me a detective would follow up within 48 hours. Never heard back. Called twice, got "we\'ll pass along the message" both times. I have clear HD footage of the car they\'re looking for but apparently nobody cares.', authorId: 'u2', authorName: 'DashcamDave_617', createdAt: start + 14 * 86400000, threadRootId: 'thread-pd', parentId: 'thread-pd' },
-        { id: 'demo-3', type: 'comment', title: 'Cambridgeside garage observations', text: 'Not exactly a rant but something that\'s been bugging me — someone on P3 of the Cambridgeside garage has a dark green Subaru Outback that suddenly has gnarly front bumper damage and a cracked passenger headlight. Showed up maybe 2 weeks ago. They park in the same spot every weekday morning. Part of me wonders if they hit something.', authorId: 'u3', authorName: 'CambridgeSide_Resident', createdAt: start + 19 * 86400000, threadRootId: 'thread-parking', parentId: 'thread-parking' },
-        { id: 'demo-4', type: 'post', title: 'Crash at Prospect & Mass Ave — bicycle hit', text: 'Was walking down Prospect toward Central around 6pm and heard a loud crash followed by tires screeching. By the time I got to Mass Ave there was a bicycle on the ground with the front wheel bent in half but no car. A couple people were looking around confused. Ambulance showed up maybe 8 minutes later.', authorId: 'u4', authorName: 'InmanSq_Walker', createdAt: start + 7 * 86400000, threadRootId: 'demo-4', parentId: null },
-        { id: 'demo-5', type: 'post', title: 'Best pizza in Davis Square?', text: 'Just moved here from NYC and looking for decent slices. Budget is like $4-5 a slice max.', authorId: 'u5', authorName: 'PizzaFan', createdAt: start + 10 * 86400000, threadRootId: 'demo-5', parentId: null },
-        { id: 'demo-6', type: 'comment', title: 'Mass Ave bike infrastructure', text: 'The bike lanes on Mass Ave are a joke. They just painted lines and called it done. No physical barrier means cars swerve in constantly. Someone is going to get killed.', authorId: 'u6', authorName: 'BikerBoston', createdAt: start + 12 * 86400000, threadRootId: 'thread-transit', parentId: 'thread-transit' },
-        { id: 'demo-7', type: 'post', title: 'Cambridge rent is insane', text: 'Is it just me or has rent in Cambridge gone completely insane? $3200 for a 1BR in Porter Square with no laundry or parking.', authorId: 'u7', authorName: 'RentRanter', createdAt: start + 5 * 86400000, threadRootId: 'demo-7', parentId: null },
-        { id: 'demo-8', type: 'comment', title: 'Best bars near Cambridgeside?', text: 'I live right above the Cambridgeside garage, can vouch for Night Shift Brewing. My roommate and I usually hit it on Tuesdays after his shift ends around 7. He drives so I can drink. We park on P3, never had issues finding a spot in the evening.', authorId: 'u8', authorName: 'TKfromCambridge', createdAt: start + 20 * 86400000, threadRootId: 'thread-bars', parentId: 'thread-bars' },
-        { id: 'demo-9', type: 'post', title: 'Cash-only auto body shop recommendations?', text: 'Need discreet bumper and headlight repair on a dark green Subaru. Front driver side. My buddy doesn\'t want to go through insurance. Needs it done fast, like this week.', authorId: 'u9', authorName: 'QuickFixNeeded', createdAt: start + 16 * 86400000, threadRootId: 'demo-9', parentId: null },
-        { id: 'demo-10', type: 'comment', title: 'Running routes in Somerville', text: 'Just moved to Somerville, what are the best running routes? I usually do 5-10K in the morning before work. Prefer paved paths.', authorId: 'u10', authorName: 'RunnerGuy', createdAt: start + 3 * 86400000, threadRootId: 'thread-running', parentId: 'thread-running' },
-      ]
-      rawItems.push(...demoData.filter(d => d.createdAt >= start && d.createdAt <= end))
-    }
-
-    const currentCount = await store.getItemCount()
-    const capacity = 330_000
-    if (currentCount + rawItems.length > capacity) {
-      return c.json<UiResponse>({
-        showToast: `Too many items: ${rawItems.length} would exceed capacity (${currentCount}/${capacity}).`,
-      })
-    }
-
-    // Load subreddit rules for flag detection
-    try {
-      const engine = await getEngine()
-      const subredditRules = await reddit.getRules(context.subredditName)
-      if (subredditRules && subredditRules.length > 0) {
-        const ruleInputs = subredditRules.map((rule: any, i: number) => ({
-          id: `rule-${i + 1}`,
-          shortName: rule.shortName || rule.violationReason || `Rule ${i + 1}`,
-          description: rule.description || rule.shortName || '',
-          priority: i + 1,
-        }))
-        await engine.loadRules(ruleInputs)
-        console.log(`[Strata] Loaded ${ruleInputs.length} subreddit rules`)
-      }
-    } catch (err) {
-      console.log('[Strata] Could not load subreddit rules:', err)
-    }
-
-    // Store raw items in Redis for the batch processor
-    await redis.hSet('strata:ingest:raw', Object.fromEntries(
-      rawItems.map(item => [item.id, JSON.stringify(item)])
-    ))
-
-    // Build and submit OpenAI batches
-    const apiKey = await settings.get('openaiApiKey') as string
-    const openai = new OpenAI({ apiKey })
-
-    const normalizedItems = rawItems.map(r => ({ id: r.id, text: normalize(r.title ? `${r.title}\n\n${r.text}` : r.text) }))
-
-    // Submit embedding batch + extraction batch in parallel
-    const [embBatchId, extractBatchId] = await Promise.all([
-      submitBatch(openai, buildEmbeddingJsonl(normalizedItems), '/v1/embeddings', 'ingest-emb.jsonl'),
-      submitBatch(openai, buildExtractionJsonl(normalizedItems), '/v1/responses', 'ingest-extract.jsonl'),
-    ])
-
-    console.log(`[Strata] Batches submitted for ${rawItems.length} items`)
-
-    await redis.hSet('strata:ingest:status', {
-      phase: 'embedding',
-      totalItems: String(rawItems.length),
-      processed: '0',
-      embBatchId,
-      extractBatchId,
-      startedAt: String(Date.now()),
-    })
-
-    await scheduler.runJob({ name: 'ingest-batch', runAt: new Date(Date.now() + 120_000), data: {} })
-
-    const estMinutes = Math.max(3, Math.ceil(rawItems.length / 500))
-    return c.json<UiResponse>({
-      showToast: `Processing ${rawItems.length} items (~${estMinutes} min)`,
-    })
-  } catch (err) {
-    console.error('[Strata] Ingest error:', err)
+    console.error('[Strata] similar-decisions error:', err)
     return c.json<UiResponse>({ showToast: `Error: ${err}` })
   }
 })
+
+app.post('/internal/forms/similar-decisions-results', async (c) => {
+  return c.json<UiResponse>({ showToast: 'Done.' })
+})
+
+// --- Ingest ---
+
 
 // --- Scheduler: Poll Batch Status ---
 
 app.post('/internal/scheduler/ingest-batch', async (c) => {
   try {
     const status = await redis.hGetAll('strata:ingest:status')
-    if (!status.phase || status.phase === 'done' || status.phase === 'error') return c.json({ status: 'ok' })
+    if (!status.phase || status.phase === 'done' || status.phase === 'error' || status.phase === 'cancelled') {
+      return c.json({ status: 'ok' })
+    }
 
     const apiKey = await settings.get('openaiApiKey') as string
     const openai = new OpenAI({ apiKey })
@@ -1043,7 +1030,9 @@ app.post('/internal/scheduler/ingest-batch', async (c) => {
       console.log(`[Strata] Poll: emb=${embStatus.status}(${embStatus.completed}/${embStatus.total}), extract=${extractStatus.status}(${extractStatus.completed}/${extractStatus.total})`)
 
       if (embStatus.status === 'failed' || extractStatus.status === 'failed') {
-        await redis.hSet('strata:ingest:status', { phase: 'error', error: 'Batch failed' })
+        const endedAt = Date.now()
+        await redis.hSet('strata:ingest:status', { phase: 'error', error: 'Batch failed', endedAt: String(endedAt) })
+        if (status.backfillId) await updateBackfillRecord(status.backfillId, { status: 'error', endedAt, error: 'Batch failed' })
         return c.json({ status: 'ok' })
       }
 
@@ -1094,7 +1083,9 @@ app.post('/internal/scheduler/ingest-batch', async (c) => {
       console.log(`[Strata] Poll entity-emb: ${entEmbStatus.status}(${entEmbStatus.completed}/${entEmbStatus.total})`)
 
       if (entEmbStatus.status === 'failed') {
-        await redis.hSet('strata:ingest:status', { phase: 'error', error: 'Entity embedding batch failed' })
+        const endedAt = Date.now()
+        await redis.hSet('strata:ingest:status', { phase: 'error', error: 'Entity embedding batch failed', endedAt: String(endedAt) })
+        if (status.backfillId) await updateBackfillRecord(status.backfillId, { status: 'error', endedAt, error: 'Entity embedding batch failed' })
         return c.json({ status: 'ok' })
       }
 
@@ -1137,16 +1128,60 @@ app.post('/internal/scheduler/ingest-batch', async (c) => {
       await redis.del('strata:ingest:embeddings')
       await redis.del('strata:ingest:entities')
 
+      const endedAt = Date.now()
       await redis.hSet('strata:ingest:status', {
         phase: 'done',
         processed: String(stored),
-        endedAt: String(Date.now()),
+        endedAt: String(endedAt),
       })
+      await redis.set('strata:backfill:complete', '1')
+      if (status.backfillId) {
+        await updateBackfillRecord(status.backfillId, {
+          status: 'done',
+          endedAt,
+          totalItems: stored,
+          processed: stored,
+        })
+      }
       console.log(`[Strata] Ingest complete: ${stored} items stored`)
+
+      // Auto-fire scan so live items posted during the backfill window get
+      // surfaced against the freshly-populated corpus.
+      try {
+        const scanId = generateAlertId()
+        const scanStartedAt = Date.now()
+        await redis.hSet('strata:scan:status', {
+          phase: 'building',
+          startedAt: String(scanStartedAt),
+          scanId,
+          anchorsProcessed: '0',
+          anchorsTotal: '0',
+        })
+        await putScanRecord({
+          id: scanId, status: 'running', startedAt: scanStartedAt, endedAt: null,
+          anchorsTotal: 0, anchorsProcessed: 0, alertsCreated: 0,
+          autoTriggered: true, initiatedBy: 'auto-scan',
+        })
+        await scheduler.runJob({ name: 'scan', runAt: new Date(Date.now() + 1000), data: { step: 'build' } })
+        console.log('[Strata] Auto-scan scheduled after backfill')
+        try {
+          await scheduler.runJob({ name: 'recluster', runAt: new Date(Date.now() + 5000), data: {} })
+          console.log('[Strata] Recluster scheduled after backfill')
+        } catch (err) {
+          console.error('[Strata] Recluster schedule failed:', err)
+        }
+      } catch (err) {
+        console.error('[Strata] Auto-scan schedule failed:', err)
+      }
     }
   } catch (err) {
     console.error('[Strata] Ingest poll error:', err)
-    await redis.hSet('strata:ingest:status', { phase: 'error', error: String(err) })
+    const status = await redis.hGetAll('strata:ingest:status')
+    const endedAt = Date.now()
+    await redis.hSet('strata:ingest:status', { phase: 'error', error: String(err), endedAt: String(endedAt) })
+    if (status?.backfillId) {
+      await updateBackfillRecord(status.backfillId, { status: 'error', endedAt, error: String(err) })
+    }
   }
 
   return c.json({ status: 'ok' })
@@ -1154,38 +1189,35 @@ app.post('/internal/scheduler/ingest-batch', async (c) => {
 
 // --- Scan ---
 
-app.post('/internal/menu/scan', async (c) => {
-  try {
-    const itemCount = await store.getItemCount()
-    if (itemCount === 0) {
-      return c.json<UiResponse>({ showToast: 'No items in store. Ingest data first.' })
-    }
-
-    await redis.hSet('strata:scan:status', { phase: 'building', startedAt: String(Date.now()) })
-    await scheduler.runJob({ name: 'scan', runAt: new Date(Date.now() + 1000), data: { step: 'build' } })
-
-    return c.json<UiResponse>({ showToast: `Scanning ${itemCount} items for connections...` })
-  } catch (err) {
-    console.error('[Strata] Scan error:', err)
-    return c.json<UiResponse>({ showToast: `Scan error: ${err}` })
-  }
-})
-
 app.post('/internal/scheduler/scan', async (c) => {
   const input = await c.req.json<any>()
   const step = input.data?.step as string
 
   try {
+    const status = await redis.hGetAll('strata:scan:status')
+    if (status?.phase === 'cancelled') {
+      await redis.del('strata:scan:pairs')
+      await redis.del('strata:scan:new-alert-ids')
+      return c.json({ status: 'ok' })
+    }
+
     if (step === 'build') {
       const pairs = await buildScanPairs(store)
       if (pairs.length === 0) {
-        await redis.hSet('strata:scan:status', { phase: 'done', alerts: '0' })
+        const endedAt = Date.now()
+        await redis.hSet('strata:scan:status', { phase: 'done', alerts: '0', endedAt: String(endedAt), anchorsTotal: '0', anchorsProcessed: '0' })
+        if (status?.scanId) await updateScanRecord(status.scanId, { status: 'done', endedAt, anchorsTotal: 0, anchorsProcessed: 0, alertsCreated: 0 })
         console.log('[Strata] Scan: no candidate pairs found')
         return c.json({ status: 'ok' })
       }
 
       await redis.set('strata:scan:pairs', JSON.stringify(pairs))
-      await redis.hSet('strata:scan:status', { phase: 'classifying' })
+      await redis.hSet('strata:scan:status', {
+        phase: 'classifying',
+        anchorsTotal: String(pairs.length),
+        anchorsProcessed: '0',
+      })
+      if (status?.scanId) await updateScanRecord(status.scanId, { anchorsTotal: pairs.length })
       await scheduler.runJob({ name: 'scan', runAt: new Date(Date.now() + 1000), data: { step: 'classify', index: 0 } })
       console.log(`[Strata] Scan: ${pairs.length} anchor groups, classifying...`)
     }
@@ -1196,12 +1228,33 @@ app.post('/internal/scheduler/scan', async (c) => {
       if (!pairsJson) return c.json({ status: 'ok' })
       const pairs: ScanPair[] = JSON.parse(pairsJson)
 
-      if (index >= pairs.length) {
+      const finalizeScan = async () => {
+        const idsJson = await redis.get('strata:scan:new-alert-ids') || '[]'
+        const ids: string[] = JSON.parse(idsJson)
         await redis.del('strata:scan:pairs')
-        const alertCount = await redis.get('strata:scan:alert-count') || '0'
-        await redis.hSet('strata:scan:status', { phase: 'done', alerts: alertCount })
-        await redis.del('strata:scan:alert-count')
-        console.log(`[Strata] Scan complete: ${alertCount} alerts created`)
+        await redis.del('strata:scan:new-alert-ids')
+        const endedAt = Date.now()
+        await redis.hSet('strata:scan:status', {
+          phase: 'done',
+          alerts: String(ids.length),
+          endedAt: String(endedAt),
+          anchorsProcessed: String(pairs.length),
+        })
+        if (status?.scanId) await updateScanRecord(status.scanId, {
+          status: 'done', endedAt, anchorsProcessed: pairs.length, alertsCreated: ids.length,
+        })
+        console.log(`[Strata] Scan complete: ${ids.length} alerts created`)
+        if (ids.length > 0 && context.subredditName) {
+          try {
+            await sendSurfaceDigest(context.subredditName, ids)
+          } catch (err) {
+            console.error('[Strata] Scan digest modmail failed:', err)
+          }
+        }
+      }
+
+      if (index >= pairs.length) {
+        await finalizeScan()
         return c.json({ status: 'ok' })
       }
 
@@ -1223,27 +1276,38 @@ app.post('/internal/scheduler/scan', async (c) => {
         ))
       )
 
-      const totalCreated = results.reduce((s, n) => s + n, 0)
-      if (totalCreated > 0) {
-        const count = parseInt(await redis.get('strata:scan:alert-count') || '0', 10)
-        await redis.set('strata:scan:alert-count', String(count + totalCreated))
-        console.log(`[Strata] Scan: ${totalCreated} alert(s) from ${batch.length} anchors`)
+      const batchIds = results.flat()
+      if (batchIds.length > 0) {
+        const existing: string[] = JSON.parse(await redis.get('strata:scan:new-alert-ids') || '[]')
+        await redis.set('strata:scan:new-alert-ids', JSON.stringify([...existing, ...batchIds]))
+        console.log(`[Strata] Scan: ${batchIds.length} alert(s) from ${batch.length} anchors`)
       }
 
       const nextIndex = index + PARALLEL
+      const idsSoFar: string[] = JSON.parse(await redis.get('strata:scan:new-alert-ids') || '[]')
+      await redis.hSet('strata:scan:status', {
+        anchorsProcessed: String(Math.min(nextIndex, pairs.length)),
+        alerts: String(idsSoFar.length),
+      })
+      if (status?.scanId) {
+        await updateScanRecord(status.scanId, {
+          anchorsProcessed: Math.min(nextIndex, pairs.length),
+          alertsCreated: idsSoFar.length,
+        })
+      }
+
       if (nextIndex < pairs.length) {
         await scheduler.runJob({ name: 'scan', runAt: new Date(Date.now() + 2000), data: { step: 'classify', index: nextIndex } })
       } else {
-        const alertCount = await redis.get('strata:scan:alert-count') || '0'
-        await redis.del('strata:scan:pairs')
-        await redis.del('strata:scan:alert-count')
-        await redis.hSet('strata:scan:status', { phase: 'done', alerts: alertCount })
-        console.log(`[Strata] Scan complete: ${alertCount} alerts created`)
+        await finalizeScan()
       }
     }
   } catch (err) {
     console.error('[Strata] Scan scheduler error:', err)
-    await redis.hSet('strata:scan:status', { phase: 'error', error: String(err) })
+    const endedAt = Date.now()
+    const status = await redis.hGetAll('strata:scan:status')
+    await redis.hSet('strata:scan:status', { phase: 'error', error: String(err), endedAt: String(endedAt) })
+    if (status?.scanId) await updateScanRecord(status.scanId, { status: 'error', endedAt, error: String(err) })
   }
 
   return c.json({ status: 'ok' })
@@ -1251,11 +1315,548 @@ app.post('/internal/scheduler/scan', async (c) => {
 
 // --- API ---
 
+app.use('/api/*', async (c, next) => {
+  if (c.req.path === '/api/viewer') return next()
+  const ok = await isMod(context.userId, context.subredditName ?? '')
+  if (!ok) return c.json({ error: 'Forbidden' }, 403)
+  return next()
+})
+
+const API_KEY_INVALID_FLAG = 'strata:apikey:invalid'
+
+function isOpenAIAuthError(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false
+  const e = err as { status?: number; code?: string; message?: string }
+  if (e.status === 401) return true
+  if (e.code === 'invalid_api_key') return true
+  const msg = (e.message || '').toLowerCase()
+  return msg.includes('incorrect api key') || msg.includes('invalid api key') || msg.includes('invalid_api_key')
+}
+
+async function noteOpenAIError(err: unknown): Promise<void> {
+  if (isOpenAIAuthError(err)) {
+    try { await redis.set(API_KEY_INVALID_FLAG, '1') } catch {}
+  }
+}
+
+async function clearApiKeyInvalid(): Promise<void> {
+  try { await redis.del(API_KEY_INVALID_FLAG) } catch {}
+}
+
 app.get('/api/stats', async (c) => {
   const itemCount = await store.getItemCount()
   const seeded = await redis.get('strata:seed:complete') || '0'
   const installed = await redis.get('strata:installed') || '0'
-  return c.json({ itemCount, capacity: 330_000, seeded, installed })
+  const apiKey = await settings.get('openaiApiKey').catch(() => null)
+  const hasApiKey = typeof apiKey === 'string' && apiKey.trim().length > 0
+  const apiKeyInvalid = hasApiKey && (await redis.get(API_KEY_INVALID_FLAG)) === '1'
+  return c.json({ itemCount, capacity: 330_000, seeded, installed, hasApiKey, apiKeyInvalid })
+})
+
+app.post('/api/apikey/recheck', async (c) => {
+  await clearApiKeyInvalid()
+  return c.json({ ok: true })
+})
+
+app.get('/api/usage', async (c) => {
+  return c.json(await getUsageSummary())
+})
+
+app.get('/api/community-context', async (c) => {
+  const text = (await redis.get('strata:community-context')) ?? ''
+  return c.json({ text })
+})
+
+app.post('/api/community-context', async (c) => {
+  const body = await c.req.json<{ text?: string }>().catch(() => ({} as { text?: string }))
+  const text = ((body as { text?: string }).text ?? '').slice(0, 2000)
+  if (text.trim().length === 0) {
+    await redis.del('strata:community-context')
+  } else {
+    await redis.set('strata:community-context', text)
+  }
+  return c.json({ ok: true })
+})
+
+app.post('/api/chat', async (c) => {
+  const apiKey = await settings.get('openaiApiKey')
+  if (!apiKey || typeof apiKey !== 'string') return c.json({ error: 'No API key' }, 500)
+  const openai = new OpenAI({ apiKey })
+
+  const community = (await redis.get('strata:community-context')) ?? ''
+
+  const ids = await store.getItemIds()
+  const items = (await Promise.all(ids.map(id => store.getItem(id)))).filter((x): x is StoredItem => !!x)
+  const itemMap = new Map(items.map(i => [i.id, i]))
+  const embMap = await store.getEmbeddings(ids)
+
+  const repo = new ClusterRepo(redis)
+  const clusterRows = await repo.listBySize(500)
+  const clusterLabelById = new Map<number, string>()
+  for (const row of clusterRows) clusterLabelById.set(row.id, row.label)
+
+  const handler = createChatHandler({
+    openai,
+    subreddit: context.subredditName,
+    communityContext: community.trim() || undefined,
+    getAllItems: async () => items,
+    getItem: async (id) => itemMap.get(id) ?? null,
+    getEmbedding: (id) => embMap.get(id) ?? null,
+    clusterLabelById,
+    listAlerts: opts => alertStore.listAlerts(opts),
+    getAlert: id => alertStore.getAlert(id),
+    getAlertConnections: id => alertStore.getAlertConnections(id),
+  })
+  return handler(c)
+})
+
+app.get('/api/clusters', async (c) => {
+  const repo = new ClusterRepo(redis)
+  const rows = await repo.listBySize(500)
+  const ids = await store.getItemIds()
+  const items = (await Promise.all(ids.map(id => store.getItem(id)))).filter((x): x is StoredItem => !!x)
+  const sizeByCluster = new Map<number, number>()
+  const latestActivity = new Map<number, number>()
+  const recent24h = Date.now() - 86_400_000
+  const recentCounts = new Map<number, number>()
+  for (const it of items) {
+    if (it.clusterId === undefined || it.clusterId === -1) continue
+    sizeByCluster.set(it.clusterId, (sizeByCluster.get(it.clusterId) ?? 0) + 1)
+    latestActivity.set(it.clusterId, Math.max(latestActivity.get(it.clusterId) ?? 0, it.createdAt))
+    if (it.createdAt >= recent24h) recentCounts.set(it.clusterId, (recentCounts.get(it.clusterId) ?? 0) + 1)
+  }
+  return c.json(rows.map(r => ({
+    id: `cluster:${r.id}`,
+    label: r.label,
+    postCount: 0,
+    commentCount: 0,
+    totalCount: sizeByCluster.get(r.id) ?? r.size,
+    recentCount: recentCounts.get(r.id) ?? 0,
+    lastActivity: latestActivity.get(r.id) ?? 0,
+  })))
+})
+
+app.get('/api/clusters/:id', async (c) => {
+  const raw = c.req.param('id').replace(/^cluster:/, '')
+  const id = parseInt(raw, 10)
+  if (!Number.isFinite(id)) return c.json({ error: 'Invalid id' }, 400)
+  const repo = new ClusterRepo(redis)
+  const resolved = await repo.resolveAlias(id)
+  const meta = await repo.getMeta(resolved)
+  if (!meta) return c.json({ error: 'Not found' }, 404)
+  const ids = await store.getItemIds()
+  const items = (await Promise.all(ids.map(id => store.getItem(id)))).filter((x): x is StoredItem => !!x)
+  const members = items.filter(it => it.clusterId === resolved)
+  const posts = members.filter(it => it.type === 'post').sort((a, b) => b.createdAt - a.createdAt)
+  const comments = members.filter(it => it.type === 'comment')
+  return c.json({
+    id: `cluster:${resolved}`,
+    label: meta.label,
+    postCount: posts.length,
+    commentCount: comments.length,
+    recentCount: members.filter(it => it.createdAt >= Date.now() - 86_400_000).length,
+    lastActivity: members.reduce((m, it) => Math.max(m, it.createdAt), 0),
+    posts: posts.slice(0, 200).map(p => ({
+      id: p.id,
+      type: p.type,
+      title: p.title ?? null,
+      text: p.text,
+      author: p.authorName,
+      createdAt: p.createdAt,
+      permalink: null,
+      commentCount: 0,
+    })),
+  })
+})
+
+async function getClusterConfig(): Promise<{ resolution: number; minClusterSize: number }> {
+  const raw = await redis.hGetAll('strata:cluster:config')
+  const resolution = raw?.resolution ? parseFloat(raw.resolution) : LOUVAIN_RESOLUTION
+  const minClusterSize = raw?.minClusterSize ? parseInt(raw.minClusterSize, 10) : MIN_CLUSTER_SIZE
+  return {
+    resolution: Number.isFinite(resolution) ? Math.max(0.1, Math.min(3.0, resolution)) : LOUVAIN_RESOLUTION,
+    minClusterSize: Number.isFinite(minClusterSize) ? Math.max(2, Math.min(100, minClusterSize)) : MIN_CLUSTER_SIZE,
+  }
+}
+
+async function runReclusterAndRecord(): Promise<{ ok: true; report: Awaited<ReturnType<typeof runRecluster>> } | { ok: false; error: string; auth: boolean }> {
+  const apiKey = await settings.get('openaiApiKey')
+  if (!apiKey || typeof apiKey !== 'string') return { ok: false, error: 'No API key', auth: false }
+  const openai = new OpenAI({ apiKey: apiKey as string })
+  const config = await getClusterConfig()
+  try {
+    const report = await runRecluster(store, redis, openai, config)
+    await redis.hSet('strata:cluster:status', {
+      lastRun: String(Date.now()),
+      totalItems: String(report.totalItems),
+      clusters: String(report.clusters),
+      orphans: String(report.orphans),
+      relabeled: String(report.relabeled),
+      elapsedMs: String(report.elapsedMs),
+    })
+    await redis.set('strata:cluster:ingest-counter', '0')
+    return { ok: true, report }
+  } catch (err) {
+    await noteOpenAIError(err)
+    return { ok: false, error: String(err), auth: isOpenAIAuthError(err) }
+  }
+}
+
+app.post('/internal/scheduler/recluster', async (c) => {
+  const result = await runReclusterAndRecord()
+  if (!result.ok) {
+    console.error('[Strata] Recluster failed:', result.error)
+    return c.json({ error: result.error })
+  }
+  console.log('[Strata] Recluster:', result.report)
+  return c.json(result.report)
+})
+
+app.post('/api/clusters/recluster', async (c) => {
+  const result = await runReclusterAndRecord()
+  if (!result.ok) {
+    if (result.auth) return c.json({ error: 'invalid_api_key' }, 401)
+    return c.json({ error: result.error }, 500)
+  }
+  return c.json(result.report)
+})
+
+app.get('/api/clusters/config', async (c) => {
+  const cfg = await getClusterConfig()
+  return c.json({ ...cfg, defaults: { resolution: LOUVAIN_RESOLUTION, minClusterSize: MIN_CLUSTER_SIZE } })
+})
+
+app.post('/api/clusters/config', async (c) => {
+  const body = await c.req.json<{ resolution?: number; minClusterSize?: number }>().catch(() => ({} as { resolution?: number; minClusterSize?: number }))
+  const updates: Record<string, string> = {}
+  if (typeof body.resolution === 'number' && Number.isFinite(body.resolution)) {
+    updates.resolution = String(Math.max(0.1, Math.min(3.0, body.resolution)))
+  }
+  if (typeof body.minClusterSize === 'number' && Number.isFinite(body.minClusterSize)) {
+    updates.minClusterSize = String(Math.max(2, Math.min(100, Math.round(body.minClusterSize))))
+  }
+  if (Object.keys(updates).length > 0) await redis.hSet('strata:cluster:config', updates)
+  return c.json(await getClusterConfig())
+})
+
+app.get('/api/clusters/status', async (c) => {
+  const status = await redis.hGetAll('strata:cluster:status')
+  const counter = await redis.get('strata:cluster:ingest-counter')
+  return c.json({
+    lastRun: parseInt(status?.lastRun ?? '0', 10) || 0,
+    totalItems: parseInt(status?.totalItems ?? '0', 10) || 0,
+    clusters: parseInt(status?.clusters ?? '0', 10) || 0,
+    orphans: parseInt(status?.orphans ?? '0', 10) || 0,
+    relabeled: parseInt(status?.relabeled ?? '0', 10) || 0,
+    elapsedMs: parseInt(status?.elapsedMs ?? '0', 10) || 0,
+    pendingItems: counter ? parseInt(counter, 10) : 0,
+  })
+})
+
+const RECLUSTER_VOLUME_RATIO = 0.05
+const RECLUSTER_VOLUME_MIN = 50
+
+async function bumpIngestCounter(): Promise<void> {
+  try {
+    const counter = await redis.get('strata:cluster:ingest-counter')
+    const current = counter ? parseInt(counter, 10) : 0
+    const next = current + 1
+    await redis.set('strata:cluster:ingest-counter', String(next))
+    const itemCount = await store.getItemCount()
+    const threshold = Math.max(RECLUSTER_VOLUME_MIN, Math.floor(itemCount * RECLUSTER_VOLUME_RATIO))
+    if (next >= threshold) {
+      await redis.set('strata:cluster:ingest-counter', '0')
+      await scheduler.runJob({ name: 'recluster', runAt: new Date(Date.now() + 30_000), data: {} })
+      console.log(`[Strata] Recluster scheduled (volume threshold ${next}/${threshold})`)
+    }
+  } catch (err) {
+    console.error('[Strata] Ingest counter bump failed:', err)
+  }
+}
+
+const HUB_MIN_COUNT = 10
+const HUB_RATIO = 0.03
+const ENTITY_EMBED_SIM_THRESHOLD = 0.78
+const STRING_ONLY_ENTITY_TYPES = new Set(['quantity', 'url', 'username', 'phone', 'email'])
+const GRAPH_POSITION_SCALE = 10
+
+function positionForEmbedding(emb: number[]): [number, number, number] {
+  if (emb.length < 3) return [0, 0, 0]
+  return [emb[0] * GRAPH_POSITION_SCALE, emb[1] * GRAPH_POSITION_SCALE, emb[2] * GRAPH_POSITION_SCALE]
+}
+
+async function listAllItemsSorted(): Promise<StoredItem[]> {
+  const ids = await store.getItemIds()
+  const items = await Promise.all(ids.map(id => store.getItem(id)))
+  return items.filter((x): x is StoredItem => !!x).sort((a, b) => b.createdAt - a.createdAt)
+}
+
+async function loadClusterLabelMap(): Promise<Map<number, string>> {
+  const repo = new ClusterRepo(redis)
+  const rows = await repo.listBySize(1000)
+  const out = new Map<number, string>()
+  for (const r of rows) out.set(r.id, r.label)
+  return out
+}
+
+app.get('/api/items/:id/entity-matches', async (c) => {
+  const id = c.req.param('id')
+  const sourceItem = await store.getItem(id)
+  if (!sourceItem || !sourceItem.entities?.length) return c.json({ matchedIds: [] })
+
+  const totalItems = await store.getItemCount()
+  const hubCounts = await store.getEntityHubCounts()
+  const itemsPerType = new Map<string, number>()
+  for (const [key, count] of hubCounts) {
+    const type = key.split(':')[0]
+    itemsPerType.set(type, (itemsPerType.get(type) ?? 0) + count)
+  }
+  const isHub = (type: string, surface: string) => {
+    const count = hubCounts.get(`${type}:${surface.toLowerCase()}`) ?? 0
+    if (count < HUB_MIN_COUNT) return false
+    return count / (itemsPerType.get(type) ?? 1) > HUB_RATIO
+  }
+
+  const scores = new Map<string, number>()
+  for (const e of sourceItem.entities) {
+    if (!e.surfaceText || isHub(e.type, e.surfaceText)) continue
+    const matches = await store.getItemIdsByEntity(e.type, e.surfaceText)
+    if (matches.length <= 1) continue
+    const idf = Math.log(totalItems / matches.length)
+    for (const matchedId of matches) {
+      if (matchedId === id) continue
+      scores.set(matchedId, (scores.get(matchedId) ?? 0) + idf)
+    }
+  }
+
+  const queriesByType = new Map<string, Array<{ surface: string; emb: number[] }>>()
+  for (const e of sourceItem.entities) {
+    if (!e.surfaceText || STRING_ONLY_ENTITY_TYPES.has(e.type)) continue
+    if (isHub(e.type, e.surfaceText)) continue
+    const bucket = await store.getEntityEmbeddingsByType(e.type)
+    const found = bucket.find(b => b.itemId === id && b.surfaceText === e.surfaceText)
+    if (!found) continue
+    if (!queriesByType.has(e.type)) queriesByType.set(e.type, [])
+    queriesByType.get(e.type)!.push({ surface: e.surfaceText, emb: dequantize(found.embedding) })
+  }
+
+  for (const [type, queries] of queriesByType) {
+    const bucket = await store.getEntityEmbeddingsByType(type)
+    for (const entry of bucket) {
+      if (entry.itemId === id) continue
+      if (isHub(type, entry.surfaceText)) continue
+      const entryEmb = dequantize(entry.embedding)
+      let best = 0
+      for (const q of queries) {
+        let sim = 0
+        for (let i = 0; i < q.emb.length; i++) sim += q.emb[i] * entryEmb[i]
+        if (sim > best) best = sim
+      }
+      if (best < ENTITY_EMBED_SIM_THRESHOLD) continue
+      const idf = Math.log(totalItems / Math.max(1, bucket.length))
+      const score = (best - ENTITY_EMBED_SIM_THRESHOLD) * 4 * idf
+      scores.set(entry.itemId, Math.max(scores.get(entry.itemId) ?? 0, score))
+    }
+  }
+
+  const postScores = new Map<string, number>()
+  for (const [itemId, score] of scores) {
+    const it = await store.getItem(itemId)
+    if (!it) continue
+    const postId = it.type === 'post' ? itemId : it.threadRootId
+    if (postId === id) continue
+    postScores.set(postId, Math.max(postScores.get(postId) ?? 0, score))
+  }
+
+  const sorted = [...postScores.entries()].sort((a, b) => b[1] - a[1]).slice(0, 30)
+  return c.json({ matchedIds: sorted.map(([pid]) => pid) })
+})
+
+app.get('/api/threads/:postId', async (c) => {
+  const postId = c.req.param('postId')
+  const post = await store.getItem(postId)
+  if (!post || post.type !== 'post') return c.json({ error: 'Not found' }, 404)
+  const items = await listAllItemsSorted()
+  const labelById = await loadClusterLabelMap()
+  const sub = context.subredditName ?? 'reddit'
+  const comments = items
+    .filter(i => i.type === 'comment' && i.threadRootId === postId)
+    .sort((a, b) => a.createdAt - b.createdAt)
+  return c.json({
+    post: {
+      id: post.id,
+      title: post.title ?? null,
+      text: post.text,
+      author: post.authorName,
+      createdAt: post.createdAt,
+      entities: (post.entities ?? []).filter(e => e.surfaceText).map(e => ({ text: e.surfaceText, clusterId: e.type })),
+      clusterLabel: post.clusterId !== undefined && post.clusterId !== -1 ? (labelById.get(post.clusterId) ?? null) : null,
+      replyCount: comments.length,
+      permalink: `/r/${sub}/comments/${post.id.replace(/^t3_/, '')}/`,
+    },
+    comments: comments.map(cm => ({
+      id: cm.id,
+      kind: 'comment' as const,
+      text: cm.text,
+      author: cm.authorName,
+      createdAt: cm.createdAt,
+      created_at: cm.createdAt,
+      thread_title: post.title ?? null,
+      cluster_label: cm.clusterId !== undefined && cm.clusterId !== -1 ? (labelById.get(cm.clusterId) ?? null) : null,
+      entities: (cm.entities ?? []).filter(e => e.surfaceText).map(e => ({ text: e.surfaceText, clusterId: e.type })),
+    })),
+  })
+})
+
+app.get('/api/graph', async (c) => {
+  const items = await listAllItemsSorted()
+  const ids = items.map(i => i.id)
+  const embMap = await store.getEmbeddings(ids)
+  const labelById = await loadClusterLabelMap()
+  const { alerts } = await alertStore.listAlerts({ limit: 1000 })
+  const alertIncludeIds = new Set<string>()
+  const threadTitleFromAlerts = new Map<string, string>()
+  for (const a of alerts) {
+    alertIncludeIds.add(a.anchorId)
+    const conns = await alertStore.getAlertConnections(a.id)
+    for (const conn of conns) {
+      alertIncludeIds.add(conn.itemId)
+      if (conn.type === 'comment' && conn.title) threadTitleFromAlerts.set(conn.itemId, conn.title)
+    }
+  }
+  const titleById = new Map<string, string | null>()
+  for (const i of items) if (i.type === 'post') titleById.set(i.id, i.title ?? null)
+  const replyCount = new Map<string, number>()
+  for (const i of items) if (i.parentId) replyCount.set(i.parentId, (replyCount.get(i.parentId) ?? 0) + 1)
+  const maxReplies = Math.max(1, ...replyCount.values())
+
+  const nodes = items
+    .filter(i => i.type === 'post' || alertIncludeIds.has(i.id))
+    .map(i => {
+      const emb = embMap.get(i.id) ?? []
+      const [x, y, z] = positionForEmbedding(emb)
+      return {
+        id: i.id,
+        qualname: i.id,
+        symbol_name: i.title ?? i.text.slice(0, 60),
+        title: i.title ?? null,
+        text: i.text,
+        author: i.authorName,
+        created_at: i.createdAt,
+        reply_count: replyCount.get(i.id) ?? 0,
+        kind: i.type,
+        cluster_label: i.clusterId !== undefined && i.clusterId !== -1 ? (labelById.get(i.clusterId) ?? null) : null,
+        hub_score: (replyCount.get(i.id) ?? 0) / maxReplies,
+        thread_root_id: i.threadRootId,
+        thread_title: i.type === 'comment' ? (titleById.get(i.threadRootId) ?? threadTitleFromAlerts.get(i.id) ?? null) : null,
+        parent_id: i.parentId,
+        x2d: x, y2d: y,
+        x3d: x, y3d: y, z3d: z,
+      }
+    })
+
+  const clusterRepo = new ClusterRepo(redis)
+  const clusterRows = await clusterRepo.listBySize(1000)
+  return c.json({
+    nodes,
+    edges: [],
+    meta: {
+      postCount: items.filter(i => i.type === 'post').length,
+      commentCount: items.filter(i => i.type === 'comment').length,
+      clusterCount: clusterRows.length,
+      clusterSizeByLabel: Object.fromEntries(clusterRows.map(r => [r.label, r.size])),
+    },
+  })
+})
+
+app.post('/api/graph/extra-nodes', async (c) => {
+  const body = await c.req.json<{ ids: string[] }>().catch(() => ({ ids: [] }))
+  if (!Array.isArray(body.ids) || body.ids.length === 0) return c.json({ nodes: [] })
+  const items = (await Promise.all(body.ids.map(id => store.getItem(id)))).filter((x): x is StoredItem => !!x)
+  if (items.length === 0) return c.json({ nodes: [] })
+  const embMap = await store.getEmbeddings(items.map(i => i.id))
+  const labelById = await loadClusterLabelMap()
+  const allIds = await store.getItemIds()
+  const allItems = await Promise.all(allIds.map(id => store.getItem(id)))
+  const replyCount = new Map<string, number>()
+  for (const i of allItems) if (i?.parentId) replyCount.set(i.parentId, (replyCount.get(i.parentId) ?? 0) + 1)
+  const maxReplies = Math.max(1, ...replyCount.values())
+  const titleById = new Map<string, string | null>()
+  for (const i of allItems) if (i && i.type === 'post') titleById.set(i.id, i.title ?? null)
+
+  const nodes = items.map(i => {
+    const emb = embMap.get(i.id) ?? []
+    const [x, y, z] = positionForEmbedding(emb)
+    return {
+      id: i.id,
+      qualname: i.id,
+      symbol_name: i.title ?? i.text.slice(0, 60),
+      title: i.title ?? null,
+      text: i.text,
+      author: i.authorName,
+      created_at: i.createdAt,
+      reply_count: replyCount.get(i.id) ?? 0,
+      kind: i.type,
+      cluster_label: i.clusterId !== undefined && i.clusterId !== -1 ? (labelById.get(i.clusterId) ?? null) : null,
+      hub_score: (replyCount.get(i.id) ?? 0) / maxReplies,
+      thread_root_id: i.threadRootId,
+      thread_title: i.type === 'comment' ? (titleById.get(i.threadRootId) ?? null) : null,
+      parent_id: i.parentId,
+      x2d: x, y2d: y,
+      x3d: x, y3d: y, z3d: z,
+    }
+  })
+  return c.json({ nodes })
+})
+
+app.post('/api/search', async (c) => {
+  const apiKey = await settings.get('openaiApiKey')
+  if (!apiKey || typeof apiKey !== 'string') return c.json({ error: 'No API key' }, 503)
+  type SearchBody = { query: string; top_k?: number; time_window?: string }
+  const body = await c.req.json<SearchBody>().catch(() => ({ query: '' } as SearchBody))
+  if (!body.query) return c.json({ error: 'query required' }, 400)
+  const topK = Math.max(1, Math.min(body.top_k ?? 8, 20))
+  const cutoff =
+    body.time_window === 'today' ? Date.now() - 86_400_000 :
+    body.time_window === '7d' ? Date.now() - 7 * 86_400_000 :
+    body.time_window === '30d' ? Date.now() - 30 * 86_400_000 : null
+  try {
+    const client = new OpenAI({ apiKey })
+    const res = await client.embeddings.create({ input: body.query, model: 'text-embedding-3-small', dimensions: 256 })
+    await recordUsage('text-embedding-3-small', { inputTokens: res.usage.total_tokens, outputTokens: 0 })
+    const queryVec = res.data[0].embedding
+
+    const items = await listAllItemsSorted()
+    const ids = items.map(i => i.id)
+    const embMap = await store.getEmbeddings(ids)
+    const labelById = await loadClusterLabelMap()
+
+    const scored: Array<{ item: StoredItem; score: number }> = []
+    for (const it of items) {
+      if (cutoff !== null && it.createdAt < cutoff) continue
+      const emb = embMap.get(it.id)
+      if (!emb) continue
+      let s = 0
+      for (let i = 0; i < emb.length; i++) s += queryVec[i] * emb[i]
+      scored.push({ item: it, score: s })
+    }
+    scored.sort((a, b) => b.score - a.score)
+    const hits = scored.slice(0, topK).map(({ item, score }) => ({
+      id: item.id,
+      kind: item.type,
+      title: item.title ?? null,
+      snippet: (item.text ?? '').slice(0, 200),
+      cluster_label: item.clusterId !== undefined && item.clusterId !== -1 ? (labelById.get(item.clusterId) ?? null) : null,
+      created_at: item.createdAt,
+      score: Number(score.toFixed(4)),
+    }))
+    await clearApiKeyInvalid()
+    return c.json({ hits })
+  } catch (err) {
+    await noteOpenAIError(err)
+    if (isOpenAIAuthError(err)) return c.json({ error: 'invalid_api_key' }, 401)
+    return c.json({ error: String(err) }, 500)
+  }
 })
 
 app.get('/api/ingest/status', async (c) => {
@@ -1272,9 +1873,371 @@ app.get('/api/ingest/status', async (c) => {
 })
 
 app.get('/api/viewer', async (c) => {
-  const userId = context.userId
-  if (!userId) return c.json({ isMod: false })
-  return c.json({ isMod: true })
+  const ok = await isMod(context.userId, context.subredditName ?? '')
+  return c.json({ isMod: ok, subredditName: context.subredditName ?? null })
+})
+
+// --- Backfill ---
+
+app.post('/api/backfill/preview', async (c) => {
+  if (!context.subredditName) return c.json({ error: 'No subreddit context' }, 400)
+  const { from, to } = await c.req.json<{ from: string; to: string }>()
+  if (!from || !to) return c.json({ error: 'from and to are required' }, 400)
+
+  const start = new Date(from).getTime()
+  const end = new Date(to).getTime() + 24 * 60 * 60 * 1000
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
+    return c.json({ error: 'Invalid date range' }, 400)
+  }
+
+  const rawItems: RawItem[] = []
+  try {
+    const posts = reddit.getNewPosts({ subredditName: context.subredditName, limit: 5000, pageSize: 100 })
+    for await (const post of posts) {
+      if (post.createdAt.getTime() < start) break
+      if (post.createdAt.getTime() > end) continue
+      rawItems.push({
+        id: post.id, type: 'post', title: post.title, text: post.body || '',
+        authorId: post.authorId || post.authorName || 'unknown',
+        authorName: post.authorName || 'unknown',
+        createdAt: post.createdAt.getTime(),
+        threadRootId: post.id, parentId: null,
+      })
+      try {
+        const comments = reddit.getComments({ postId: post.id, limit: 200, sort: 'new' as any })
+        for await (const comment of comments) {
+          if (comment.createdAt.getTime() < start || comment.createdAt.getTime() > end) continue
+          rawItems.push({
+            id: comment.id, type: 'comment', title: post.title, text: comment.body,
+            authorId: comment.authorId || comment.authorName || 'unknown',
+            authorName: comment.authorName || 'unknown',
+            createdAt: comment.createdAt.getTime(),
+            threadRootId: post.id, parentId: comment.parentId || null,
+          })
+        }
+      } catch {}
+    }
+  } catch (err) {
+    console.error('[Strata] Preview fetch error:', err)
+    return c.json({ error: `Fetch failed: ${err}` }, 500)
+  }
+
+  const currentCount = await store.getItemCount()
+  const currentBytes = estimateCurrentBytes(currentCount)
+  const estimate = estimateBackfill(rawItems.length, currentBytes)
+  const willExceedItemCap = currentCount + rawItems.length > ITEM_CAPACITY
+
+  const token = generateAlertId()
+  const TTL_MS = 10 * 60 * 1000
+  await redis.set(`strata:backfill:preview:${token}`, JSON.stringify({ from, to, items: rawItems }), {
+    expiration: new Date(Date.now() + TTL_MS),
+  })
+
+  return c.json({
+    token,
+    ...estimate,
+    willExceed: estimate.willExceed || willExceedItemCap,
+    currentItemCount: currentCount,
+    itemCapacity: ITEM_CAPACITY,
+    from,
+    to,
+  })
+})
+
+app.post('/api/backfill/confirm', async (c) => {
+  if (!context.subredditName) return c.json({ error: 'No subreddit context' }, 400)
+  const { token } = await c.req.json<{ token: string }>()
+  if (!token) return c.json({ error: 'token required' }, 400)
+
+  const current = await redis.hGetAll('strata:ingest:status')
+  if (current?.phase && current.phase !== 'done' && current.phase !== 'error' && current.phase !== 'cancelled') {
+    return c.json({ error: 'A backfill is already running' }, 409)
+  }
+
+  const cachedJson = await redis.get(`strata:backfill:preview:${token}`)
+  if (!cachedJson) return c.json({ error: 'Preview expired — generate a new estimate' }, 410)
+  const cached = JSON.parse(cachedJson) as { from: string; to: string; items: RawItem[] }
+  const rawItems = cached.items
+
+  if (rawItems.length === 0) return c.json({ error: 'No items in the selected range' }, 400)
+
+  const currentCount = await store.getItemCount()
+  if (currentCount + rawItems.length > ITEM_CAPACITY) {
+    return c.json({ error: `Would exceed item capacity (${ITEM_CAPACITY})` }, 400)
+  }
+
+  try {
+    const apiKey = await settings.get('openaiApiKey') as string
+    const openai = new OpenAI({ apiKey })
+
+    await redis.hSet('strata:ingest:raw', Object.fromEntries(
+      rawItems.map(item => [item.id, JSON.stringify(item)])
+    ))
+
+    const normalizedItems = rawItems.map(r => ({
+      id: r.id,
+      text: normalize(r.title ? `${r.title}\n\n${r.text}` : r.text),
+    }))
+
+    const [embBatchId, extractBatchId] = await Promise.all([
+      submitBatch(openai, buildEmbeddingJsonl(normalizedItems), '/v1/embeddings', 'ingest-emb.jsonl'),
+      submitBatch(openai, buildExtractionJsonl(normalizedItems), '/v1/responses', 'ingest-extract.jsonl'),
+    ])
+
+    const backfillId = generateAlertId()
+    const estimate = estimateBackfill(rawItems.length, estimateCurrentBytes(currentCount))
+    const initiatedBy = context.userId || 'unknown'
+
+    await redis.hSet('strata:ingest:status', {
+      phase: 'embedding',
+      totalItems: String(rawItems.length),
+      processed: '0',
+      embBatchId,
+      extractBatchId,
+      startedAt: String(Date.now()),
+      backfillId,
+    })
+
+    await putBackfillRecord({
+      id: backfillId,
+      status: 'running',
+      from: cached.from,
+      to: cached.to,
+      startedAt: Date.now(),
+      endedAt: null,
+      totalItems: rawItems.length,
+      processed: 0,
+      initiatedBy,
+      costUsdEstimated: estimate.estimatedCostUsd,
+    })
+
+    await redis.del(`strata:backfill:preview:${token}`)
+    await scheduler.runJob({ name: 'ingest-batch', runAt: new Date(Date.now() + 60_000), data: {} })
+
+    console.log(`[Strata] Backfill ${backfillId} started: ${rawItems.length} items`)
+    return c.json({ id: backfillId, totalItems: rawItems.length })
+  } catch (err) {
+    console.error('[Strata] Confirm error:', err)
+    return c.json({ error: `Failed to start backfill: ${err}` }, 500)
+  }
+})
+
+app.post('/api/backfill/cancel', async (c) => {
+  const { id } = await c.req.json<{ id: string }>()
+  if (!id) return c.json({ error: 'id required' }, 400)
+
+  const status = await redis.hGetAll('strata:ingest:status')
+  const isActive = status?.phase && status.phase !== 'done' && status.phase !== 'error' && status.phase !== 'cancelled'
+  if (!isActive || status.backfillId !== id) {
+    return c.json({ error: 'No matching active backfill' }, 404)
+  }
+
+  // Best-effort: cancel in-flight OpenAI batches. Don't fail the request if
+  // these don't go through — the scheduler bail-out is what stops the work.
+  try {
+    const apiKey = await settings.get('openaiApiKey') as string
+    const openai = new OpenAI({ apiKey })
+    const ids = [status.embBatchId, status.extractBatchId, status.entityEmbBatchId].filter(Boolean) as string[]
+    await Promise.allSettled(ids.map(bid => openai.batches.cancel(bid)))
+  } catch (err) {
+    console.error('[Strata] Batch cancel error:', err)
+  }
+
+  await redis.hSet('strata:ingest:status', { phase: 'cancelled', endedAt: String(Date.now()) })
+  await updateBackfillRecord(id, { status: 'cancelled', endedAt: Date.now() })
+
+  await redis.del('strata:ingest:raw')
+  await redis.del('strata:ingest:embeddings')
+  await redis.del('strata:ingest:entities')
+
+  console.log(`[Strata] Backfill ${id} cancelled`)
+  return c.json({ ok: true })
+})
+
+app.get('/api/backfill/history', async (c) => {
+  const records = await listBackfillRecords()
+  const currentCount = await store.getItemCount()
+  const currentBytes = estimateCurrentBytes(currentCount)
+  return c.json({
+    records,
+    currentItemCount: currentCount,
+    currentBytes,
+    itemCapacity: ITEM_CAPACITY,
+  })
+})
+
+// --- Rules ---
+
+app.get('/api/rules', async (c) => {
+  const rules = await store.getRules()
+  return c.json({
+    rules: rules.map(r => ({
+      id: r.id, shortName: r.shortName, description: r.description, priority: r.priority,
+    })),
+  })
+})
+
+app.post('/api/rules/reload', async (c) => {
+  if (!context.subredditName) return c.json({ error: 'No subreddit context' }, 400)
+  try {
+    const engine = await getEngine()
+    const subredditRules = await reddit.getRules(context.subredditName)
+    if (!subredditRules || subredditRules.length === 0) {
+      return c.json({ count: 0, message: 'No rules found for this subreddit' })
+    }
+    const ruleInputs = subredditRules.map((rule: any, i: number) => ({
+      id: `rule-${i + 1}`,
+      shortName: rule.shortName || rule.violationReason || `Rule ${i + 1}`,
+      description: rule.description || rule.shortName || '',
+      priority: i + 1,
+    }))
+    await engine.loadRules(ruleInputs)
+    return c.json({ count: ruleInputs.length })
+  } catch (err) {
+    console.error('[Strata] Rules reload error:', err)
+    return c.json({ error: String(err) }, 500)
+  }
+})
+
+// --- Danger zone ---
+
+app.post('/api/items/delete-all', async (c) => {
+  const ids = await store.getItemIds()
+  if (ids.length > 0) await store.deleteItems(ids)
+  const ENTITY_TYPES = ['person', 'location', 'object', 'organization', 'phone', 'email', 'url', 'username', 'quantity']
+  for (const t of ENTITY_TYPES) await redis.del(`strata:entity-emb:${t}`)
+  await redis.del('strata:entity-hub-counts')
+  await redis.del('strata:cases')
+  await redis.del('strata:backfill:complete')
+  console.log(`[Strata] Deleted ${ids.length} items`)
+  return c.json({ deleted: ids.length })
+})
+
+app.post('/api/alerts/reset', async (c) => {
+  await alertStore.resetAll()
+  console.log('[Strata] All alerts reset')
+  return c.json({ ok: true })
+})
+
+app.post('/api/strata/reset', async (c) => {
+  const ids = await store.getItemIds()
+  if (ids.length > 0) await store.deleteItems(ids)
+  const ENTITY_TYPES = ['person', 'location', 'object', 'organization', 'phone', 'email', 'url', 'username', 'quantity']
+  for (const t of ENTITY_TYPES) await redis.del(`strata:entity-emb:${t}`)
+  await redis.del('strata:entity-hub-counts')
+  await redis.del('strata:cases')
+  await redis.del('strata:rules')
+  await redis.del('strata:backfill:complete')
+  await redis.del('strata:backfill:history')
+  await redis.del('strata:scan:history')
+  await redis.del('strata:scan:status')
+  await redis.del('strata:scan:pairs')
+  await redis.del('strata:scan:new-alert-ids')
+  await redis.del('strata:ingest:status')
+  await redis.del('strata:ingest:raw')
+  await redis.del('strata:ingest:embeddings')
+  await redis.del('strata:ingest:entities')
+  await alertStore.resetAll()
+  console.log('[Strata] Full reset complete')
+  return c.json({ ok: true, deleted: ids.length })
+})
+
+// --- Scan ---
+
+type ScanRecord = {
+  id: string
+  status: 'running' | 'done' | 'error' | 'cancelled'
+  startedAt: number
+  endedAt: number | null
+  anchorsTotal: number
+  anchorsProcessed: number
+  alertsCreated: number
+  autoTriggered: boolean
+  initiatedBy: string
+  error?: string
+}
+
+async function getScanRecord(id: string): Promise<ScanRecord | null> {
+  const raw = await redis.hGet('strata:scan:history', id)
+  return raw ? JSON.parse(raw) as ScanRecord : null
+}
+
+async function putScanRecord(record: ScanRecord): Promise<void> {
+  await redis.hSet('strata:scan:history', { [record.id]: JSON.stringify(record) })
+}
+
+async function updateScanRecord(id: string, patch: Partial<ScanRecord>): Promise<void> {
+  const existing = await getScanRecord(id)
+  if (!existing) return
+  await putScanRecord({ ...existing, ...patch })
+}
+
+async function listScanRecords(): Promise<ScanRecord[]> {
+  const all = await redis.hGetAll('strata:scan:history')
+  return Object.values(all)
+    .map(v => JSON.parse(v) as ScanRecord)
+    .sort((a, b) => b.startedAt - a.startedAt)
+}
+
+app.post('/api/scan/start', async (c) => {
+  const itemCount = await store.getItemCount()
+  if (itemCount === 0) return c.json({ error: 'No items to scan' }, 400)
+
+  const current = await redis.hGetAll('strata:scan:status')
+  if (current?.phase === 'building' || current?.phase === 'classifying') {
+    return c.json({ error: 'A scan is already running' }, 409)
+  }
+
+  const id = generateAlertId()
+  const startedAt = Date.now()
+  await redis.hSet('strata:scan:status', {
+    phase: 'building',
+    startedAt: String(startedAt),
+    scanId: id,
+    anchorsProcessed: '0',
+    anchorsTotal: '0',
+  })
+  await putScanRecord({
+    id, status: 'running', startedAt, endedAt: null,
+    anchorsTotal: 0, anchorsProcessed: 0, alertsCreated: 0,
+    autoTriggered: false, initiatedBy: context.userId || 'unknown',
+  })
+  await scheduler.runJob({ name: 'scan', runAt: new Date(Date.now() + 1000), data: { step: 'build' } })
+  return c.json({ id })
+})
+
+app.post('/api/scan/cancel', async (c) => {
+  const status = await redis.hGetAll('strata:scan:status')
+  const isActive = status?.phase === 'building' || status?.phase === 'classifying'
+  if (!isActive) return c.json({ error: 'No active scan' }, 404)
+
+  const id = status.scanId
+  const endedAt = Date.now()
+  await redis.hSet('strata:scan:status', { phase: 'cancelled', endedAt: String(endedAt) })
+  await redis.del('strata:scan:pairs')
+  await redis.del('strata:scan:new-alert-ids')
+  if (id) await updateScanRecord(id, { status: 'cancelled', endedAt })
+  return c.json({ ok: true })
+})
+
+app.get('/api/scan/status', async (c) => {
+  const status = await redis.hGetAll('strata:scan:status')
+  if (!status || !status.phase) return c.json({ phase: 'idle' })
+  return c.json({
+    phase: status.phase,
+    scanId: status.scanId ?? null,
+    startedAt: parseInt(status.startedAt || '0', 10),
+    endedAt: status.endedAt ? parseInt(status.endedAt, 10) : null,
+    anchorsProcessed: parseInt(status.anchorsProcessed || '0', 10),
+    anchorsTotal: parseInt(status.anchorsTotal || '0', 10),
+    alertsCreated: parseInt(status.alerts || '0', 10),
+    error: status.error || null,
+  })
+})
+
+app.get('/api/scan/history', async (c) => {
+  const records = await listScanRecords()
+  return c.json({ records })
 })
 
 app.get('/api/alerts', async (c) => {
@@ -1295,7 +2258,16 @@ app.get('/api/alerts/:id', async (c) => {
     if (b.confidence === 'high' && a.confidence !== 'high') return 1
     return 0
   })
-  return c.json({ ...alert, connections })
+  const anchorItem = await store.getItem(alert.anchorId)
+  const hydrated = await Promise.all(connections.map(async conn => {
+    const it = await store.getItem(conn.itemId)
+    return { ...conn, decision: it?.decision ?? 'pending' }
+  }))
+  return c.json({
+    ...alert,
+    connections: hydrated,
+    anchorDecision: anchorItem?.decision ?? 'pending',
+  })
 })
 
 app.post('/api/alerts/:id/action', async (c) => {
@@ -1308,6 +2280,251 @@ app.post('/api/alerts/:id/action', async (c) => {
   if (!alert) return c.json({ error: 'Not found' }, 404)
   await alertStore.updateAlertStatus(id, action)
   return c.json({ ok: true })
+})
+
+// --- Mod actions (brigade triage) ---
+
+async function writeDecision(itemId: string, decision: 'removed' | 'approved', by: string): Promise<boolean> {
+  const item = await store.getItem(itemId)
+  if (!item) return false
+  if (item.decision === decision) return true
+  const now = Date.now()
+  await store.moveDecision(itemId, item.decision, decision, now)
+  await store.setItem({
+    ...item,
+    decision,
+    decisionAt: now,
+    decisionBy: by,
+    decisionReason: 'Strata brigade action',
+  })
+  return true
+}
+
+app.post('/api/items/:id/remove', async (c) => {
+  const id = c.req.param('id')
+  try {
+    await reddit.remove(id as `t1_${string}` | `t3_${string}`, false)
+  } catch (err) {
+    console.error('[Strata] remove failed:', err)
+    return c.json({ error: String(err) }, 500)
+  }
+  await writeDecision(id, 'removed', context.userId || 'mod')
+  return c.json({ ok: true })
+})
+
+app.post('/api/items/:id/approve', async (c) => {
+  const id = c.req.param('id')
+  try {
+    await reddit.approve(id as `t1_${string}` | `t3_${string}`)
+  } catch (err) {
+    console.error('[Strata] approve failed:', err)
+    return c.json({ error: String(err) }, 500)
+  }
+  await writeDecision(id, 'approved', context.userId || 'mod')
+  return c.json({ ok: true })
+})
+
+app.post('/api/alerts/:id/bulk-remove', async (c) => {
+  const id = c.req.param('id')
+  const alert = await alertStore.getAlert(id)
+  if (!alert) return c.json({ error: 'Not found' }, 404)
+  const connections = await alertStore.getAlertConnections(id)
+  const candidateIds = [alert.anchorId, ...connections.map(conn => conn.itemId)]
+  const by = context.userId || 'mod'
+  let removed = 0
+  for (const cid of candidateIds) {
+    const item = await store.getItem(cid)
+    if (item && item.decision !== 'pending') continue
+    try {
+      await reddit.remove(cid as `t1_${string}` | `t3_${string}`, false)
+      await writeDecision(cid, 'removed', by)
+      removed++
+    } catch (err) {
+      console.error('[Strata] bulk-remove failed for', cid, err)
+    }
+  }
+  await alertStore.updateAlertStatus(id, 'resolved')
+  return c.json({ ok: true, removed })
+})
+
+app.post('/api/alerts/:id/bulk-lock', async (c) => {
+  const id = c.req.param('id')
+  const alert = await alertStore.getAlert(id)
+  if (!alert) return c.json({ error: 'Not found' }, 404)
+  const anchorItem = await store.getItem(alert.anchorId)
+  if (!anchorItem) return c.json({ error: 'Anchor item not found' }, 404)
+  const threadRootId = anchorItem.threadRootId
+  try {
+    const post = await reddit.getPostById(threadRootId as `t3_${string}`)
+    await post.lock()
+  } catch (err) {
+    console.error('[Strata] lock failed:', err)
+    return c.json({ error: String(err) }, 500)
+  }
+  await alertStore.updateAlertStatus(id, 'resolved')
+  return c.json({ ok: true, threadRootId })
+})
+
+// --- Compose + publish (surface alerts) ---
+
+const COMPOSE_SYSTEM_PROMPT = `You are the moderator team of r/<SUB> drafting a consolidated community update. Strata has surfaced a case post on the subreddit plus related items (witness reports, additional sightings, timeline notes). Your job is to synthesize these into one mod-voice post the team can publish.
+
+# Voice
+You are writing as the mod team. Refer to the original poster and other community members in the third person ("OP", "a community member", "several of you"). Never write in the case poster's first person — do not say "my roommate", "I saw", or otherwise impersonate anyone. Tone: calm, factual, empathetic, plain language. No emojis, no sensationalism, no legal speculation.
+
+# Sourcing
+Every concrete claim must come from the supplied items. Do not invent details, names, plate numbers, vehicle descriptions, injuries, or timestamps. When you reference a community report, cite it inline with a markdown link to its permalink: \`[short descriptive label](permalink)\`. Use the OP's post link when referring to the original case. Withhold private specifics (medical detail, named individuals not already named publicly by OP) unless they are load-bearing for the call to action.
+
+# Structure
+- Title: short, factual, mod-note style. Lead with "Mod note:" or "Update:" and identify the situation in 8-14 words. No clickbait, no dashes-as-suspense.
+- Body sections (use short bold labels or plain paragraphs — pick what fits):
+  1. One-paragraph framing: what this post is and why it exists, linking the original case post.
+  2. "What we know" — the established facts, in plain language.
+  3. "Community reports" — a short bulleted list of matched items, each as a linked label with a one-line summary. Skip if there's only one connection; fold it into prose instead.
+  4. "How to help" — specific, actionable next steps (who to contact, what to submit). Skip if there's nothing actionable.
+  5. One-line thank-you, signed "— Mod team".
+
+# Output
+- title: 40-80 characters.
+- body: Reddit-flavored markdown. Paragraphs separated by blank lines. Use \`**bold**\`, bullet lists, and inline links. Do not use headings (\`#\`) — they render poorly in feeds. Keep total length tight: 4-8 short paragraphs, optionally with one bullet list.
+
+# Refinement
+If a refinement instruction is supplied, treat the previous draft as the baseline and apply the instruction surgically. Do not regenerate from scratch unless the instruction explicitly asks for that.`
+
+const COMPOSE_SCHEMA = {
+  type: 'object',
+  properties: {
+    title: { type: 'string' },
+    body: { type: 'string' },
+  },
+  required: ['title', 'body'],
+  additionalProperties: false,
+} as const
+
+function buildComposeUserPrompt(alert: Alert, connections: AlertConnection[], opts: { refinementPrompt?: string; currentDraft?: { title: string; body: string }; communityContext?: string }): string {
+  const permalink = (p?: string) => (p ? `https://reddit.com${p}` : '(no permalink)')
+  const lines: string[] = []
+  if (opts.communityContext) {
+    lines.push('## Community context')
+    lines.push(opts.communityContext)
+    lines.push('')
+  }
+  lines.push('## Case anchor (original post)')
+  if (alert.anchorTitle) lines.push(`Title: ${alert.anchorTitle}`)
+  lines.push(`Author: u/${alert.anchorAuthor}`)
+  lines.push(`Posted: ${new Date(alert.createdAt).toISOString()}`)
+  lines.push(`Permalink: ${permalink(alert.anchorPermalink)}`)
+  lines.push(`Text:\n${alert.anchorText}`)
+  lines.push('')
+  lines.push('## Related items found by Strata')
+  for (let i = 0; i < connections.length; i++) {
+    const c = connections[i]
+    lines.push(`### #${i + 1} — ${c.classification.toUpperCase()} (${c.confidence})`)
+    if (c.title) lines.push(`Thread: ${c.title}`)
+    lines.push(`Author: u/${c.author}`)
+    lines.push(`Posted: ${new Date(c.createdAt).toISOString()}`)
+    lines.push(`Permalink: ${permalink(c.permalink)}`)
+    lines.push(`Text:\n${c.text}`)
+    if (c.reasoning) lines.push(`Why connected: ${c.reasoning}`)
+    lines.push('')
+  }
+  if (opts.currentDraft) {
+    lines.push('## Previous draft')
+    lines.push(`Title: ${opts.currentDraft.title}`)
+    lines.push(`Body:\n${opts.currentDraft.body}`)
+    lines.push('')
+  }
+  if (opts.refinementPrompt) {
+    lines.push('## Refinement instruction')
+    lines.push(opts.refinementPrompt)
+  } else {
+    lines.push('Draft the community update post now.')
+  }
+  return lines.join('\n')
+}
+
+app.post('/api/alerts/:id/compose', async (c) => {
+  const id = c.req.param('id')
+  const alert = await alertStore.getAlert(id)
+  if (!alert) return c.json({ error: 'Not found' }, 404)
+  const connections = await alertStore.getAlertConnections(id)
+  const body = await c.req.json<{ refinementPrompt?: string; currentDraft?: { title: string; body: string } }>().catch(() => ({}))
+
+  const apiKey = await settings.get('openaiApiKey')
+  if (!apiKey) return c.json({ error: 'OpenAI API key not configured' }, 500)
+  const client = new OpenAI({ apiKey: apiKey as string })
+
+  const sub = context.subredditName ?? 'this subreddit'
+  const systemPrompt = COMPOSE_SYSTEM_PROMPT.replace('<SUB>', sub)
+  const communityContext = ((await redis.get('strata:community-context')) ?? '').trim() || undefined
+  const userPrompt = buildComposeUserPrompt(alert, connections, { ...body, communityContext })
+
+  try {
+    const response = await client.responses.create({
+      model: 'gpt-5.4-mini',
+      reasoning: { effort: 'low' },
+      input: [
+        { role: 'developer', content: systemPrompt },
+        { role: 'user', content: userPrompt },
+      ],
+      text: { format: { type: 'json_schema', name: 'community_update', schema: COMPOSE_SCHEMA as Record<string, unknown>, strict: true } },
+    })
+    const parsed = JSON.parse(response.output_text) as { title: string; body: string }
+    await alertStore.updateAlertDraft(id, {
+      draftPostTitle: parsed.title,
+      draftPostBody: parsed.body,
+      draftedAt: Date.now(),
+      draftedBy: context.userId || 'mod',
+    })
+    await recordUsage('gpt-5.4-mini', {
+      inputTokens: response.usage?.input_tokens ?? 0,
+      outputTokens: response.usage?.output_tokens ?? 0,
+    })
+    await clearApiKeyInvalid()
+    return c.json(parsed)
+  } catch (err) {
+    console.error('[Strata] compose failed:', err)
+    await noteOpenAIError(err)
+    if (isOpenAIAuthError(err)) return c.json({ error: 'invalid_api_key' }, 401)
+    return c.json({ error: String(err) }, 500)
+  }
+})
+
+app.post('/api/alerts/:id/publish', async (c) => {
+  const id = c.req.param('id')
+  const alert = await alertStore.getAlert(id)
+  if (!alert) return c.json({ error: 'Not found' }, 404)
+  if (alert.publishedPostId) return c.json({ error: 'Alert already published' }, 409)
+  if (!context.subredditName) return c.json({ error: 'No subreddit context' }, 400)
+
+  const payload = await c.req.json<{ title: string; body: string }>().catch(() => ({} as { title?: string; body?: string }))
+  if (!payload.title?.trim() || !payload.body?.trim()) {
+    return c.json({ error: 'Title and body are required' }, 400)
+  }
+
+  try {
+    const post = await reddit.submitPost({
+      subredditName: context.subredditName,
+      title: payload.title.trim(),
+      text: payload.body,
+    })
+    const permalink = `/r/${context.subredditName}/comments/${post.id.replace(/^t3_/, '')}`
+    const by = context.userId || 'mod'
+    const at = Date.now()
+    await alertStore.updateAlertPublished(id, {
+      publishedPostId: post.id,
+      publishedPostTitle: payload.title.trim(),
+      publishedPostBody: payload.body,
+      publishedPostPermalink: permalink,
+      publishedAt: at,
+      publishedBy: by,
+    })
+    await alertStore.updateAlertStatus(id, 'resolved')
+    return c.json({ ok: true, postId: post.id, permalink, publishedAt: at, publishedBy: by })
+  } catch (err) {
+    console.error('[Strata] publish failed:', err)
+    return c.json({ error: String(err) }, 500)
+  }
 })
 
 app.get('/api/items', async (c) => {

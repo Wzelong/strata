@@ -68,7 +68,7 @@ async function main() {
       authorId: 'live',
       authorName: 'live',
       createdAt: Date.now(),
-      threadRootId: li.id.startsWith('t1_strata_brigade') || li.id === 't1_strata_flag2b' ? 't3_strata_casepost' : li.id,
+      threadRootId: li.id.startsWith('t1_strata_brigade') ? 't3_strata_casepost' : li.id,
       parentId: null,
       entities: li.entities,
       decision: 'pending',

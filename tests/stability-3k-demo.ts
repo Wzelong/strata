@@ -5,7 +5,6 @@
 // Pass criteria:
 //   surface() on casepost:       buried_recall@15 == 4/4
 //   scan() on full store:        buried_recall@10 >= 3/4
-//   flag() on flag2b:            type 'contradiction' references flag2a
 //   flag() on flag4:             type 'pattern' fires (matches FLAG-3 removed)
 //   flag() on brigade2:          type 'brigade' fires
 
@@ -61,18 +60,16 @@ async function buildStore(): Promise<MemoryKVStore> {
   for (const [itemId, ents] of entsByItem) await store.setEntityEmbeddings(itemId, ents)
 
   for (const li of live.items) {
-    const isInThread = li.id.startsWith('t1_strata_brigade') || li.id === 't1_strata_flag2b'
+    const isInThread = li.id.startsWith('t1_strata_brigade')
     const stored: StoredItem = {
       id: li.id,
       type: li.id.startsWith('t1_') ? 'comment' : 'post',
       text: li.textNormalized,
       textNormalized: li.textNormalized,
       authorId: li.id.startsWith('t1_strata_brigade') ? `t2_${li.id.replace('t1_strata_', '')}` :
-                li.id === 't1_strata_flag2b' ? 't2_tkfromcambridge' :
                 li.id === 't3_strata_casepost' ? 't2_sarahsroommate' :
                 li.id === 't3_strata_flag4' ? 't2_massavesafety' : 'live',
-      authorName: li.id === 't1_strata_flag2b' ? 'TKfromCambridge' :
-                  li.id === 't3_strata_flag4' ? 'MassAveSafety' :
+      authorName: li.id === 't3_strata_flag4' ? 'MassAveSafety' :
                   li.id === 't3_strata_casepost' ? 'SarahsRoommate2026' : li.id,
       createdAt: Date.now(),
       threadRootId: isInThread ? 't3_strata_casepost' : li.id,
@@ -101,7 +98,6 @@ async function buildStore(): Promise<MemoryKVStore> {
 async function runTrial(store: MemoryKVStore, client: OpenAI): Promise<{
   surface: Trial<{ buriedFound: string[]; total: number }>
   scan: Trial<{ buriedFound: string[]; signalRank: number; total: number }>
-  flagContradiction: Trial<{ refsFlag2a: boolean }>
   flagPattern: Trial<{ patternFired: boolean; precedentCount: number }>
   flagBrigade: Trial<{ brigadeFired: boolean; authors: number }>
 }> {
@@ -142,19 +138,7 @@ async function runTrial(store: MemoryKVStore, client: OpenAI): Promise<{
     }
   }
 
-  // 3) flag(flag2b) — expect contradiction referencing flag2a
-  let flagContradiction: Trial<{ refsFlag2a: boolean }>
-  {
-    const t0 = performance.now()
-    const stored = await store.getItem('t1_strata_flag2b')
-    const emb = await store.getEmbedding('t1_strata_flag2b')
-    const flags = await engine.flag({ ...stored!, embedding: emb ?? [] })
-    const contradiction = flags.find(f => f.type === 'contradiction')
-    const refs = !!contradiction?.connectionItems.find(c => c.id === 't1_strata_flag2a')
-    flagContradiction = { ok: refs, ms: performance.now() - t0, details: { refsFlag2a: refs } }
-  }
-
-  // 4) flag(flag4) — expect pattern match against FLAG-3 removed items
+  // 3) flag(flag4) — expect pattern match against FLAG-3 removed items
   let flagPattern: Trial<{ patternFired: boolean; precedentCount: number }>
   {
     const t0 = performance.now()
@@ -169,7 +153,7 @@ async function runTrial(store: MemoryKVStore, client: OpenAI): Promise<{
     }
   }
 
-  // 5) flag(brigade2) — expect brigade detection
+  // 4) flag(brigade2) — expect brigade detection
   let flagBrigade: Trial<{ brigadeFired: boolean; authors: number }>
   {
     const t0 = performance.now()
@@ -185,7 +169,7 @@ async function runTrial(store: MemoryKVStore, client: OpenAI): Promise<{
     }
   }
 
-  return { surface, scan, flagContradiction, flagPattern, flagBrigade }
+  return { surface, scan, flagPattern, flagBrigade }
 }
 
 async function main() {
@@ -198,7 +182,6 @@ async function main() {
   const summary = {
     surface: { pass: 0, totalMs: 0 },
     scan: { pass: 0, totalMs: 0 },
-    flagContradiction: { pass: 0, totalMs: 0 },
     flagPattern: { pass: 0, totalMs: 0 },
     flagBrigade: { pass: 0, totalMs: 0 },
   }
@@ -209,18 +192,15 @@ async function main() {
     console.log(`Trial ${i}:`)
     console.log(`  surface         ${tag(r.surface)}  ${r.surface.ms.toFixed(0).padStart(5)}ms  buried=${r.surface.details.buriedFound.length}/${r.surface.details.total}`)
     console.log(`  scan            ${tag(r.scan)}  ${r.scan.ms.toFixed(0).padStart(5)}ms  buried=${r.scan.details.buriedFound.length}/${r.scan.details.total}  signal@#${r.scan.details.signalRank}`)
-    console.log(`  flag contradict ${tag(r.flagContradiction)}  ${r.flagContradiction.ms.toFixed(0).padStart(5)}ms  refsFlag2a=${r.flagContradiction.details.refsFlag2a}`)
     console.log(`  flag pattern    ${tag(r.flagPattern)}  ${r.flagPattern.ms.toFixed(0).padStart(5)}ms  precedents=${r.flagPattern.details.precedentCount}`)
     console.log(`  flag brigade    ${tag(r.flagBrigade)}  ${r.flagBrigade.ms.toFixed(0).padStart(5)}ms  authors=${r.flagBrigade.details.authors}`)
 
     if (r.surface.ok) summary.surface.pass++
     if (r.scan.ok) summary.scan.pass++
-    if (r.flagContradiction.ok) summary.flagContradiction.pass++
     if (r.flagPattern.ok) summary.flagPattern.pass++
     if (r.flagBrigade.ok) summary.flagBrigade.pass++
     summary.surface.totalMs += r.surface.ms
     summary.scan.totalMs += r.scan.ms
-    summary.flagContradiction.totalMs += r.flagContradiction.ms
     summary.flagPattern.totalMs += r.flagPattern.ms
     summary.flagBrigade.totalMs += r.flagBrigade.ms
   }
@@ -232,13 +212,12 @@ async function main() {
     console.log(`  ${name.padEnd(20)}  ${s.pass}/${TRIALS}  avg ${(s.totalMs / TRIALS).toFixed(0)}ms`)
   row('surface', summary.surface)
   row('scan', summary.scan)
-  row('flag contradiction', summary.flagContradiction)
   row('flag pattern', summary.flagPattern)
   row('flag brigade', summary.flagBrigade)
 
   const allPassRate =
-    summary.surface.pass + summary.scan.pass + summary.flagContradiction.pass + summary.flagPattern.pass + summary.flagBrigade.pass
-  const allTrials = TRIALS * 5
+    summary.surface.pass + summary.scan.pass + summary.flagPattern.pass + summary.flagBrigade.pass
+  const allTrials = TRIALS * 4
   console.log(`\n  Total ${allPassRate}/${allTrials} (${((allPassRate / allTrials) * 100).toFixed(0)}%)`)
   if (allPassRate < allTrials) process.exit(1)
 }

@@ -1,4 +1,4 @@
-import type { GraphEdge, GraphHighlight, CodeUnitNode, ClusterColorMap, GraphData } from '../types/graph'
+import type { GraphEdge, GraphHighlight, CodeUnitNode, ClusterColorMap, GraphData } from '../types/graph.js'
 
 const GOLDEN_ANGLE = 137.508
 

@@ -3,7 +3,7 @@ import type { RawItem, Entity, StoredItem } from './types.js'
 import type { KVStore } from './storage/interface.js'
 import { normalize } from './normalize.js'
 import { quantize } from './embed.js'
-import { ENTITY_EXTRACTION_SYSTEM, ENTITY_SCHEMA } from './prompts.js'
+import { ENTITY_EXTRACTION_SYSTEM, ENTITY_SCHEMA } from './extract.js'
 
 export type BatchPhase = 'fetching' | 'embedding' | 'extracting' | 'entity-embedding' | 'storing' | 'done' | 'error'
 

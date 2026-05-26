@@ -116,20 +116,6 @@ export const BACKFILL_ITEMS: RawItem[] = [
     parentId: null,
   },
 
-  // FLAG-2a — contradiction setup. TKfromCambridge says his roommate drives every Tuesday
-  // and they park at P3 Cambridgeside. FLAG-2b will contradict this from inside the case thread.
-  {
-    id: 't1_strata_flag2a',
-    type: 'comment',
-    title: 'Best bars near Lechmere?',
-    text: 'I live right above the Cambridgeside garage — can vouch for Night Shift, great taproom, walk from Lechmere. My roommate and I always hit it Tuesdays after his shift ends around 7. He drives, I drink, nobody gets a DUI lol. We park P3, always plenty of space evenings.',
-    authorId: 't2_tkfromcambridge',
-    authorName: 'TKfromCambridge',
-    createdAt: day(24, 21),
-    threadRootId: 't3_bars_lechmere_real',
-    parentId: 't3_bars_lechmere_real',
-  },
-
   // FLAG-3 — previously removed witch-hunting posts (context the algorithm learns from).
   {
     id: 't3_strata_flag3a',
@@ -236,19 +222,6 @@ export const LIVE_ITEMS: RawItem[] = [
     authorId: 't2_brigade_4',
     authorName: 'BostonDriver2026_4',
     createdAt: day(41, 15.5),
-    threadRootId: 't3_strata_casepost',
-    parentId: 't3_strata_casepost',
-  },
-
-  // FLAG-2b — TKfromCambridge contradicts his prior post (FLAG-2a).
-  {
-    id: 't1_strata_flag2b',
-    type: 'comment',
-    title: 'My roommate was hit Tuesday on Mass Ave & Prospect — driver fled — case #2026-04891',
-    text: 'I live near Cambridgeside and my roommate was home with me Tuesday night. He doesn\'t even drive to work anymore, he takes the Green Line. People in this thread need to stop playing detective and let the police actually handle it.',
-    authorId: 't2_tkfromcambridge',
-    authorName: 'TKfromCambridge',
-    createdAt: day(41, 16),
     threadRootId: 't3_strata_casepost',
     parentId: 't3_strata_casepost',
   },

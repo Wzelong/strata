@@ -13,6 +13,13 @@ export default defineConfig(({ command }) => {
       port: 5173,
       proxy: { '/api': 'http://localhost:4173' },
     } : undefined,
+    optimizeDeps: isServe ? {
+      include: [
+        'react', 'react-dom', 'react-dom/client',
+        'lucide-react', 'react-day-picker', 'react-markdown', 'remark-gfm',
+        'three', '@react-three/fiber', '@react-three/drei', '@react-three/postprocessing', 'postprocessing',
+      ],
+    } : undefined,
     build: {
       chunkSizeWarningLimit: 1200,
       rollupOptions: {

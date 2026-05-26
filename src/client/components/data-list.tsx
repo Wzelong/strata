@@ -47,7 +47,7 @@ interface DataListProps<T> {
   filters?: FilterConfig[]
   searchValue?: string
   onSearchChange?: (value: string) => void
-  toolbarButtons?: { icon: ReactNode; onClick: () => void; ariaLabel: string; active?: boolean }[]
+  toolbarButtons?: { icon: ReactNode; onClick: () => void; ariaLabel: string; active?: boolean; className?: string }[]
   selectedIds?: Set<string>
   onSelectOne?: (id: string) => void
   onSelectAll?: () => void
@@ -188,6 +188,20 @@ export function DataList<T>({
                     <TooltipContent side="bottom">{t.label}</TooltipContent>
                   </Tooltip>
                 ))}
+                {toolbarButtons.map((btn, idx) => (
+                  <button
+                    key={idx}
+                    onClick={btn.onClick}
+                    className={cn(
+                      'h-6 w-6 inline-flex items-center justify-center rounded cursor-pointer text-muted-foreground hover:text-foreground transition-colors',
+                      btn.active && 'bg-foreground/10 text-foreground',
+                      btn.className,
+                    )}
+                    aria-label={btn.ariaLabel}
+                  >
+                    {btn.icon}
+                  </button>
+                ))}
               </div>
             ) : (
               <div className="flex-1" />
@@ -212,19 +226,6 @@ export function DataList<T>({
                   <Search className="size-3" />
                 </button>
               )}
-              {toolbarButtons.map((btn, idx) => (
-                <button
-                  key={idx}
-                  onClick={btn.onClick}
-                  className={cn(
-                    'h-6 w-6 inline-flex items-center justify-center rounded cursor-pointer text-muted-foreground hover:text-foreground transition-colors',
-                    btn.active && 'bg-accent text-foreground',
-                  )}
-                  aria-label={btn.ariaLabel}
-                >
-                  {btn.icon}
-                </button>
-              ))}
             </div>
           </>
         )}

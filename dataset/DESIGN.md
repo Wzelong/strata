@@ -182,20 +182,6 @@ Four fresh accounts (created within a week of the case post), commenting in the 
 
 ---
 
-### FLAG-2 CONTRADICTION (BACKFILL + LIVE) — same-author self-contradiction
-
-**`t1_strata_flag2a`** — posted Day 24 in a "best bars near Lechmere" thread.
-
-> I live right above the Cambridgeside garage — can vouch for Night Shift, great taproom, walk from Lechmere. My roommate and I always hit it Tuesdays after his shift ends around 7. He drives, I drink, nobody gets a DUI lol. We park P3, always plenty of space evenings.
-
-**`t1_strata_flag2b`** — posted Day 41 in the case thread.
-
-> I live near Cambridgeside and my roommate was home with me Tuesday night. He doesn't even drive to work anymore, he takes the Green Line. People in this thread need to stop playing detective and let the police actually handle it.
-
-**Contradiction**: same author. The earlier post says his roommate drives every Tuesday and they park P3 (where S3 saw the damaged Subaru). The case-thread post says the roommate was home Tuesday and "doesn't even drive."
-
----
-
 ### FLAG-3 REMOVED PRECEDENTS (BACKFILL) — decision history
 
 Three prior posts removed by mods for witch-hunting (no plate, no police involvement, no specific incident): `t3_strata_flag3a` (silver Honda), `t3_strata_flag3b` (white pickup), `t3_strata_flag3c` (blue minivan casing). These establish the "we remove witch-hunt posts when there's no investigation" precedent.
@@ -222,14 +208,13 @@ Strata flags it as *"matches a pattern you have previously removed for witch-hun
 | Full-text safety net | S4 | D4 | text-embedding cosine survives same-narrative decoy via location/time disambiguation |
 | Cluster merging | S1↔S3 (vehicle), S1↔casepost (location), S3↔casepost (plate), S2↔casepost (case#) | n/a | `mergeClustersByItemOverlap` joins four size-2 clusters into the signal anchor group via casepost in three of them |
 | Coordination | brigade1-4 | n/a | account age + timing cluster |
-| Self-contradiction | flag2a vs flag2b | n/a | same-author opposing statements across two weeks |
 | Removed-pattern match | flag3a-c → flag4 | n/a | pattern match against removed-item index |
 
 ---
 
 ## Item Count
 
-**16 planted items**: 1 case post, 4 SURFACE, 4 DECOY, 4 BRIGADE, 2 CONTRADICTION (1 backfill + 1 live), 3 REMOVED precedents, 1 PATTERN MATCH.
+**14 planted items**: 1 case post, 4 SURFACE, 4 DECOY, 4 BRIGADE, 3 REMOVED precedents, 1 PATTERN MATCH.
 
 Plus 12 in-thread comments under the case post (sympathy, debate, mod, off-topic) for thread-depth realism — these are not part of the signal, they're the negatives the scan must not confuse with cross-thread witnesses.
 
@@ -241,6 +226,6 @@ Plus 12 in-thread comments under the case post (sympathy, debate, mod, off-topic
 
 **Surface(casepost) top results**: a mix of in-thread chatter (brigades, sympathy, mod) and cross-thread witnesses (S1, S2, S3, S4) by entity match + narrative cosine. Decoys absent.
 
-**Flag pipeline output**: brigade coordination alert, flag2a/flag2b contradiction alert, flag4 pattern-match alert.
+**Flag pipeline output**: brigade coordination alert, flag4 pattern-match alert.
 
 If all of the above hold, the algorithm has demonstrated each mechanism it claims, under adversarial pressure.

@@ -29,23 +29,27 @@
     }
   },
   "settings": {
-    "global": {
+    "installation": {
       "openaiApiKey": {
         "type": "string",
         "label": "OpenAI API Key",
-        "isSecret": true
+        "isSecret": true,
+        "scope": "app"
       }
     }
   },
   "triggers": {
     "onAppInstall": "/internal/triggers/app-install",
     "onPostSubmit": "/internal/triggers/post-submit",
-    "onCommentSubmit": "/internal/triggers/comment-submit"
+    "onCommentSubmit": "/internal/triggers/comment-submit",
+    "onPostDelete": "/internal/triggers/post-delete",
+    "onCommentDelete": "/internal/triggers/comment-delete"
   },
   "scheduler": {
     "tasks": {
       "ingest-batch": { "endpoint": "/internal/scheduler/ingest-batch" },
-      "scan": { "endpoint": "/internal/scheduler/scan" }
+      "scan": { "endpoint": "/internal/scheduler/scan" },
+      "recluster": { "endpoint": "/internal/scheduler/recluster", "cron": "0 */6 * * *" }
     }
   },
   "menu": {
@@ -56,13 +60,6 @@
         "location": "subreddit",
         "forUserType": "moderator",
         "endpoint": "/internal/menu/dashboard"
-      },
-      {
-        "label": "Strata: Load Rules",
-        "description": "Import subreddit rules for flag detection",
-        "location": "subreddit",
-        "forUserType": "moderator",
-        "endpoint": "/internal/menu/load-rules"
       },
       {
         "label": "Strata: Seed Data",
@@ -82,33 +79,21 @@
         "endpoint": "/internal/menu/surface"
       },
       {
-        "label": "Strata: Ingest",
-        "description": "Import subreddit posts and comments into Strata",
-        "location": "subreddit",
+        "label": "Strata: Similar prior decisions",
+        "description": "Check this item against previously removed items",
+        "location": [
+          "post",
+          "comment"
+        ],
         "forUserType": "moderator",
-        "endpoint": "/internal/menu/ingest"
-      },
-      {
-        "label": "Strata: Scan",
-        "description": "Scan stored items for buried connections",
-        "location": "subreddit",
-        "forUserType": "moderator",
-        "endpoint": "/internal/menu/scan"
-      },
-      {
-        "label": "Strata: Mock Alerts",
-        "description": "Insert 5 sample alerts (1 surface + 4 flag types) for UI work",
-        "location": "subreddit",
-        "forUserType": "moderator",
-        "endpoint": "/internal/menu/mock-alerts"
+        "endpoint": "/internal/menu/similar-decisions"
       }
     ]
   },
   "forms": {
     "surfaceResults": "/internal/forms/surface-results",
     "seedResults": "/internal/forms/seed-results",
-    "ingestDates": "/internal/forms/ingest-dates",
-    "ingestConfirm": "/internal/forms/ingest-confirm"
+    "similarDecisionsResults": "/internal/forms/similar-decisions-results"
   },
   "scripts": {
     "build": "vite build",

@@ -26,6 +26,7 @@ export class RedisAlertStore implements AlertStore {
       id: alert.id,
       mode: alert.mode,
       status: alert.status,
+      statusUpdatedAt: String(alert.statusUpdatedAt ?? alert.createdAt),
       confidence: alert.confidence,
       connectionCount: String(alert.connectionCount),
       createdAt: String(alert.createdAt),
@@ -38,6 +39,16 @@ export class RedisAlertStore implements AlertStore {
       ...(alert.anchorTitle && { anchorTitle: alert.anchorTitle }),
       ...(alert.reasoning && { reasoning: alert.reasoning }),
       ...(alert.flagType && { flagType: alert.flagType }),
+      ...(alert.draftPostTitle && { draftPostTitle: alert.draftPostTitle }),
+      ...(alert.draftPostBody && { draftPostBody: alert.draftPostBody }),
+      ...(alert.draftedAt && { draftedAt: String(alert.draftedAt) }),
+      ...(alert.draftedBy && { draftedBy: alert.draftedBy }),
+      ...(alert.publishedPostId && { publishedPostId: alert.publishedPostId }),
+      ...(alert.publishedPostTitle && { publishedPostTitle: alert.publishedPostTitle }),
+      ...(alert.publishedPostBody && { publishedPostBody: alert.publishedPostBody }),
+      ...(alert.publishedPostPermalink && { publishedPostPermalink: alert.publishedPostPermalink }),
+      ...(alert.publishedAt && { publishedAt: String(alert.publishedAt) }),
+      ...(alert.publishedBy && { publishedBy: alert.publishedBy }),
     })
 
     if (connections.length > 0) {
@@ -63,6 +74,7 @@ export class RedisAlertStore implements AlertStore {
       id: raw.id,
       mode: raw.mode as Alert['mode'],
       status: raw.status as Alert['status'],
+      ...(raw.statusUpdatedAt && { statusUpdatedAt: parseInt(raw.statusUpdatedAt, 10) }),
       confidence: raw.confidence as Alert['confidence'],
       connectionCount: parseInt(raw.connectionCount, 10),
       createdAt: parseInt(raw.createdAt, 10),
@@ -75,6 +87,16 @@ export class RedisAlertStore implements AlertStore {
       ...(raw.anchorTitle && { anchorTitle: raw.anchorTitle }),
       ...(raw.reasoning && { reasoning: raw.reasoning }),
       ...(raw.flagType && { flagType: raw.flagType as Alert['flagType'] }),
+      ...(raw.draftPostTitle && { draftPostTitle: raw.draftPostTitle }),
+      ...(raw.draftPostBody && { draftPostBody: raw.draftPostBody }),
+      ...(raw.draftedAt && { draftedAt: parseInt(raw.draftedAt, 10) }),
+      ...(raw.draftedBy && { draftedBy: raw.draftedBy }),
+      ...(raw.publishedPostId && { publishedPostId: raw.publishedPostId }),
+      ...(raw.publishedPostTitle && { publishedPostTitle: raw.publishedPostTitle }),
+      ...(raw.publishedPostBody && { publishedPostBody: raw.publishedPostBody }),
+      ...(raw.publishedPostPermalink && { publishedPostPermalink: raw.publishedPostPermalink }),
+      ...(raw.publishedAt && { publishedAt: parseInt(raw.publishedAt, 10) }),
+      ...(raw.publishedBy && { publishedBy: raw.publishedBy }),
     }
   }
 
@@ -114,11 +136,47 @@ export class RedisAlertStore implements AlertStore {
   }
 
   async updateAlertStatus(id: string, status: AlertStatus): Promise<void> {
-    await this.redis.hSet(`strata:alert:${id}`, { status })
+    await this.redis.hSet(`strata:alert:${id}`, { status, statusUpdatedAt: String(Date.now()) })
+  }
+
+  async updateAlertDraft(id: string, fields: { draftPostTitle: string; draftPostBody: string; draftedAt: number; draftedBy: string }): Promise<void> {
+    await this.redis.hSet(`strata:alert:${id}`, {
+      draftPostTitle: fields.draftPostTitle,
+      draftPostBody: fields.draftPostBody,
+      draftedAt: String(fields.draftedAt),
+      draftedBy: fields.draftedBy,
+    })
+  }
+
+  async updateAlertPublished(id: string, fields: { publishedPostId: string; publishedPostTitle: string; publishedPostBody: string; publishedPostPermalink: string; publishedAt: number; publishedBy: string }): Promise<void> {
+    await this.redis.hSet(`strata:alert:${id}`, {
+      publishedPostId: fields.publishedPostId,
+      publishedPostTitle: fields.publishedPostTitle,
+      publishedPostBody: fields.publishedPostBody,
+      publishedPostPermalink: fields.publishedPostPermalink,
+      publishedAt: String(fields.publishedAt),
+      publishedBy: fields.publishedBy,
+    })
   }
 
   async getAlertIdsByAnchor(anchorId: string): Promise<string[]> {
     const entries = await this.redis.zRange(`strata:idx:alert-anchor:${anchorId}`, 0, -1)
     return entries.map(e => e.member)
+  }
+
+  async resetAll(): Promise<void> {
+    const entries = await this.redis.zRange('strata:alerts', 0, -1).catch(() => [])
+    const anchorIds = new Set<string>()
+    for (const entry of entries) {
+      const id = entry.member
+      const raw = await this.redis.hGetAll(`strata:alert:${id}`)
+      if (raw?.anchorId) anchorIds.add(raw.anchorId)
+      await this.redis.del(`strata:alert:${id}`)
+      await this.redis.del(`strata:alert:${id}:connections`)
+    }
+    for (const anchorId of anchorIds) {
+      await this.redis.del(`strata:idx:alert-anchor:${anchorId}`)
+    }
+    await this.redis.del('strata:alerts')
   }
 }

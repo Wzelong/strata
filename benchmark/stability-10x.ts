@@ -42,7 +42,6 @@ function roleOf(id: string): string {
   if (BURIED.has(id)) return 'buried'
   if (DECOYS.has(id)) return 'decoy'
   if (BRIGADE_IDS.has(id)) return 'brigade'
-  if (id === 't1_strata_flag2b' || id === 't1_strata_flag2a') return 'contradiction'
   if (REMOVED_IDS.has(id)) return 'removed'
   if (id === 't3_strata_flag4') return 'pattern'
   if (IN_THREAD.has(id)) return 'thread'
@@ -60,8 +59,6 @@ function shortLabel(id: string): string {
     't1_strata_decoy2': 'D2 bike case#',
     't1_strata_decoy3': 'D3 CharlieCard K77',
     't3_strata_decoy4': 'D4 Davis crash',
-    't1_strata_flag2a': 'flag2a (bar post)',
-    't1_strata_flag2b': 'flag2b (contradicts)',
     't3_strata_flag4': 'flag4 (pattern)',
     't3_strata_flag3a': 'flag3a (removed)',
     't3_strata_flag3b': 'flag3b (removed)',
@@ -103,18 +100,16 @@ async function buildStore(): Promise<MemoryKVStore> {
   for (const [itemId, ents] of entsByItem) await store.setEntityEmbeddings(itemId, ents)
 
   for (const li of live.items) {
-    const isInThread = li.id.startsWith('t1_strata_brigade') || li.id === 't1_strata_flag2b'
+    const isInThread = li.id.startsWith('t1_strata_brigade')
     const stored: StoredItem = {
       id: li.id,
       type: li.id.startsWith('t1_') ? 'comment' : 'post',
       text: li.textNormalized,
       textNormalized: li.textNormalized,
       authorId: li.id.startsWith('t1_strata_brigade') ? `t2_brigade_${li.id.slice(-1)}` :
-                li.id === 't1_strata_flag2b' ? 't2_tkfromcambridge' :
                 li.id === 't3_strata_casepost' ? 't2_sarahsroommate' :
                 li.id === 't3_strata_flag4' ? 't2_massavesafety' : 'live',
-      authorName: li.id === 't1_strata_flag2b' ? 'TKfromCambridge' :
-                  li.id === 't3_strata_flag4' ? 'MassAveSafety' :
+      authorName: li.id === 't3_strata_flag4' ? 'MassAveSafety' :
                   li.id === 't3_strata_casepost' ? 'SarahsRoommate2026' : li.id,
       createdAt: Date.now(),
       threadRootId: isInThread ? 't3_strata_casepost' : li.id,
@@ -156,7 +151,6 @@ type TrialData = {
     groups: Array<{ rank: number; anchor: string; anchor_label: string; size: number; buried: number; decoy: number; in_thread: number }>
     buried_in_anchors_unique: number
   }
-  flag_contradiction: { ok: boolean; ms: number; refs_flag2a: boolean; reasoning: string }
   flag_pattern: { ok: boolean; ms: number; fired: boolean; precedents: string[]; reasoning: string }
   flag_brigade: { ok: boolean; ms: number; fired: boolean; authors: number; reasoning: string }
 }
@@ -167,7 +161,6 @@ async function runTrial(store: MemoryKVStore, client: OpenAI, trial: number): Pr
     trial,
     surface: { ok: false, ms: 0, candidates: [], buried_at_K: [] },
     scan: { ok: false, ms: 0, first_signal_rank: -1, groups: [], buried_in_anchors_unique: 0 },
-    flag_contradiction: { ok: false, ms: 0, refs_flag2a: false, reasoning: '' },
     flag_pattern: { ok: false, ms: 0, fired: false, precedents: [], reasoning: '' },
     flag_brigade: { ok: false, ms: 0, fired: false, authors: 0, reasoning: '' },
   }
@@ -233,22 +226,6 @@ async function runTrial(store: MemoryKVStore, client: OpenAI, trial: number): Pr
     }
   }
 
-  // Flag: contradiction
-  {
-    const t0 = performance.now()
-    const stored = await store.getItem('t1_strata_flag2b')
-    const emb = await store.getEmbedding('t1_strata_flag2b')
-    const flags = await engine.flag({ ...stored!, embedding: emb ?? [] })
-    const contradiction = flags.find(f => f.type === 'contradiction')
-    const refs = !!contradiction?.connectionItems.find(c => c.id === 't1_strata_flag2a')
-    ts.flag_contradiction = {
-      ok: refs,
-      ms: performance.now() - t0,
-      refs_flag2a: refs,
-      reasoning: contradiction?.reasoning ?? '',
-    }
-  }
-
   // Flag: pattern
   {
     const t0 = performance.now()
@@ -296,7 +273,6 @@ async function computeStaticData(store: MemoryKVStore, client: OpenAI) {
     't1_strata_surface1', 't3_strata_surface2', 't1_strata_surface3', 't3_strata_surface4',
     't3_strata_decoy1', 't1_strata_decoy2', 't1_strata_decoy3', 't3_strata_decoy4',
     't1_strata_brigade1', 't1_strata_brigade2', 't1_strata_brigade3', 't1_strata_brigade4',
-    't1_strata_flag2a', 't1_strata_flag2b',
     't3_strata_flag4',
     't3_strata_flag3a', 't3_strata_flag3b', 't3_strata_flag3c',
     't1_strata_thread_modA', 't1_strata_thread_closureA',
@@ -489,7 +465,6 @@ async function main() {
     console.log(`Trial ${i}:`)
     console.log(`  surface       ${tag(r.surface)} ${r.surface.ms.toFixed(0).padStart(5)}ms  buried_at_K15=${r.surface.buried_at_K[14]}/${BURIED.size}`)
     console.log(`  scan          ${tag(r.scan)} ${r.scan.ms.toFixed(0).padStart(5)}ms  buried=${r.scan.buried_in_anchors_unique}/${BURIED.size}  signal@#${r.scan.first_signal_rank}`)
-    console.log(`  flag contra   ${tag(r.flag_contradiction)} ${r.flag_contradiction.ms.toFixed(0).padStart(5)}ms  refs_flag2a=${r.flag_contradiction.refs_flag2a}`)
     console.log(`  flag pattern  ${tag(r.flag_pattern)} ${r.flag_pattern.ms.toFixed(0).padStart(5)}ms  precedents=${r.flag_pattern.precedents.length}`)
     console.log(`  flag brigade  ${tag(r.flag_brigade)} ${r.flag_brigade.ms.toFixed(0).padStart(5)}ms  authors=${r.flag_brigade.authors}`)
   }
@@ -504,7 +479,6 @@ async function main() {
   const summary = {
     surface_pass: trials.filter(t => t.surface.ok).length,
     scan_pass: trials.filter(t => t.scan.ok).length,
-    flag_contradiction_pass: trials.filter(t => t.flag_contradiction.ok).length,
     flag_pattern_pass: trials.filter(t => t.flag_pattern.ok).length,
     flag_brigade_pass: trials.filter(t => t.flag_brigade.ok).length,
   }

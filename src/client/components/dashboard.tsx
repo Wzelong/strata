@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
-import { Bell, Hash, PenTool, Stamp, Ban, Check, X, Waypoints } from 'lucide-react'
+import { Bell, Hash, PenTool, Stamp, Ban, Check, X, Waypoints, Telescope, Sparkles } from 'lucide-react'
 import { DataList, type FilterConfig } from './data-list'
 import { AlertDetailPanel } from './alert-detail'
-import { ChatPanel } from './chat-panel'
+import { ChatPanel, type ChatSurface } from './chat-panel'
+import type { ChatContext, ToolSideEffect } from '../types/chat'
 import { fetchAlerts, fetchItems, fetchClusters, alertAction, type AlertListItem, type ItemListItem, type ClusterListItem } from '../lib/api'
 import { buildClusterColorMap } from '../lib/graph-utils'
 import { useTheme } from '../hooks/use-theme'
@@ -18,6 +19,8 @@ export function Dashboard() {
   const isDark = theme === 'dark'
   const [tab, setTab] = useState<Tab>('alerts')
   const [contentView, setContentView] = useState<ContentView>('list')
+  const [requestedDetailTab, setRequestedDetailTab] = useState<'overview' | 'explore' | 'chat' | null>(null)
+  const [highlightRequest, setHighlightRequest] = useState<{ ids: string[]; version: number } | null>(null)
   const [alerts, setAlerts] = useState<AlertListItem[]>([])
   const [alertsLoading, setAlertsLoading] = useState(true)
   const [selectedAlertId, setSelectedAlertId] = useState<string | null>(null)
@@ -38,6 +41,7 @@ export function Dashboard() {
   // Filters
   const [statusFilter, setStatusFilter] = useState<string | null>(null)
   const [confidenceFilter, setConfidenceFilter] = useState<string | null>(null)
+  const [typeFilter, setTypeFilter] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
 
@@ -50,10 +54,12 @@ export function Dashboard() {
       const { alerts: data } = await fetchAlerts({ status: statusFilter as any, limit: 50 })
       let filtered = data
       if (confidenceFilter) filtered = filtered.filter(a => a.confidence === confidenceFilter)
+      if (typeFilter === 'surface') filtered = filtered.filter(a => a.mode === 'surface')
+      if (typeFilter === 'brigade') filtered = filtered.filter(a => a.mode === 'flag' && a.flagType === 'brigade')
       setAlerts(filtered)
     } catch { setAlerts([]) }
     setAlertsLoading(false)
-  }, [statusFilter, confidenceFilter])
+  }, [statusFilter, confidenceFilter, typeFilter])
 
   const loadItemsPage = useCallback(async (cursor?: number, reset = false) => {
     if (reset) {
@@ -89,6 +95,16 @@ export function Dashboard() {
   }, [search])
 
   useEffect(() => { loadAlerts() }, [loadAlerts])
+
+  const initialSelectionRef = useRef(false)
+  useEffect(() => {
+    if (initialSelectionRef.current) return
+    if (alertsLoading) return
+    if (alerts.length === 0) return
+    initialSelectionRef.current = true
+    setSelectedAlertId(alerts[0].id)
+    setContentView('detail')
+  }, [alerts, alertsLoading])
 
   const loadClusters = useCallback(async () => {
     setClustersLoading(true)
@@ -144,6 +160,15 @@ export function Dashboard() {
 
   const alertFilters: FilterConfig[] = [
     {
+      label: 'Type',
+      value: typeFilter,
+      options: [
+        { value: 'surface', label: 'Surface' },
+        { value: 'brigade', label: 'Brigade' },
+      ],
+      onChange: v => { setTypeFilter(v || null); setSelectedIds(new Set()) },
+    },
+    {
       label: 'Status',
       value: statusFilter,
       options: [
@@ -168,9 +193,11 @@ export function Dashboard() {
 
   const renderAlertItem = (alert: AlertListItem) => {
     const reviewed = alert.status === 'resolved' || alert.status === 'dismissed'
-    const typeLabel = alert.mode === 'flag'
-      ? `Flag · ${alert.flagType ?? 'unknown'}`
-      : 'Surface'
+    const typeLabel = alert.mode === 'surface'
+      ? 'Surface'
+      : alert.flagType
+        ? alert.flagType[0].toUpperCase() + alert.flagType.slice(1)
+        : 'Flag'
 
     return (
       <div className="flex items-start gap-1.5 min-w-0">
@@ -256,7 +283,88 @@ export function Dashboard() {
     setContentView('list')
   }
 
+  const openDetailView = (tab: 'explore' | 'chat') => {
+    setSelectedAlertId(null)
+    setSelectedItemId(null)
+    setSelectedClusterId(null)
+    setRequestedDetailTab(tab)
+    setContentView('detail')
+  }
+
+  const highlightVersion = useRef(0)
+  const handleAgentSideEffect = useCallback((effect: ToolSideEffect, source: ChatSurface) => {
+    switch (effect.type) {
+      case 'select_alert':
+        setSelectedAlertId(effect.alert_id)
+        setSelectedItemId(null)
+        setSelectedClusterId(null)
+        setTab('alerts')
+        setContentView('detail')
+        break
+      case 'select_topic':
+        setSelectedClusterId(effect.cluster_id)
+        setSelectedAlertId(null)
+        setSelectedItemId(null)
+        setTab('clusters')
+        setContentView('detail')
+        break
+      case 'select_post':
+        setSelectedItemId(effect.post_id)
+        setSelectedAlertId(null)
+        setSelectedClusterId(null)
+        setTab('items')
+        setContentView('detail')
+        break
+      case 'select_comment':
+        setSelectedItemId(effect.thread_root_id)
+        setSelectedAlertId(null)
+        setSelectedClusterId(null)
+        setTab('items')
+        setContentView('detail')
+        break
+      case 'highlight':
+        highlightVersion.current += 1
+        setHighlightRequest({ ids: effect.ids, version: highlightVersion.current })
+        if (source === 'right-pane') setRequestedDetailTab('explore')
+        setContentView('detail')
+        break
+    }
+  }, [])
+
+  const toolbarButtons = [
+    {
+      icon: <Telescope className="size-3.5" />,
+      onClick: () => openDetailView('explore'),
+      ariaLabel: 'View graph',
+      className: 'lg:hidden',
+    },
+    {
+      icon: <Sparkles className="size-3.5" />,
+      onClick: () => openDetailView('chat'),
+      ariaLabel: 'AI chat',
+      className: 'lg:hidden',
+    },
+  ]
+
   const hasDetail = tab === 'alerts' && selectedAlertId
+
+  const chatContext = useMemo<ChatContext>(() => {
+    if (selectedAlertId) {
+      const a = alerts.find(x => x.id === selectedAlertId)
+      const label = a ? (a.anchorTitle || a.anchorText.slice(0, 80)) : selectedAlertId
+      return { view: tab, focus: { kind: 'alert', id: selectedAlertId, label } }
+    }
+    if (selectedItemId) {
+      const it = items.find(x => x.id === selectedItemId)
+      const label = it ? (it.title || it.text.slice(0, 80)) : selectedItemId
+      return { view: tab, focus: { kind: 'item', id: selectedItemId, label } }
+    }
+    if (selectedClusterId) {
+      const c = clusters.find(x => x.id === selectedClusterId)
+      return { view: tab, focus: { kind: 'topic', id: selectedClusterId, label: c?.label ?? selectedClusterId } }
+    }
+    return { view: tab }
+  }, [tab, selectedAlertId, selectedItemId, selectedClusterId, alerts, items, clusters])
 
   return (
     <div className="flex h-full">
@@ -297,6 +405,8 @@ export function Dashboard() {
               { icon: <Stamp className="size-3" />, onClick: handleBulkResolve, ariaLabel: 'Resolve selected' },
               { icon: <Ban className="size-3" />, onClick: handleBulkDismiss, ariaLabel: 'Dismiss selected' },
             ]}
+            toolbarButtons={toolbarButtons}
+            scrollToId={selectedAlertId}
           />
         ) : tab === 'items' ? (
           <DataList
@@ -321,6 +431,7 @@ export function Dashboard() {
               total: itemsTotal,
             }}
             scrollToId={selectedItemId}
+            toolbarButtons={toolbarButtons}
           />
         ) : (
           <DataList
@@ -338,6 +449,8 @@ export function Dashboard() {
             filters={[]}
             searchValue={search}
             onSearchChange={setSearch}
+            toolbarButtons={toolbarButtons}
+            scrollToId={selectedClusterId}
           />
         )}
       </div>
@@ -352,15 +465,20 @@ export function Dashboard() {
           itemId={selectedItemId}
           clusterId={selectedClusterId}
           listTab={tab}
+          requestedTab={requestedDetailTab}
+          onTabConsumed={() => setRequestedDetailTab(null)}
+          highlightRequest={highlightRequest}
+          chatContext={chatContext}
           onBack={() => { setSelectedAlertId(null); setSelectedItemId(null); setSelectedClusterId(null); setContentView('list') }}
           onStatusChange={loadAlerts}
           onGraphNodeSelect={id => { setSelectedAlertId(null); setSelectedClusterId(null); setSelectedItemId(id); setTab('items'); setContentView('detail') }}
+          onAgentSideEffect={handleAgentSideEffect}
         />
       </div>
 
       {/* Right panel — AI chat (xl+ only) */}
       <div className="xl:w-[400px] xl:shrink-0 xl:flex-none min-w-0 flex-col h-full min-h-0 hidden xl:flex">
-        <ChatPanel />
+        <ChatPanel surface="right-pane" context={chatContext} onAgentSideEffect={handleAgentSideEffect} />
       </div>
     </div>
   )

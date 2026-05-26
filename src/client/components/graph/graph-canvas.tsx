@@ -20,16 +20,18 @@ export function GraphCanvas({
   threadAnchorId,
   onReset: parentReset,
   onNodeSelect,
+  highlightRequest,
 }: {
   highlightIds?: string[]
   hideCard?: boolean
   threadAnchorId?: string
   onReset?: () => void
   onNodeSelect?: (nodeId: string) => void
+  highlightRequest?: { ids: string[]; version: number } | null
 } = {}) {
   const { theme } = useTheme()
   const isDark = theme === 'dark'
-  const bgColor = isDark ? '#0a0a0a' : '#ffffff'
+  const bgColor = isDark ? '#0d1113' : '#ffffff'
 
   const [data, setData] = useState<GraphData | null>(null)
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
@@ -52,6 +54,14 @@ export function GraphCanvas({
       for (const e of data.edges) {
         if (highlightIds.includes(e.source)) expanded.add(e.target)
       }
+      const idSet = new Set(highlightIds)
+      let latest = -Infinity
+      for (const n of data.nodes) {
+        if (idSet.has(n.id) && n.created_at != null && n.created_at > latest) {
+          latest = n.created_at
+        }
+      }
+      if (latest > -Infinity) setTCurrent(prev => latest > prev ? latest : prev)
     }
     setHighlight({ source: 'explorer', nodeIds: expanded, edgeKeys: new Set() })
     setCardIndex(0)
@@ -88,21 +98,69 @@ export function GraphCanvas({
     return m
   }, [data])
 
-  const timeBounds = useMemo(() => {
+  const timeStats = useMemo(() => {
     if (!data) return null
+    const timestamps: number[] = []
     let min = Infinity
     let max = -Infinity
     for (const n of data.nodes) {
       if (n.created_at == null) continue
+      timestamps.push(n.created_at)
       if (n.created_at < min) min = n.created_at
       if (n.created_at > max) max = n.created_at
     }
-    return min === Infinity ? null : { min, max }
+    return min === Infinity ? null : { min, max, timestamps }
   }, [data])
 
   useEffect(() => {
-    if (timeBounds) setTCurrent(timeBounds.max)
-  }, [timeBounds])
+    if (timeStats) setTCurrent(timeStats.max)
+  }, [timeStats])
+
+  useEffect(() => {
+    if (!highlightRequest || !data) return
+    const ids = highlightRequest.ids
+    if (ids.length === 0) return
+
+    const applyHighlight = (allNodes: CodeUnitNode[], edges: { source: string; target: string }[]) => {
+      const expanded = new Set(ids)
+      for (const e of edges) {
+        if (ids.includes(e.source)) expanded.add(e.target)
+      }
+      setHighlight({ source: 'chat', nodeIds: expanded, edgeKeys: new Set() })
+      setSelectedNodeId(null)
+      setCardIndex(0)
+      let latest = -Infinity
+      for (const n of allNodes) {
+        if (expanded.has(n.id) && n.created_at != null && n.created_at > latest) latest = n.created_at
+      }
+      if (latest > -Infinity) setTCurrent(prev => latest > prev ? latest : prev)
+    }
+
+    const known = new Set(data.nodes.map(n => n.id))
+    const missing = ids.filter(id => !known.has(id))
+
+    if (missing.length === 0) {
+      applyHighlight(data.nodes, data.edges)
+      return
+    }
+
+    fetch('/api/graph/extra-nodes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids: missing }),
+    })
+      .then(r => r.json())
+      .then((res: { nodes: CodeUnitNode[] }) => {
+        const extra = res?.nodes ?? []
+        if (extra.length > 0) {
+          setData(prev => prev ? { ...prev, nodes: [...prev.nodes, ...extra] } : prev)
+          applyHighlight([...data.nodes, ...extra], data.edges)
+        } else {
+          applyHighlight(data.nodes, data.edges)
+        }
+      })
+      .catch(() => applyHighlight(data.nodes, data.edges))
+  }, [highlightRequest?.version])
 
   const commentParentEdges = useMemo(() => {
     if (!data || !highlight) return []
@@ -203,7 +261,7 @@ export function GraphCanvas({
   }
 
   return (
-    <div className="flex-1 relative" style={{ backgroundColor: bgColor }}>
+    <div className="flex-1 min-w-0 min-h-0 relative" style={{ backgroundColor: bgColor }}>
       <GraphStats
         postCount={liveStats.posts}
         commentCount={liveStats.comments}
@@ -211,12 +269,13 @@ export function GraphCanvas({
         isHighlighted={!!highlight}
         onReset={handleReset}
       />
-      {timeBounds && (
+      {timeStats && (
         <TimelineCard
-          minTs={timeBounds.min}
-          maxTs={timeBounds.max}
+          minTs={timeStats.min}
+          maxTs={timeStats.max}
           tCurrent={tCurrent}
           onChange={setTCurrent}
+          timestamps={timeStats.timestamps}
         />
       )}
       <Canvas
