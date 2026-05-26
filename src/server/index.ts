@@ -28,6 +28,7 @@ import { gunzipSync } from 'node:zlib'
 
 const SEED_URL = 'https://raw.githubusercontent.com/Wzelong/strata/main/dataset/seed.json.gz'
 
+
 const app = new Hono()
 
 const redisClient: RedisClient = {
@@ -676,7 +677,7 @@ app.post('/internal/forms/seed-results', async (c) => {
     for (const key of keys) {
       await redis.del(key)
     }
-    console.log('[Strata] Reset complete, fetching seed from GitHub...')
+    console.log('[Strata] Reset complete, fetching seed...')
     const resp = await fetch(SEED_URL)
     if (!resp.ok) throw new Error(`Seed fetch failed: ${resp.status}`)
     const compressed = Buffer.from(await resp.arrayBuffer())
@@ -738,8 +739,19 @@ app.post('/internal/forms/seed-results', async (c) => {
       console.log(`[Strata] Seeded ${totalEntEmbs} entity embeddings`)
     }
 
+    // Write pre-computed 3D positions to graph layout cache
+    const layoutEntries: Array<[string, number[]]> = []
+    for (const item of seed.items) {
+      if ((item as any).position3d) layoutEntries.push([item.id, (item as any).position3d])
+    }
+    if (layoutEntries.length > 0) {
+      await redis.set('strata:graph:layout', JSON.stringify(layoutEntries))
+      console.log(`[Strata] Seeded ${layoutEntries.length} graph positions`)
+    }
+
     await redis.set('strata:seed:complete', '1')
     await redis.set('strata:seed:item-count', String(seed.items.length))
+    invalidateItemCache()
     console.log(`[Strata] Seed complete: ${seed.items.length} items`)
 
     return c.json<UiResponse>({
