@@ -26,7 +26,7 @@ export function Header({ settingsOpen, onToggleSettings }: Props) {
     await refreshStats()
   }
 
-  return compactCount(
+  return (
     <header className="fixed top-0 left-0 right-0 h-10 border-t border-b border-border bg-background/95 backdrop-blur flex items-center z-50">
       <div className="pl-[6px] flex items-center gap-1">
         <img
