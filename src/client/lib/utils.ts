@@ -2,8 +2,22 @@ export function cn(...classes: (string | boolean | undefined | null)[]): string 
   return classes.filter(Boolean).join(' ')
 }
 
+export function openUrl(url: string) {
+  const normalized = new URL(url).toString()
+  const effect = { navigateToUrl: { url: normalized }, type: 5 }
+  window.parent.postMessage({
+    ...effect,
+    realtimeEffect: undefined,
+    id: undefined,
+    scope: 0,
+    type: 'devvit-internal',
+    effect,
+  }, '*')
+}
+
 const compactFormatter = new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 })
 export function compactCount(n: number): string {
+  if (n < 10_000) return String(n)
   return compactFormatter.format(n).toLowerCase()
 }
 

@@ -117,8 +117,8 @@ export function TimelineCard({ minTs, maxTs, tCurrent, onChange, timestamps }: T
   }
 
   return (
-    <div className="absolute top-3 left-3 z-10 w-[clamp(240px,30vw,280px)] select-none">
-      <div className="flex items-center justify-between mb-2">
+    <div className="absolute top-2 left-2 sm:top-3 sm:left-3 z-10 w-[clamp(160px,40vw,280px)] sm:w-[clamp(240px,30vw,280px)] select-none">
+      <div className="flex items-center justify-between mb-1 sm:mb-2">
         <button
           type="button"
           onClick={stepBack}
@@ -126,12 +126,12 @@ export function TimelineCard({ minTs, maxTs, tCurrent, onChange, timestamps }: T
           aria-label="Previous month"
           className="text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
         >
-          <ChevronLeft className="size-3.5" />
+          <ChevronLeft className="size-3 sm:size-3.5" />
         </button>
-        <span className="text-xs tabular-nums leading-none flex items-center gap-1.5">
+        <span className="text-[10px] sm:text-xs tabular-nums leading-none flex items-center gap-1 sm:gap-1.5">
           <span className="text-foreground">{formatMonth(viewMonth)}</span>
-          <span className="text-muted-foreground">·</span>
-          <span className="text-muted-foreground">{formatRelative(curDay, maxDay)}</span>
+          <span className="text-muted-foreground hidden sm:inline">·</span>
+          <span className="text-muted-foreground hidden sm:inline">{formatRelative(curDay, maxDay)}</span>
           {curDay < maxDay && (
             <button
               type="button"
@@ -139,7 +139,7 @@ export function TimelineCard({ minTs, maxTs, tCurrent, onChange, timestamps }: T
               aria-label="Jump to today"
               className="text-muted-foreground hover:text-foreground cursor-pointer transition-colors"
             >
-              <ChevronLast className="size-3" />
+              <ChevronLast className="size-2.5 sm:size-3" />
             </button>
           )}
         </span>
@@ -150,7 +150,7 @@ export function TimelineCard({ minTs, maxTs, tCurrent, onChange, timestamps }: T
           aria-label="Next month"
           className="text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
         >
-          <ChevronRight className="size-3.5" />
+          <ChevronRight className="size-3 sm:size-3.5" />
         </button>
       </div>
       <div
@@ -158,7 +158,7 @@ export function TimelineCard({ minTs, maxTs, tCurrent, onChange, timestamps }: T
         tabIndex={0}
         role="slider"
         aria-label="Timeline cursor"
-        className="relative h-6 cursor-pointer touch-none rounded-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-foreground/40"
+        className="relative h-4 sm:h-6 cursor-pointer touch-none rounded-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-foreground/40"
         onKeyDown={handleKeyDown}
         onPointerDown={(e) => {
           draggingRef.current = true

@@ -1,4 +1,4 @@
-import { Moon, Sun, Settings, AlertTriangle, Loader2, Telescope } from 'lucide-react'
+import { Moon, Sun, Settings, AlertTriangle, Loader2, ScanSearch } from 'lucide-react'
 import { useTheme } from '../hooks/use-theme'
 import { useStats, refreshStats } from '../hooks/use-stats'
 import { useViewer } from '../hooks/use-viewer'
@@ -52,16 +52,19 @@ export function Header({ settingsOpen, onToggleSettings }: Props) {
             {compactCount(ingest?.processed ?? 0)}/{compactCount(ingest?.totalItems ?? 0)}
           </button>
         )}
-        {!isBackfilling && stats && stats.itemCount > 0 && !(stats as any).hasAlerts && (
+        {!isBackfilling && stats && stats.itemCount > 0 && !stats.hasAlerts && (
           <button
             onClick={async () => {
               await startScan()
               await refreshScanStatus()
-              onToggleSettings?.()
+              if (!settingsOpen) onToggleSettings?.()
+              requestAnimationFrame(() => {
+                document.getElementById('settings-scan')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+              })
             }}
             className="h-7 px-2 inline-flex items-center gap-1.5 rounded-md text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-colors cursor-pointer"
           >
-            <Telescope className="size-3" />
+            <ScanSearch className="size-3" />
             Scan
           </button>
         )}

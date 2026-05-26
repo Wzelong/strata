@@ -108,7 +108,7 @@ export function SettingsView({ onBack, forceForm }: Props) {
           )}
         </Section>
 
-        <Section title="Scan">
+        <Section title="Scan" id="settings-scan">
           <ScanProgress />
           {!isScanRunning && (
             <ScanRunRow
@@ -455,9 +455,9 @@ function UsageSection() {
   )
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Section({ title, id, children }: { title: string; id?: string; children: React.ReactNode }) {
   return (
-    <section className="space-y-3">
+    <section id={id} className="space-y-3">
       <h2 className="text-[10px] uppercase tracking-wider text-muted-foreground">{title}</h2>
       {children}
     </section>

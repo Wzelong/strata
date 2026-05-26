@@ -19,7 +19,10 @@ async function readJson<T>(res: Response, fallback: string): Promise<T | { error
   return (parsed ?? {}) as T
 }
 
-export interface AlertListItem extends Alert {}
+export interface AlertListItem extends Alert {
+  connections?: AlertConnectionWithDecision[]
+  anchorDecision?: Decision
+}
 
 export type AlertConnectionWithDecision = AlertConnection & { decision?: Decision }
 
@@ -37,6 +40,10 @@ export interface ItemListItem {
   createdAt: number
   entityCount: number
   commentCount?: number
+  entities: Array<{ text: string; clusterId: string }>
+  clusterLabel?: string | null
+  permalink?: string
+  comments?: PostDetailComment[]
 }
 
 export interface ItemsPage {
@@ -163,7 +170,7 @@ export async function fetchItems(opts?: { limit?: number; cursor?: number; type?
   return res.json()
 }
 
-export async function fetchStats(): Promise<{ itemCount: number; capacity: number; hasApiKey: boolean; apiKeyInvalid: boolean }> {
+export async function fetchStats(): Promise<{ itemCount: number; capacity: number; hasApiKey: boolean; apiKeyInvalid: boolean; hasAlerts: boolean }> {
   const res = await fetch('/api/stats')
   return res.json()
 }
@@ -268,6 +275,7 @@ export interface ClusterListItem {
   recentCount: number
   lastActivity: number
   hotScore: number
+  posts?: ClusterDetailPost[]
 }
 
 export async function fetchClusters(sort: 'hot' | 'size' | 'name' = 'hot'): Promise<ClusterListItem[]> {

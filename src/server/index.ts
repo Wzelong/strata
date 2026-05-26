@@ -289,6 +289,11 @@ app.post('/internal/triggers/post-submit', async (c) => {
   const dashboardPostId = await redis.get('strata:dashboard-post-id')
   if (post.id === dashboardPostId) return c.json<TriggerResponse>({ status: 'ok' })
 
+  const authorId = post.authorId || post.author
+  if (authorId && await isMod(authorId, context.subredditName ?? '')) {
+    return c.json<TriggerResponse>({ status: 'ok' })
+  }
+
   const seeded = await redis.get('strata:seed:complete')
   if (!seeded) {
     console.log('[Strata] Skipping post — no seed data loaded yet')
@@ -1040,6 +1045,7 @@ app.post('/internal/scheduler/ingest-batch', async (c) => {
           const posEntries = Object.entries(seedPositions as Record<string, number[]>)
           if (posEntries.length > 0) await redis.set('strata:graph:layout', JSON.stringify(posEntries))
           invalidateItemCache()
+          await redis.set('strata:seed:complete', '1')
           const endedAt = Date.now()
           await redis.hSet('strata:ingest:status', { phase: 'done', endedAt: String(endedAt) })
           if (status.backfillId) await updateBackfillRecord(status.backfillId, { status: 'done', endedAt, totalItems: processedSoFar, processed: processedSoFar })
@@ -1591,15 +1597,23 @@ app.get('/api/clusters', async (c) => {
   const repo = new ClusterRepo(redis)
   const rows = await repo.listBySize(500)
   const allItems = await getAllItems()
-  const postsByCluster = new Map<number, number>()
-  const commentsByCluster = new Map<number, number>()
+  const postsByCluster = new Map<number, StoredItem[]>()
+  const commentCountByCluster = new Map<number, number>()
   const lastActivityByCluster = new Map<number, number>()
   const recent24h = Date.now() - 86_400_000
   const recentByCluster = new Map<number, number>()
+  const commentCountByPost = new Map<string, number>()
   for (const it of allItems) {
+    if (it.type === 'comment' && it.threadRootId) {
+      commentCountByPost.set(it.threadRootId, (commentCountByPost.get(it.threadRootId) ?? 0) + 1)
+    }
     if (it.clusterId === undefined || it.clusterId === -1) continue
-    if (it.type === 'post') postsByCluster.set(it.clusterId, (postsByCluster.get(it.clusterId) ?? 0) + 1)
-    else commentsByCluster.set(it.clusterId, (commentsByCluster.get(it.clusterId) ?? 0) + 1)
+    if (it.type === 'post') {
+      if (!postsByCluster.has(it.clusterId)) postsByCluster.set(it.clusterId, [])
+      postsByCluster.get(it.clusterId)!.push(it)
+    } else {
+      commentCountByCluster.set(it.clusterId, (commentCountByCluster.get(it.clusterId) ?? 0) + 1)
+    }
     lastActivityByCluster.set(it.clusterId, Math.max(lastActivityByCluster.get(it.clusterId) ?? 0, it.createdAt))
     if (it.createdAt >= recent24h) recentByCluster.set(it.clusterId, (recentByCluster.get(it.clusterId) ?? 0) + 1)
   }
@@ -1608,15 +1622,25 @@ app.get('/api/clusters', async (c) => {
     const lastActivity = lastActivityByCluster.get(r.id) ?? 0
     const ageHours = lastActivity > 0 ? (now - lastActivity) / 3_600_000 : 999
     const hotScore = r.size / (1 + ageHours)
+    const posts = (postsByCluster.get(r.id) ?? []).sort((a, b) => b.createdAt - a.createdAt)
     return {
       id: `cluster:${r.id}`,
       label: r.label,
       isOrphan: r.size <= 1,
-      postCount: postsByCluster.get(r.id) ?? 0,
-      commentCount: commentsByCluster.get(r.id) ?? 0,
+      postCount: posts.length,
+      commentCount: commentCountByCluster.get(r.id) ?? 0,
       recentCount: recentByCluster.get(r.id) ?? 0,
       lastActivity,
       hotScore,
+      posts: posts.slice(0, 200).map(p => ({
+        id: p.id,
+        title: p.title ?? null,
+        text: p.text,
+        author: p.authorName,
+        createdAt: p.createdAt,
+        permalink: null,
+        commentCount: commentCountByPost.get(p.id) ?? 0,
+      })),
     }
   }) })
 })
@@ -1661,6 +1685,7 @@ app.post('/internal/scheduler/recluster', async (c) => {
   if (!result.ok) {
     console.error('[Strata] Recluster failed:', result.error)
     if (body.fromBackfill) {
+      await redis.set('strata:seed:complete', '1')
       const endedAt = Date.now()
       const ingestStatus = await redis.hGetAll('strata:ingest:status')
       await redis.hSet('strata:ingest:status', { phase: 'done', endedAt: String(endedAt) })
@@ -1673,6 +1698,7 @@ app.post('/internal/scheduler/recluster', async (c) => {
   invalidateItemCache()
   console.log('[Strata] Recluster:', result.report)
   if (body.fromBackfill) {
+    await redis.set('strata:seed:complete', '1')
     const endedAt = Date.now()
     const ingestStatus = await redis.hGetAll('strata:ingest:status')
     await redis.hSet('strata:ingest:status', { phase: 'done', endedAt: String(endedAt) })
@@ -2013,12 +2039,12 @@ app.get('/api/items/:id/entity-matches', async (c) => {
 
 app.get('/api/threads/:postId', async (c) => {
   const postId = c.req.param('postId')
-  const post = await store.getItem(postId)
-  if (!post || post.type !== 'post') return c.json({ error: 'Not found' }, 404)
-  const items = await listAllItemsSorted()
+  const allItems = await getAllItems()
+  const post = allItems.find(i => i.id === postId && i.type === 'post')
+  if (!post) return c.json({ error: 'Not found' }, 404)
   const labelById = await loadClusterLabelMap()
   const sub = context.subredditName ?? 'reddit'
-  const comments = items
+  const comments = allItems
     .filter(i => i.type === 'comment' && i.threadRootId === postId)
     .sort((a, b) => a.createdAt - b.createdAt)
   return c.json({
@@ -2230,7 +2256,8 @@ app.post('/api/search', async (c) => {
 })
 
 app.get('/api/ingest/status', async (c) => {
-  const status = await redis.hGetAll('strata:ingest:status')
+  let status: Record<string, string>
+  try { status = await redis.hGetAll('strata:ingest:status') } catch { return c.json({ phase: 'idle' }) }
   if (!status || !status.phase) return c.json({ phase: 'idle' })
   const num = (k: string) => parseInt(status[k] || '0', 10)
   return c.json({
@@ -2362,32 +2389,35 @@ app.post('/api/backfill/confirm', async (c) => {
 
   if (rawItems.length === 0) return c.json({ error: 'No items in the selected range' }, 400)
 
-  const currentCount = await store.getItemCount()
-  if (currentCount + rawItems.length > ITEM_CAPACITY) {
+  const existingItems = await getAllItems()
+  const existingIds = new Set(existingItems.map(i => i.id))
+  const newItems = rawItems.filter(i => !existingIds.has(i.id))
+
+  if (newItems.length === 0) return c.json({ error: 'All items in this range are already ingested' }, 400)
+
+  const currentCount = existingItems.length
+  if (currentCount + newItems.length > ITEM_CAPACITY) {
     return c.json({ error: `Would exceed item capacity (${ITEM_CAPACITY})` }, 400)
   }
 
   try {
-    // Store all raw items + an ordered id list so the scheduler can slice it
-    // into egress-sized chunks. No OpenAI upload happens here — the scheduler
-    // submits one chunk at a time and backs off when Devvit's egress cap is hit.
     await redis.hSet('strata:ingest:raw', Object.fromEntries(
-      rawItems.map(item => [item.id, JSON.stringify(item)])
+      newItems.map(item => [item.id, JSON.stringify(item)])
     ))
-    await redis.set('strata:ingest:order', JSON.stringify(rawItems.map(i => i.id)))
+    await redis.set('strata:ingest:order', JSON.stringify(newItems.map(i => i.id)))
 
     const backfillId = generateAlertId()
     const estimate = mode === 'realtime'
-      ? estimateBackfillRealtime(rawItems.length, estimateCurrentBytes(currentCount))
-      : estimateBackfill(rawItems.length, estimateCurrentBytes(currentCount))
+      ? estimateBackfillRealtime(newItems.length, estimateCurrentBytes(currentCount))
+      : estimateBackfill(newItems.length, estimateCurrentBytes(currentCount))
     const initiatedBy = context.userId || 'unknown'
-    const chunkCount = Math.ceil(rawItems.length / INGEST_CHUNK_SIZE)
+    const chunkCount = Math.ceil(newItems.length / INGEST_CHUNK_SIZE)
 
     await redis.hSet('strata:ingest:status', {
       phase: mode === 'realtime' ? 'realtime-ingest' : 'submit',
       mode,
       demo: cached.demo ? '1' : '',
-      totalItems: String(rawItems.length),
+      totalItems: String(newItems.length),
       processed: '0',
       chunkIndex: '0',
       chunkCount: String(chunkCount),
@@ -2402,7 +2432,7 @@ app.post('/api/backfill/confirm', async (c) => {
       to: cached.to,
       startedAt: Date.now(),
       endedAt: null,
-      totalItems: rawItems.length,
+      totalItems: newItems.length,
       processed: 0,
       initiatedBy,
       costUsdEstimated: estimate.estimatedCostUsd,
@@ -2411,8 +2441,8 @@ app.post('/api/backfill/confirm', async (c) => {
     await redis.del(`strata:backfill:preview:${token}`)
     await scheduler.runJob({ name: 'ingest-batch', runAt: new Date(Date.now() + 2000), data: {} })
 
-    console.log(`[Strata] Backfill ${backfillId} queued: ${rawItems.length} items in ${chunkCount} chunk(s)`)
-    return c.json({ id: backfillId, totalItems: rawItems.length })
+    console.log(`[Strata] Backfill ${backfillId} queued: ${newItems.length} items in ${chunkCount} chunk(s)`)
+    return c.json({ id: backfillId, totalItems: newItems.length })
   } catch (err) {
     console.error('[Strata] Confirm error:', err)
     await noteOpenAIError(err)
@@ -2663,7 +2693,21 @@ app.get('/api/alerts', async (c) => {
   const limit = parseInt(c.req.query('limit') || '20', 10)
   const cursor = c.req.query('cursor') ? parseInt(c.req.query('cursor')!, 10) : undefined
   const { alerts, nextCursor } = await alertStore.listAlerts({ status, limit, cursor })
-  return c.json({ alerts, nextCursor })
+  const hydrated = await Promise.all(alerts.map(async (alert) => {
+    const connections = await alertStore.getAlertConnections(alert.id)
+    connections.sort((a, b) => {
+      if (a.confidence === 'high' && b.confidence !== 'high') return -1
+      if (b.confidence === 'high' && a.confidence !== 'high') return 1
+      return 0
+    })
+    const anchorItem = await store.getItem(alert.anchorId)
+    const hydratedConns = await Promise.all(connections.map(async conn => {
+      const it = await store.getItem(conn.itemId)
+      return { ...conn, decision: it?.decision ?? 'pending' }
+    }))
+    return { ...alert, connections: hydratedConns, anchorDecision: anchorItem?.decision ?? 'pending' }
+  }))
+  return c.json({ alerts: hydrated, nextCursor })
 })
 
 app.get('/api/alerts/:id', async (c) => {
@@ -2950,47 +2994,61 @@ app.get('/api/items', async (c) => {
   const cursor = c.req.query('cursor') ? parseInt(c.req.query('cursor')!, 10) : null
   const type = c.req.query('type') as 'post' | 'comment' | undefined
   const search = c.req.query('search') || ''
+  const searchLower = search.toLowerCase()
 
-  const maxScore = cursor !== null ? cursor - 1 : '+inf'
-  const items: any[] = []
-  let scanCursor = cursor !== null ? cursor - 1 : '+inf'
-  let rounds = 0
-  const MAX_ROUNDS = 10
+  const allItems = await getAllItems()
+  const labelById = await loadClusterLabelMap()
+  const sub = context.subredditName ?? 'reddit'
 
-  while (items.length < limit && rounds < MAX_ROUNDS) {
-    rounds++
-    const entries = await redis.zRange('strata:idx:time', '-inf', scanCursor as any, {
-      by: 'score',
-      reverse: true,
-      limit: { offset: 0, count: 200 },
-    })
-    if (entries.length === 0) break
-
-    for (const entry of entries) {
-      if (items.length >= limit) break
-      const raw = await redis.hGet('strata:items', entry.member)
-      if (!raw) continue
-      const item = JSON.parse(raw) as StoredItem
-      if (type && item.type !== type) continue
-      if (search && !item.text.toLowerCase().includes(search.toLowerCase()) && !item.authorName.toLowerCase().includes(search.toLowerCase())) continue
-      items.push({
-        id: item.id,
-        type: item.type,
-        title: item.title,
-        text: item.text.slice(0, 200),
-        authorName: item.authorName,
-        createdAt: item.createdAt,
-        entityCount: item.entities.length,
-      })
+  const commentsByPost = new Map<string, StoredItem[]>()
+  for (const it of allItems) {
+    if (it.type === 'comment' && it.threadRootId) {
+      if (!commentsByPost.has(it.threadRootId)) commentsByPost.set(it.threadRootId, [])
+      commentsByPost.get(it.threadRootId)!.push(it)
     }
-
-    scanCursor = entries[entries.length - 1].score - 1
-    if (entries.length < 200) break
   }
 
-  const nextCursor = items.length > 0 ? items[items.length - 1].createdAt : null
-  const total = await redis.zCard('strata:idx:time')
-  return c.json({ items, nextCursor, total })
+  let filtered = allItems
+    .filter(it => {
+      if (type && it.type !== type) return false
+      if (searchLower && !it.text.toLowerCase().includes(searchLower) && !it.authorName.toLowerCase().includes(searchLower)) return false
+      if (cursor !== null && it.createdAt >= cursor) return false
+      return true
+    })
+    .sort((a, b) => b.createdAt - a.createdAt)
+
+  const page = filtered.slice(0, limit)
+  const nextCursor = page.length === limit ? page[page.length - 1].createdAt : null
+  const total = allItems.filter(it => !type || it.type === type).length
+
+  return c.json({
+    items: page.map(it => {
+      const comments = (commentsByPost.get(it.id) ?? []).sort((a, b) => a.createdAt - b.createdAt)
+      return {
+        id: it.id,
+        type: it.type,
+        title: it.title,
+        text: it.text,
+        authorName: it.authorName,
+        createdAt: it.createdAt,
+        entityCount: it.entities.length,
+        commentCount: it.type === 'post' ? comments.length : undefined,
+        entities: (it.entities ?? []).filter(e => e.surfaceText).map(e => ({ text: e.surfaceText, clusterId: e.type })),
+        clusterLabel: it.clusterId !== undefined && it.clusterId !== -1 ? (labelById.get(it.clusterId) ?? null) : null,
+        permalink: it.type === 'post' ? `/r/${sub}/comments/${it.id.replace(/^t3_/, '')}/` : undefined,
+        comments: it.type === 'post' ? comments.map(cm => ({
+          id: cm.id,
+          text: cm.text,
+          author: cm.authorName,
+          createdAt: cm.createdAt,
+          entities: (cm.entities ?? []).filter(e => e.surfaceText).map(e => ({ text: e.surfaceText, clusterId: e.type })),
+          clusterLabel: cm.clusterId !== undefined && cm.clusterId !== -1 ? (labelById.get(cm.clusterId) ?? null) : null,
+        })) : undefined,
+      }
+    }),
+    nextCursor,
+    total,
+  })
 })
 
 // --- Debug ---

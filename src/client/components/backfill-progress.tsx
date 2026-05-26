@@ -220,7 +220,7 @@ export function BackfillProgress({ backfillId, subredditName }: Props) {
                 await refreshIngestStatus()
               }}
             >
-              <button className="cursor-pointer text-xs text-muted-foreground hover:text-destructive transition-colors">
+              <button className="cursor-pointer text-xs px-2 py-1 rounded-md border border-destructive/50 text-destructive hover:bg-destructive/10 transition-colors">
                 Cancel backfill
               </button>
             </ConfirmDialog>

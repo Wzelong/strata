@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo, lazy, Suspense } from 'react'
 import { Bell, Hash, PenTool, Stamp, Ban, Check, X, Waypoints, Telescope, Sparkles } from 'lucide-react'
 import { DataList, type FilterConfig } from './data-list'
 import { AlertDetailPanel } from './alert-detail'
@@ -8,6 +8,8 @@ import { fetchAlerts, fetchItems, fetchClusters, alertAction, type AlertListItem
 import { buildClusterColorMap } from '../lib/graph-utils'
 import { useTheme } from '../hooks/use-theme'
 import { cn, formatRelativeTime, compactCount } from '../lib/utils'
+
+const GraphCanvas = lazy(() => import('./graph/graph-canvas').then(m => ({ default: m.GraphCanvas })))
 
 type Tab = 'alerts' | 'items' | 'clusters'
 type ContentView = 'list' | 'detail'
@@ -26,6 +28,7 @@ export function Dashboard() {
   const [selectedAlertId, setSelectedAlertId] = useState<string | null>(null)
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null)
   const [selectedClusterId, setSelectedClusterId] = useState<string | null>(null)
+  const [mobileOverlay, setMobileOverlay] = useState<'explore' | 'chat' | null>(null)
 
   const [clusters, setClusters] = useState<ClusterListItem[]>([])
   const [clustersLoading, setClustersLoading] = useState(false)
@@ -96,17 +99,6 @@ export function Dashboard() {
 
   useEffect(() => { loadAlerts() }, [loadAlerts])
 
-  const initialSelectionRef = useRef(false)
-  useEffect(() => {
-    if (initialSelectionRef.current) return
-    if (alertsLoading) return
-    if (alerts.length === 0) return
-    initialSelectionRef.current = true
-    const isDesktop = window.innerWidth >= 1024
-    if (isDesktop) {
-      setSelectedAlertId(alerts[0].id)
-    }
-  }, [alerts, alertsLoading])
 
   const loadClusters = useCallback(async () => {
     setClustersLoading(true)
@@ -281,16 +273,10 @@ export function Dashboard() {
     setSelectedAlertId(null)
     setSelectedItemId(null)
     setSelectedClusterId(null)
+    setMobileOverlay(null)
     setContentView('list')
   }
 
-  const openDetailView = (tab: 'explore' | 'chat') => {
-    setSelectedAlertId(null)
-    setSelectedItemId(null)
-    setSelectedClusterId(null)
-    setRequestedDetailTab(tab)
-    setContentView('detail')
-  }
 
   const highlightVersion = useRef(0)
   const handleAgentSideEffect = useCallback((effect: ToolSideEffect, source: ChatSurface) => {
@@ -335,14 +321,16 @@ export function Dashboard() {
   const toolbarButtons = [
     {
       icon: <Telescope className="size-3.5" />,
-      onClick: () => openDetailView('explore'),
+      onClick: () => setMobileOverlay(prev => prev === 'explore' ? null : 'explore'),
       ariaLabel: 'View graph',
+      active: mobileOverlay === 'explore',
       className: 'lg:hidden',
     },
     {
       icon: <Sparkles className="size-3.5" />,
-      onClick: () => openDetailView('chat'),
+      onClick: () => setMobileOverlay(prev => prev === 'chat' ? null : 'chat'),
       ariaLabel: 'AI chat',
+      active: mobileOverlay === 'chat',
       className: 'lg:hidden',
     },
   ]
@@ -367,6 +355,14 @@ export function Dashboard() {
     return { view: tab }
   }, [tab, selectedAlertId, selectedItemId, selectedClusterId, alerts, items, clusters])
 
+  const mobileOverlayNode = mobileOverlay === 'explore' ? (
+    <Suspense fallback={<div className="flex-1 flex items-center justify-center text-xs text-muted-foreground">Loading graph...</div>}>
+      <GraphCanvas onNodeSelect={id => { setMobileOverlay(null); setSelectedItemId(id); setTab('items'); setContentView('detail') }} />
+    </Suspense>
+  ) : mobileOverlay === 'chat' ? (
+    <ChatPanel surface="detail-tab" context={chatContext} onAgentSideEffect={handleAgentSideEffect} />
+  ) : undefined
+
   return (
     <div className="flex h-full">
       {/* Left panel — list */}
@@ -380,12 +376,12 @@ export function Dashboard() {
             getItemId={a => a.id}
             renderItem={renderAlertItem}
             activeId={selectedAlertId ?? undefined}
-            onItemClick={a => { setSelectedAlertId(a.id); setSelectedItemId(null); setSelectedClusterId(null); setContentView('detail') }}
+            onItemClick={a => { setSelectedAlertId(a.id); setSelectedItemId(null); setSelectedClusterId(null); setMobileOverlay(null); setContentView('detail') }}
             isLoading={alertsLoading}
             emptyIcon={<Bell className="size-6 text-muted-foreground" />}
             emptyMessage={alertsLoading ? 'Loading alerts...' : 'No alerts yet'}
             tabs={sharedTabs}
-            activeTab={tab}
+            activeTab={mobileOverlay ? undefined : tab}
             onTabChange={switchTab}
             filters={alertFilters}
             searchValue={search}
@@ -407,6 +403,7 @@ export function Dashboard() {
               { icon: <Ban className="size-3" />, onClick: handleBulkDismiss, ariaLabel: 'Dismiss selected' },
             ]}
             toolbarButtons={toolbarButtons}
+            overlay={mobileOverlayNode}
             scrollToId={selectedAlertId}
           />
         ) : tab === 'items' ? (
@@ -415,12 +412,12 @@ export function Dashboard() {
             getItemId={i => i.id}
             renderItem={renderItemRow}
             activeId={selectedItemId ?? undefined}
-            onItemClick={i => { setSelectedItemId(i.id); setSelectedAlertId(null); setSelectedClusterId(null); setContentView('detail') }}
+            onItemClick={i => { setSelectedItemId(i.id); setSelectedAlertId(null); setSelectedClusterId(null); setMobileOverlay(null); setContentView('detail') }}
             isLoading={itemsLoading}
             emptyIcon={<PenTool className="size-6 text-muted-foreground" />}
             emptyMessage={itemsLoading ? 'Loading items...' : 'No items ingested'}
             tabs={sharedTabs}
-            activeTab={tab}
+            activeTab={mobileOverlay ? undefined : tab}
             onTabChange={switchTab}
             filters={itemFilters}
             searchValue={search}
@@ -433,6 +430,7 @@ export function Dashboard() {
             }}
             scrollToId={selectedItemId}
             toolbarButtons={toolbarButtons}
+            overlay={mobileOverlayNode}
           />
         ) : (
           <DataList
@@ -440,17 +438,18 @@ export function Dashboard() {
             getItemId={c => c.id}
             renderItem={renderClusterRow}
             activeId={selectedClusterId ?? undefined}
-            onItemClick={c => { setSelectedClusterId(c.id); setSelectedAlertId(null); setSelectedItemId(null); setContentView('detail') }}
+            onItemClick={c => { setSelectedClusterId(c.id); setSelectedAlertId(null); setSelectedItemId(null); setMobileOverlay(null); setContentView('detail') }}
             isLoading={clustersLoading}
             emptyIcon={<Hash className="size-6 text-muted-foreground" />}
             emptyMessage={clustersLoading ? 'Loading topics...' : 'No topics'}
             tabs={sharedTabs}
-            activeTab={tab}
+            activeTab={mobileOverlay ? undefined : tab}
             onTabChange={switchTab}
             filters={[]}
             searchValue={search}
             onSearchChange={setSearch}
             toolbarButtons={toolbarButtons}
+            overlay={mobileOverlayNode}
             scrollToId={selectedClusterId}
           />
         )}
@@ -463,8 +462,11 @@ export function Dashboard() {
       )}>
         <AlertDetailPanel
           alertId={selectedAlertId}
+          alertData={selectedAlertId ? alerts.find(a => a.id === selectedAlertId) ?? null : null}
           itemId={selectedItemId}
+          itemData={selectedItemId ? items.find(i => i.id === selectedItemId) ?? null : null}
           clusterId={selectedClusterId}
+          clusterData={selectedClusterId ? clusters.find(c => c.id === selectedClusterId) ?? null : null}
           listTab={tab}
           requestedTab={requestedDetailTab}
           onTabConsumed={() => setRequestedDetailTab(null)}

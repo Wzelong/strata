@@ -48,6 +48,7 @@ interface DataListProps<T> {
   searchValue?: string
   onSearchChange?: (value: string) => void
   toolbarButtons?: { icon: ReactNode; onClick: () => void; ariaLabel: string; active?: boolean; className?: string }[]
+  overlay?: ReactNode
   selectedIds?: Set<string>
   onSelectOne?: (id: string) => void
   onSelectAll?: () => void
@@ -85,6 +86,7 @@ export function DataList<T>({
   searchValue,
   onSearchChange,
   toolbarButtons = [],
+  overlay,
   selectedIds,
   onSelectOne,
   onSelectAll,
@@ -256,6 +258,9 @@ export function DataList<T>({
       )}
 
       {/* List */}
+      {overlay ? (
+        <div className="flex-1 min-h-0 flex">{overlay}</div>
+      ) : (
       <div ref={listRef} className="flex-1 overflow-y-auto min-h-0">
         {data.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full gap-3 px-4">
@@ -314,6 +319,7 @@ export function DataList<T>({
           </>
         )}
       </div>
+      )}
     </div>
   )
 }

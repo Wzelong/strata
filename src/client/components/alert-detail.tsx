@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo, lazy, Suspense } from 'react'
-import { ArrowLeft, ClipboardList, Telescope, Sparkles, ChevronDown, ChevronUp, Trash2, Check, Lock, Ban, Stamp, Loader2, Copy, RefreshCw, ExternalLink, SquareArrowOutUpRight } from 'lucide-react'
-import { fetchAlertDetail, alertAction, fetchPostDetail, fetchClusterDetail, removeItem, approveItem, bulkRemoveAlert, bulkLockAlert, composeAlertPost, type AlertDetail, type AlertConnectionWithDecision, type PostDetail, type ClusterDetail, type ComposeDraft } from '../lib/api'
+import { ArrowLeft, ClipboardList, Telescope, Sparkles, ChevronDown, ChevronUp, Trash2, Check, Lock, Ban, Stamp, Loader2, Copy, RefreshCw, ExternalLink, SquarePen, Megaphone } from 'lucide-react'
+import { fetchAlertDetail, alertAction, fetchPostDetail, publishAlertPost, removeItem, approveItem, bulkRemoveAlert, bulkLockAlert, composeAlertPost, type AlertDetail, type AlertConnectionWithDecision, type PostDetail, type ClusterDetail, type ComposeDraft } from '../lib/api'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import type { Decision } from '../../engine/types'
@@ -11,7 +11,7 @@ import { ChatPanel } from './chat-panel'
 import { ChatInput } from './chat/chat-input'
 import type { ChatContext, ToolSideEffect } from '../types/chat'
 import { HighlightedText } from './highlighted-text'
-import { cn, formatRelativeTime, compactCount } from '../lib/utils'
+import { cn, formatRelativeTime, compactCount, openUrl } from '../lib/utils'
 
 const GraphCanvas = lazy(() => import('./graph/graph-canvas').then(m => ({ default: m.GraphCanvas })))
 import { Tooltip, TooltipTrigger, TooltipContent } from './ui/tooltip'
@@ -267,14 +267,17 @@ function SurfaceDraftCard({
   draft,
   published,
   onDraftChange,
+  onPublished,
 }: {
   alertId: string
   subredditName?: string
   draft: ComposeDraft | null
   published?: { title: string; body: string; permalink?: string; publishedAt?: number; publishedBy?: string }
   onDraftChange: (draft: ComposeDraft) => void
+  onPublished?: () => void
 }) {
   const [regenerating, setRegenerating] = useState(false)
+  const [publishing, setPublishing] = useState(false)
   const [copied, setCopied] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [refinement, setRefinement] = useState('')
@@ -382,22 +385,45 @@ function SurfaceDraftCard({
           </button>
           <Tooltip>
             <TooltipTrigger asChild>
-              <a
-                href={canSubmit ? submitUrl(draft.title.trim(), draft.body) : undefined}
-                target="_blank"
-                rel="noopener noreferrer"
-                aria-disabled={!canSubmit}
-                onClick={e => { if (!canSubmit) e.preventDefault() }}
+              <button
+                type="button"
+                disabled={!canSubmit}
+                onClick={() => { if (canSubmit) openUrl(submitUrl(draft.title.trim(), draft.body)) }}
                 className={cn(
-                  'h-7 w-7 inline-flex items-center justify-center rounded cursor-pointer text-muted-foreground hover:bg-muted hover:text-foreground transition-colors',
+                  'hidden sm:inline-flex h-7 w-7 items-center justify-center rounded cursor-pointer text-muted-foreground hover:bg-muted hover:text-foreground transition-colors',
                   !canSubmit && 'opacity-50 cursor-not-allowed',
                 )}
-                aria-label="Open in Reddit"
+                aria-label="Open in post editor"
               >
-                <SquareArrowOutUpRight className="size-3.5" />
-              </a>
+                <SquarePen className="size-3.5" />
+              </button>
             </TooltipTrigger>
-            <TooltipContent side="top">Open in Reddit</TooltipContent>
+            <TooltipContent side="top">Open in post editor</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                disabled={!canSubmit || publishing}
+                onClick={async () => {
+                  if (!canSubmit || publishing) return
+                  setPublishing(true)
+                  setError(null)
+                  const res = await publishAlertPost(alertId, { title: draft.title.trim(), body: draft.body })
+                  setPublishing(false)
+                  if ('error' in res && res.error) { setError(res.error); return }
+                  onPublished?.()
+                }}
+                className={cn(
+                  'h-7 w-7 inline-flex items-center justify-center rounded cursor-pointer text-muted-foreground hover:bg-muted hover:text-foreground transition-colors',
+                  (!canSubmit || publishing) && 'opacity-50 cursor-not-allowed',
+                )}
+                aria-label="Publish directly"
+              >
+                {publishing ? <Loader2 className="size-3.5 animate-spin" /> : <Megaphone className="size-3.5" />}
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="top">Publish directly</TooltipContent>
           </Tooltip>
         </div>
       </div>
@@ -444,8 +470,11 @@ function EntityTags({ entities }: { entities: Array<{ text: string }> }) {
 
 interface AlertDetailPanelProps {
   alertId: string | null
+  alertData?: import('../lib/api').AlertListItem | null
   itemId?: string | null
+  itemData?: import('../lib/api').ItemListItem | null
   clusterId?: string | null
+  clusterData?: import('../lib/api').ClusterListItem | null
   listTab?: 'alerts' | 'items' | 'clusters'
   requestedTab?: DetailTab | null
   onTabConsumed?: () => void
@@ -457,7 +486,7 @@ interface AlertDetailPanelProps {
   onAgentSideEffect?: (effect: ToolSideEffect, source: 'right-pane' | 'detail-tab') => void
 }
 
-export function AlertDetailPanel({ alertId, itemId, clusterId, listTab, requestedTab, onTabConsumed, highlightRequest, chatContext, onBack, onStatusChange, onGraphNodeSelect, onAgentSideEffect }: AlertDetailPanelProps) {
+export function AlertDetailPanel({ alertId, alertData, itemId, itemData, clusterId, clusterData, listTab, requestedTab, onTabConsumed, highlightRequest, chatContext, onBack, onStatusChange, onGraphNodeSelect, onAgentSideEffect }: AlertDetailPanelProps) {
   const { theme } = useTheme()
   const isDark = theme === 'dark'
   const [alert, setAlert] = useState<AlertDetail | null>(null)
@@ -506,11 +535,13 @@ export function AlertDetailPanel({ alertId, itemId, clusterId, listTab, requeste
   }, [activeCluster])
 
   useEffect(() => {
-    if (!alertId) { setAlert(null); return }
-    let cancelled = false
-    fetchAlertDetail(alertId).then(d => { if (!cancelled) setAlert(d) })
-    return () => { cancelled = true }
-  }, [alertId])
+    if (!alertId || !alertData) { setAlert(null); return }
+    setAlert({
+      ...alertData,
+      connections: alertData.connections ?? [],
+      anchorDecision: alertData.anchorDecision,
+    })
+  }, [alertId, alertData])
 
   useEffect(() => {
     setRowConfirm(null)
@@ -524,19 +555,52 @@ export function AlertDetailPanel({ alertId, itemId, clusterId, listTab, requeste
   const isBrigade = alert?.mode === 'flag' && alert?.flagType === 'brigade'
 
   useEffect(() => {
-    if (alertId || !itemId) { setPostDetail(null); return }
-    let cancelled = false
-    fetchPostDetail(itemId).then(d => { if (!cancelled && d) setPostDetail(d) })
-    return () => { cancelled = true }
-  }, [itemId, alertId])
+    if (alertId || !itemId || !itemData) { setPostDetail(null); return }
+    setPostDetail({
+      post: {
+        id: itemData.id,
+        title: itemData.title ?? null,
+        text: itemData.text,
+        author: itemData.authorName,
+        createdAt: itemData.createdAt,
+        entities: itemData.entities ?? [],
+        clusterLabel: itemData.clusterLabel ?? null,
+        replyCount: itemData.commentCount ?? 0,
+        permalink: itemData.permalink,
+      },
+      comments: (itemData.comments ?? []).map(c => ({
+        id: c.id,
+        text: c.text,
+        author: c.author,
+        createdAt: c.createdAt,
+        entities: c.entities ?? [],
+        clusterLabel: c.clusterLabel ?? null,
+      })),
+    })
+  }, [itemId, alertId, itemData])
 
   useEffect(() => {
-    if (!clusterId) { setClusterDetail(null); return }
+    if (!clusterId || !clusterData) { setClusterDetail(null); return }
     setExpandedPostId(null)
-    let cancelled = false
-    fetchClusterDetail(clusterId).then(d => { if (!cancelled && d) setClusterDetail(d) })
-    return () => { cancelled = true }
-  }, [clusterId])
+    setClusterDetail({
+      id: clusterData.id,
+      label: clusterData.label,
+      isOrphan: clusterData.isOrphan,
+      postCount: clusterData.postCount,
+      commentCount: clusterData.commentCount,
+      recentCount: clusterData.recentCount,
+      lastActivity: clusterData.lastActivity,
+      posts: (clusterData.posts ?? []).map(p => ({
+        id: p.id,
+        title: p.title,
+        text: p.text,
+        author: p.author,
+        createdAt: p.createdAt,
+        commentCount: p.commentCount,
+        permalink: p.permalink,
+      })),
+    })
+  }, [clusterId, clusterData])
 
   useEffect(() => {
     if (!expandedPostId) return
@@ -1005,6 +1069,11 @@ export function AlertDetailPanel({ alertId, itemId, clusterId, listTab, requeste
                     draft={activeDraft}
                     published={publishedDraft}
                     onDraftChange={setSurfaceDraft}
+                    onPublished={async () => {
+                      const fresh = await fetchAlertDetail(alert.id)
+                      setAlert(fresh)
+                      onStatusChange()
+                    }}
                   />
                 )}
 
