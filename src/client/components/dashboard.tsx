@@ -102,8 +102,10 @@ export function Dashboard() {
     if (alertsLoading) return
     if (alerts.length === 0) return
     initialSelectionRef.current = true
-    setSelectedAlertId(alerts[0].id)
-    setContentView('detail')
+    const isDesktop = window.innerWidth >= 1024
+    if (isDesktop) {
+      setSelectedAlertId(alerts[0].id)
+    }
   }, [alerts, alertsLoading])
 
   const loadClusters = useCallback(async () => {
