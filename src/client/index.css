@@ -251,25 +251,5 @@
   .markdown th { @apply bg-muted/50 text-left font-semibold; }
   .markdown td, .markdown th { @apply border border-border px-3 py-2; }
   .markdown a { @apply text-foreground underline underline-offset-2; }
-
-  .rdp-root {
-    --rdp-accent-color: var(--foreground);
-    --rdp-accent-background-color: var(--accent);
-  }
-  .rdp-selected .rdp-day_button,
-  .rdp-range_start .rdp-day_button,
-  .rdp-range_end .rdp-day_button {
-    background-color: var(--foreground);
-    color: var(--background);
-    border: none;
-  }
-  .rdp-range_middle .rdp-day_button {
-    background-color: var(--accent);
-    color: var(--foreground);
-    border: none;
-  }
-  .rdp-day_button:focus-visible {
-    outline: none;
-    box-shadow: 0 0 0 2px var(--ring);
-  }
 }
+

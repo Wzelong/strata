@@ -230,6 +230,7 @@ export interface ClusterStatus {
 
 export async function fetchClusterStatus(): Promise<ClusterStatus> {
   const res = await fetch('/api/clusters/status')
+  if (!res.ok) return { lastRun: 0, totalItems: 0, clusters: 0, orphans: 0, relabeled: 0, elapsedMs: 0, pendingItems: 0 }
   return res.json()
 }
 
@@ -313,7 +314,7 @@ export async function fetchClusterDetail(id: string): Promise<ClusterDetail | nu
 
 // --- Backfill ---
 
-export type IngestPhase = 'idle' | 'submit' | 'embedding' | 'extracting' | 'entity-embedding' | 'storing' | 'done' | 'error' | 'cancelled'
+export type IngestPhase = 'idle' | 'submit' | 'embedding' | 'extracting' | 'entity-embedding' | 'storing' | 'realtime-ingest' | 'clustering' | 'done' | 'error' | 'cancelled'
 
 export interface IngestStatus {
   phase: IngestPhase
@@ -322,6 +323,8 @@ export interface IngestStatus {
   startedAt: number
   endedAt: number | null
   error: string | null
+  backfillId?: string | null
+  mode?: 'realtime' | 'batch'
   embCompleted?: number
   embTotal?: number
   extractCompleted?: number
@@ -344,6 +347,8 @@ export async function fetchIngestStatus(): Promise<IngestStatus> {
     startedAt: raw.startedAt ?? 0,
     endedAt: raw.endedAt ?? null,
     error: raw.error ?? null,
+    backfillId: raw.backfillId ?? null,
+    mode: raw.mode ?? 'batch',
     embCompleted: raw.embCompleted ?? 0,
     embTotal: raw.embTotal ?? 0,
     extractCompleted: raw.extractCompleted ?? 0,
@@ -366,8 +371,7 @@ export interface BackfillEstimate {
   currentBytes: number
   capacityBytes: number
   willExceed: boolean
-  egressRisk?: boolean
-  egressSafeItems?: number
+  realtimeEstimate?: { estimatedMinutes: number; estimatedCostUsd: number }
   currentItemCount: number
   itemCapacity: number
   from: string
@@ -383,11 +387,11 @@ export async function previewBackfill(from: string, to: string, demo = false): P
   return res.json()
 }
 
-export async function confirmBackfill(token: string): Promise<{ id: string; totalItems: number } | { error: string }> {
+export async function confirmBackfill(token: string, mode: 'realtime' | 'batch' = 'batch'): Promise<{ id: string; totalItems: number } | { error: string }> {
   const res = await fetch('/api/backfill/confirm', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ token }),
+    body: JSON.stringify({ token, mode }),
   })
   return res.json()
 }

@@ -66,7 +66,7 @@ export function ConfirmDialog({
               destructive && 'bg-destructive text-destructive-foreground hover:bg-destructive/90',
             )}
           >
-            {busy ? 'Working…' : actionLabel}
+            {busy ? `${actionLabel}…` : actionLabel}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

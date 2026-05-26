@@ -6,7 +6,7 @@ import { useIngestStatus, refreshIngestStatus } from '../hooks/use-ingest-status
 import { useScanStatus, refreshScanStatus } from '../hooks/use-scan-status.js'
 import { useScanHistory } from '../hooks/use-scan-history.js'
 import { OnboardingForm } from './onboarding-form.js'
-import { BackfillProgress } from './backfill-progress.js'
+import { BackfillCard } from './backfill-card.js'
 import { ScanProgress } from './scan-progress.js'
 import { ConfirmDialog } from './confirm-dialog.js'
 import {
@@ -78,9 +78,7 @@ export function SettingsView({ onBack, forceForm }: Props) {
 
         <Section title="Backfill">
           {isBackfillRunning ? (
-            <div className="rounded-lg border border-border bg-muted/20 p-6 min-h-[260px]">
-              <BackfillProgress backfillId={runningBfRecord?.id} />
-            </div>
+            <BackfillCard />
           ) : showForm ? (
             <div className="rounded-lg border border-border p-6">
               <OnboardingForm onStarted={handleStarted} />
@@ -97,7 +95,9 @@ export function SettingsView({ onBack, forceForm }: Props) {
 
           {bfHistory && bfHistory.records.length > 0 && (
             <div className="rounded-lg border border-border divide-y divide-border">
-              {bfHistory.records.map(r => <BackfillHistoryRow key={r.id} record={r} onCancelled={refreshBfHistory} />)}
+              {bfHistory.records
+                .filter(r => !(r.status === 'running' && isBackfillRunning))
+                .map(r => <BackfillHistoryRow key={r.id} record={r} onCancelled={refreshBfHistory} />)}
             </div>
           )}
         </Section>
@@ -135,6 +135,7 @@ export function SettingsView({ onBack, forceForm }: Props) {
         <DangerZone
           onChanged={async () => {
             await Promise.all([refreshStats(), refreshIngestStatus(), refreshScanStatus(), refreshBfHistory(), refreshScanHistory()])
+            onBack?.()
           }}
         />
 
@@ -249,9 +250,11 @@ function ClustersSection() {
     try {
       const [s, c] = await Promise.all([fetchClusterStatus(), fetchClusterConfig()])
       setStatus(s)
-      setConfig(c)
-      setResolution(c.resolution)
-      setMinSize(c.minClusterSize)
+      if (c?.resolution != null) {
+        setConfig(c)
+        setResolution(c.resolution)
+        setMinSize(c.minClusterSize)
+      }
     } catch {}
   }
 

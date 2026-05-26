@@ -12,10 +12,11 @@ import {
   buildEmbeddingJsonl, buildExtractionJsonl, buildEntityEmbeddingJsonl,
   submitBatch, checkBatch, downloadBatchResults,
   parseEmbeddingResults, parseExtractionResults, storeResults,
+  ingestChunkRealTime,
 } from '../engine/batch-ingest.js'
 import { buildScanPairs, classifyAndCreateAlerts, type ScanPair } from '../engine/scan.js'
 import { routeFlag, formatReportReason, brigadeLockKey, BRIGADE_LOCK_TTL_MS } from '../engine/flag-routing.js'
-import { estimateBackfill, estimateCurrentBytes, ITEM_CAPACITY } from './backfill-estimates.js'
+import { estimateBackfill, estimateBackfillRealtime, estimateCurrentBytes, ITEM_CAPACITY, RT_ITEMS_PER_TICK, RT_TICK_SPACING_MS } from './backfill-estimates.js'
 import { recordUsage, getUsageSummary } from './usage.js'
 import { createChatHandler } from './chat/route.js'
 import { runRecluster, assignItemLive, ClusterRepo } from './cluster-pipeline.js'
@@ -1061,6 +1062,46 @@ app.post('/internal/scheduler/ingest-batch', async (c) => {
     if (!apiKey) { console.warn('[Strata] ingest-batch: no API key, skipping'); return c.json({ status: 'ok' }) }
     const openai = new OpenAI({ apiKey })
 
+    // --- Real-time path ---
+    if (status.mode === 'realtime' && status.phase === 'realtime-ingest') {
+      const order: string[] = JSON.parse((await redis.get('strata:ingest:order')) || '[]')
+      const processedSoFar = parseInt(status.processed || '0', 10)
+      const totalItems = parseInt(status.totalItems || '0', 10)
+
+      const chunkIds = order.slice(processedSoFar, processedSoFar + RT_ITEMS_PER_TICK)
+      if (chunkIds.length === 0) {
+        await redis.del('strata:ingest:raw')
+        await redis.del('strata:ingest:order')
+        await redis.hSet('strata:ingest:status', { phase: 'clustering', processed: String(processedSoFar), lastPolledAt: String(Date.now()) })
+        await redis.set('strata:backfill:complete', '1')
+        if (status.backfillId) await updateBackfillRecord(status.backfillId, { processed: processedSoFar })
+        console.log(`[Strata] Real-time ingest complete: ${processedSoFar} items, starting recluster`)
+        try {
+          await scheduler.runJob({ name: 'recluster', runAt: new Date(Date.now() + 1000), data: { fromBackfill: true } })
+        } catch (err) { console.error('[Strata] Post-backfill recluster schedule failed:', err) }
+        return c.json({ status: 'ok' })
+      }
+
+      const chunkRaw: RawItem[] = []
+      for (const id of chunkIds) {
+        const v = await redis.hGet('strata:ingest:raw', id)
+        if (v) chunkRaw.push(JSON.parse(v))
+      }
+
+      try {
+        const stored = await ingestChunkRealTime(openai, redis, chunkRaw)
+        const newProcessed = processedSoFar + stored
+        await redis.hSet('strata:ingest:status', { processed: String(newProcessed), lastPolledAt: String(Date.now()) })
+        if (status.backfillId) await updateBackfillRecord(status.backfillId, { processed: newProcessed })
+        console.log(`[Strata] Real-time tick: ${newProcessed}/${totalItems} items`)
+      } catch (err) {
+        console.warn(`[Strata] Real-time tick failed (transient), retrying: ${err}`)
+      }
+      await scheduler.runJob({ name: 'ingest-batch', runAt: new Date(Date.now() + RT_TICK_SPACING_MS), data: {} })
+      return c.json({ status: 'ok' })
+    }
+
+    // --- Batch path ---
     const phase = status.phase as string
     const chunkIndex = parseInt(status.chunkIndex || '0', 10)
     const chunkCount = parseInt(status.chunkCount || '1', 10)
@@ -1082,9 +1123,12 @@ app.post('/internal/scheduler/ingest-batch', async (c) => {
       const chunkRaw = await loadChunkRaw()
       const normalizedItems = chunkRaw.map(r => ({ id: r.id, text: normalize(r.title ? `${r.title}\n\n${r.text}` : r.text) }))
       try {
+        const embJsonl = buildEmbeddingJsonl(normalizedItems)
+        const extractJsonl = buildExtractionJsonl(normalizedItems)
+        console.log(`[Strata] Chunk ${chunkIndex + 1}/${chunkCount} JSONL sizes: emb=${(embJsonl.length / 1024).toFixed(1)}KB, extract=${(extractJsonl.length / 1024).toFixed(1)}KB (${normalizedItems.length} items)`)
         const [embBatchId, extractBatchId] = await Promise.all([
-          submitBatch(openai, buildEmbeddingJsonl(normalizedItems), '/v1/embeddings', 'ingest-emb.jsonl'),
-          submitBatch(openai, buildExtractionJsonl(normalizedItems), '/v1/responses', 'ingest-extract.jsonl'),
+          submitBatch(openai, embJsonl, '/v1/embeddings', 'ingest-emb.jsonl'),
+          submitBatch(openai, extractJsonl, '/v1/responses', 'ingest-extract.jsonl'),
         ])
         await redis.hSet('strata:ingest:status', {
           phase: 'embedding', embBatchId, extractBatchId,
@@ -1561,27 +1605,35 @@ app.post('/api/chat', async (c) => {
 app.get('/api/clusters', async (c) => {
   const repo = new ClusterRepo(redis)
   const rows = await repo.listBySize(500)
-  const ids = await store.getItemIds()
-  const items = (await Promise.all(ids.map(id => store.getItem(id)))).filter((x): x is StoredItem => !!x)
-  const sizeByCluster = new Map<number, number>()
-  const latestActivity = new Map<number, number>()
+  const allItems = await listAllItemsViaHScan()
+  const postsByCluster = new Map<number, number>()
+  const commentsByCluster = new Map<number, number>()
+  const lastActivityByCluster = new Map<number, number>()
   const recent24h = Date.now() - 86_400_000
-  const recentCounts = new Map<number, number>()
-  for (const it of items) {
+  const recentByCluster = new Map<number, number>()
+  for (const it of allItems) {
     if (it.clusterId === undefined || it.clusterId === -1) continue
-    sizeByCluster.set(it.clusterId, (sizeByCluster.get(it.clusterId) ?? 0) + 1)
-    latestActivity.set(it.clusterId, Math.max(latestActivity.get(it.clusterId) ?? 0, it.createdAt))
-    if (it.createdAt >= recent24h) recentCounts.set(it.clusterId, (recentCounts.get(it.clusterId) ?? 0) + 1)
+    if (it.type === 'post') postsByCluster.set(it.clusterId, (postsByCluster.get(it.clusterId) ?? 0) + 1)
+    else commentsByCluster.set(it.clusterId, (commentsByCluster.get(it.clusterId) ?? 0) + 1)
+    lastActivityByCluster.set(it.clusterId, Math.max(lastActivityByCluster.get(it.clusterId) ?? 0, it.createdAt))
+    if (it.createdAt >= recent24h) recentByCluster.set(it.clusterId, (recentByCluster.get(it.clusterId) ?? 0) + 1)
   }
-  return c.json(rows.map(r => ({
-    id: `cluster:${r.id}`,
-    label: r.label,
-    postCount: 0,
-    commentCount: 0,
-    totalCount: sizeByCluster.get(r.id) ?? r.size,
-    recentCount: recentCounts.get(r.id) ?? 0,
-    lastActivity: latestActivity.get(r.id) ?? 0,
-  })))
+  const now = Date.now()
+  return c.json({ clusters: rows.map(r => {
+    const lastActivity = lastActivityByCluster.get(r.id) ?? 0
+    const ageHours = lastActivity > 0 ? (now - lastActivity) / 3_600_000 : 999
+    const hotScore = r.size / (1 + ageHours)
+    return {
+      id: `cluster:${r.id}`,
+      label: r.label,
+      isOrphan: r.size <= 1,
+      postCount: postsByCluster.get(r.id) ?? 0,
+      commentCount: commentsByCluster.get(r.id) ?? 0,
+      recentCount: recentByCluster.get(r.id) ?? 0,
+      lastActivity,
+      hotScore,
+    }
+  }) })
 })
 
 app.get('/api/clusters/:id', async (c) => {
@@ -1592,9 +1644,8 @@ app.get('/api/clusters/:id', async (c) => {
   const resolved = await repo.resolveAlias(id)
   const meta = await repo.getMeta(resolved)
   if (!meta) return c.json({ error: 'Not found' }, 404)
-  const ids = await store.getItemIds()
-  const items = (await Promise.all(ids.map(id => store.getItem(id)))).filter((x): x is StoredItem => !!x)
-  const members = items.filter(it => it.clusterId === resolved)
+  const allItems = await listAllItemsViaHScan()
+  const members = allItems.filter(it => it.clusterId === resolved)
   const posts = members.filter(it => it.type === 'post').sort((a, b) => b.createdAt - a.createdAt)
   const comments = members.filter(it => it.type === 'comment')
   return c.json({
@@ -1612,7 +1663,7 @@ app.get('/api/clusters/:id', async (c) => {
       author: p.authorName,
       createdAt: p.createdAt,
       permalink: null,
-      commentCount: 0,
+      commentCount: allItems.filter(it => it.threadRootId === p.id && it.type === 'comment').length,
     })),
   })
 })
@@ -1651,12 +1702,35 @@ async function runReclusterAndRecord(): Promise<{ ok: true; report: Awaited<Retu
 }
 
 app.post('/internal/scheduler/recluster', async (c) => {
+  const input = await c.req.json<{ data?: { fromBackfill?: boolean } }>().catch(() => ({ data: undefined }))
+  const body = { fromBackfill: input.data?.fromBackfill ?? false }
   const result = await runReclusterAndRecord()
   if (!result.ok) {
     console.error('[Strata] Recluster failed:', result.error)
+    if (body.fromBackfill) {
+      const endedAt = Date.now()
+      const ingestStatus = await redis.hGetAll('strata:ingest:status')
+      await redis.hSet('strata:ingest:status', { phase: 'done', endedAt: String(endedAt) })
+      if (ingestStatus?.backfillId) await updateBackfillRecord(ingestStatus.backfillId, { status: 'done', endedAt, totalItems: parseInt(ingestStatus.processed || '0'), processed: parseInt(ingestStatus.processed || '0') })
+      console.log('[Strata] Backfill complete (recluster failed, continuing)')
+    }
     return c.json({ error: result.error })
   }
+  await redis.del('strata:graph:layout')
   console.log('[Strata] Recluster:', result.report)
+  if (body.fromBackfill) {
+    const endedAt = Date.now()
+    const ingestStatus = await redis.hGetAll('strata:ingest:status')
+    await redis.hSet('strata:ingest:status', { phase: 'done', endedAt: String(endedAt) })
+    if (ingestStatus?.backfillId) await updateBackfillRecord(ingestStatus.backfillId, { status: 'done', endedAt, totalItems: parseInt(ingestStatus.processed || '0'), processed: parseInt(ingestStatus.processed || '0') })
+    console.log('[Strata] Backfill complete (processing + clustering)')
+    try {
+      const scanId = generateAlertId()
+      await redis.hSet('strata:scan:status', { phase: 'building', startedAt: String(Date.now()), scanId, anchorsProcessed: '0', anchorsTotal: '0' })
+      await putScanRecord({ id: scanId, status: 'running', startedAt: Date.now(), endedAt: null, anchorsTotal: 0, anchorsProcessed: 0, alertsCreated: 0, autoTriggered: true, initiatedBy: 'auto-scan' })
+      await scheduler.runJob({ name: 'scan', runAt: new Date(Date.now() + 1000), data: { step: 'build' } })
+    } catch (err) { console.error('[Strata] Background scan schedule failed:', err) }
+  }
   return c.json(result.report)
 })
 
@@ -1666,6 +1740,7 @@ app.post('/api/clusters/recluster', async (c) => {
     if (result.auth) return c.json({ error: 'invalid_api_key' }, 401)
     return c.json({ error: result.error }, 500)
   }
+  await redis.del('strata:graph:layout')
   return c.json(result.report)
 })
 
@@ -1726,17 +1801,83 @@ const HUB_MIN_COUNT = 10
 const HUB_RATIO = 0.03
 const ENTITY_EMBED_SIM_THRESHOLD = 0.78
 const STRING_ONLY_ENTITY_TYPES = new Set(['quantity', 'url', 'username', 'phone', 'email'])
-const GRAPH_POSITION_SCALE = 10
+import { UMAP } from 'umap-js'
 
-function positionForEmbedding(emb: number[]): [number, number, number] {
-  if (emb.length < 3) return [0, 0, 0]
-  return [emb[0] * GRAPH_POSITION_SCALE, emb[1] * GRAPH_POSITION_SCALE, emb[2] * GRAPH_POSITION_SCALE]
+function normalizeCoords(coords: number[][], n: number): number[][] {
+  const targetRadius = 10 * Math.pow(n / 200, 1 / 3)
+  let sum = 0, sumSq = 0, count = 0
+  for (const p of coords) for (const v of p) { sum += v; sumSq += v * v; count++ }
+  const mean = count > 0 ? sum / count : 0
+  const std = count > 1 ? Math.sqrt((sumSq - sum * sum / count) / (count - 1)) : 1
+  const denom = (std * 2) || 1
+  return coords.map(p => p.map(v => ((v - mean) / denom) * targetRadius))
+}
+
+function computeLayout(embeddings: number[][], n: number): number[][] {
+  if (n < 3) return embeddings.map(() => [0, 0, 0])
+  const nNeighbors = Math.max(10, Math.min(50, Math.floor(Math.sqrt(n))))
+  const umap = new UMAP({ nComponents: 3, nNeighbors, minDist: 0.5, spread: 2.0 })
+  const coords = umap.fit(embeddings)
+  return normalizeCoords(coords, n)
+}
+
+async function listAllItemsViaHScan(): Promise<StoredItem[]> {
+  const items: StoredItem[] = []
+  let cursor = 0
+  do {
+    const scan = await redis.hScan('strata:items', cursor, undefined, 500)
+    cursor = scan.cursor
+    const entries = scan.fieldValues as any
+    if (Array.isArray(entries)) {
+      for (const entry of entries) {
+        try { items.push(JSON.parse(entry.value) as StoredItem) } catch {}
+      }
+    } else {
+      for (const value of Object.values(entries)) {
+        try { items.push(JSON.parse(value as string) as StoredItem) } catch {}
+      }
+    }
+  } while (cursor !== 0)
+  return items
 }
 
 async function listAllItemsSorted(): Promise<StoredItem[]> {
-  const ids = await store.getItemIds()
-  const items = await Promise.all(ids.map(id => store.getItem(id)))
-  return items.filter((x): x is StoredItem => !!x).sort((a, b) => b.createdAt - a.createdAt)
+  const items: StoredItem[] = []
+  let cursor: number | string = '+inf'
+  while (true) {
+    const entries = await redis.zRange('strata:idx:time', '-inf', cursor as any, {
+      by: 'score', reverse: true, limit: { offset: 0, count: 500 },
+    })
+    if (entries.length === 0) break
+    for (const e of entries) {
+      const raw = await redis.hGet('strata:items', e.member)
+      if (raw) items.push(JSON.parse(raw) as StoredItem)
+    }
+    cursor = entries[entries.length - 1].score - 1
+    if (entries.length < 500) break
+  }
+  return items
+}
+
+async function listPostsSorted(limit = 500): Promise<StoredItem[]> {
+  const posts: StoredItem[] = []
+  let cursor: number | string = '+inf'
+  while (posts.length < limit) {
+    const entries = await redis.zRange('strata:idx:time', '-inf', cursor as any, {
+      by: 'score', reverse: true, limit: { offset: 0, count: 200 },
+    })
+    if (entries.length === 0) break
+    for (const e of entries) {
+      if (posts.length >= limit) break
+      const raw = await redis.hGet('strata:items', e.member)
+      if (!raw) continue
+      const item = JSON.parse(raw) as StoredItem
+      if (item.type === 'post') posts.push(item)
+    }
+    cursor = entries[entries.length - 1].score - 1
+    if (entries.length < 200) break
+  }
+  return posts
 }
 
 async function loadClusterLabelMap(): Promise<Map<number, string>> {
@@ -1857,9 +1998,7 @@ app.get('/api/threads/:postId', async (c) => {
 })
 
 app.get('/api/graph', async (c) => {
-  const items = await listAllItemsSorted()
-  const ids = items.map(i => i.id)
-  const embMap = await store.getEmbeddings(ids)
+  const items = await listAllItemsViaHScan()
   const labelById = await loadClusterLabelMap()
   const { alerts } = await alertStore.listAlerts({ limit: 1000 })
   const alertIncludeIds = new Set<string>()
@@ -1878,30 +2017,54 @@ app.get('/api/graph', async (c) => {
   for (const i of items) if (i.parentId) replyCount.set(i.parentId, (replyCount.get(i.parentId) ?? 0) + 1)
   const maxReplies = Math.max(1, ...replyCount.values())
 
-  const nodes = items
-    .filter(i => i.type === 'post' || alertIncludeIds.has(i.id))
-    .map(i => {
-      const emb = embMap.get(i.id) ?? []
-      const [x, y, z] = positionForEmbedding(emb)
-      return {
-        id: i.id,
-        qualname: i.id,
-        symbol_name: i.title ?? i.text.slice(0, 60),
-        title: i.title ?? null,
-        text: i.text,
-        author: i.authorName,
-        created_at: i.createdAt,
-        reply_count: replyCount.get(i.id) ?? 0,
-        kind: i.type,
-        cluster_label: i.clusterId !== undefined && i.clusterId !== -1 ? (labelById.get(i.clusterId) ?? null) : null,
-        hub_score: (replyCount.get(i.id) ?? 0) / maxReplies,
-        thread_root_id: i.threadRootId,
-        thread_title: i.type === 'comment' ? (titleById.get(i.threadRootId) ?? threadTitleFromAlerts.get(i.id) ?? null) : null,
-        parent_id: i.parentId,
-        x2d: x, y2d: y,
-        x3d: x, y3d: y, z3d: z,
-      }
-    })
+  const filteredItems = items.filter(i => i.type === 'post' || alertIncludeIds.has(i.id))
+
+  let layoutMap = new Map<string, number[]>()
+  const cachedLayout = await redis.get('strata:graph:layout')
+  if (cachedLayout) {
+    try {
+      const parsed = JSON.parse(cachedLayout) as Array<[string, number[]]>
+      layoutMap = new Map(parsed)
+    } catch {}
+  }
+
+  const needsLayout = filteredItems.some(i => !layoutMap.has(i.id))
+  if (needsLayout || layoutMap.size === 0) {
+    const layoutIds = filteredItems.map(i => i.id)
+    const embMap = await store.getEmbeddings(layoutIds)
+    const validIds = layoutIds.filter(id => embMap.has(id))
+    const validEmbs = validIds.map(id => embMap.get(id)!)
+    console.log(`[Strata] /api/graph: computing UMAP for ${validEmbs.length} items...`)
+    if (validEmbs.length > 2) {
+      const t = Date.now()
+      const positions = computeLayout(validEmbs, validEmbs.length)
+      console.log(`[Strata] /api/graph: UMAP done in ${Date.now() - t}ms`)
+      for (let i = 0; i < validIds.length; i++) layoutMap.set(validIds[i], positions[i])
+      await redis.set('strata:graph:layout', JSON.stringify([...layoutMap.entries()]))
+    }
+  }
+
+  const nodes = filteredItems.map(i => {
+    const pos = layoutMap.get(i.id) ?? [0, 0, 0]
+    return {
+      id: i.id,
+      qualname: i.id,
+      symbol_name: i.title ?? i.text.slice(0, 60),
+      title: i.title ?? null,
+      text: i.text,
+      author: i.authorName,
+      created_at: i.createdAt,
+      reply_count: replyCount.get(i.id) ?? 0,
+      kind: i.type,
+      cluster_label: i.clusterId !== undefined && i.clusterId !== -1 ? (labelById.get(i.clusterId) ?? null) : null,
+      hub_score: (replyCount.get(i.id) ?? 0) / maxReplies,
+      thread_root_id: i.threadRootId,
+      thread_title: i.type === 'comment' ? (titleById.get(i.threadRootId) ?? threadTitleFromAlerts.get(i.id) ?? null) : null,
+      parent_id: i.parentId,
+      x2d: pos[0], y2d: pos[1],
+      x3d: pos[0], y3d: pos[1], z3d: pos[2],
+    }
+  })
 
   const clusterRepo = new ClusterRepo(redis)
   const clusterRows = await clusterRepo.listBySize(1000)
@@ -1932,9 +2095,14 @@ app.post('/api/graph/extra-nodes', async (c) => {
   const titleById = new Map<string, string | null>()
   for (const i of allItems) if (i && i.type === 'post') titleById.set(i.id, i.title ?? null)
 
+  let layoutMap = new Map<string, number[]>()
+  const cachedLayout = await redis.get('strata:graph:layout')
+  if (cachedLayout) {
+    try { layoutMap = new Map(JSON.parse(cachedLayout) as Array<[string, number[]]>) } catch {}
+  }
+
   const nodes = items.map(i => {
-    const emb = embMap.get(i.id) ?? []
-    const [x, y, z] = positionForEmbedding(emb)
+    const pos = layoutMap.get(i.id) ?? [0, 0, 0]
     return {
       id: i.id,
       qualname: i.id,
@@ -1950,8 +2118,8 @@ app.post('/api/graph/extra-nodes', async (c) => {
       thread_root_id: i.threadRootId,
       thread_title: i.type === 'comment' ? (titleById.get(i.threadRootId) ?? null) : null,
       parent_id: i.parentId,
-      x2d: x, y2d: y,
-      x3d: x, y3d: y, z3d: z,
+      x2d: pos[0], y2d: pos[1],
+      x3d: pos[0], y3d: pos[1], z3d: pos[2],
     }
   })
   return c.json({ nodes })
@@ -2028,6 +2196,8 @@ app.get('/api/ingest/status', async (c) => {
     chunkIndex: num('chunkIndex'),
     chunkCount: num('chunkCount'),
     waitingUntil: status.waitingUntil ? num('waitingUntil') : null,
+    backfillId: status.backfillId || null,
+    mode: status.mode || 'batch',
   })
 })
 
@@ -2042,10 +2212,7 @@ let seedRawCache: RawItem[] | null = null
 
 function getSeedRawItems(): RawItem[] {
   if (seedRawCache) return seedRawCache
-  const items = seedRawItems as RawItem[]
-  const maxCreatedAt = items.reduce((m, it) => Math.max(m, it.createdAt), 0)
-  const shift = Date.now() - maxCreatedAt
-  seedRawCache = items.map(it => ({ ...it, createdAt: it.createdAt + shift }))
+  seedRawCache = seedRawItems as RawItem[]
   return seedRawCache
 }
 
@@ -2103,6 +2270,7 @@ app.post('/api/backfill/preview', async (c) => {
   const currentCount = await store.getItemCount()
   const currentBytes = estimateCurrentBytes(currentCount)
   const estimate = estimateBackfill(rawItems.length, currentBytes)
+  const rtEstimate = estimateBackfillRealtime(rawItems.length, currentBytes)
   const willExceedItemCap = currentCount + rawItems.length > ITEM_CAPACITY
 
   const token = generateAlertId()
@@ -2111,18 +2279,11 @@ app.post('/api/backfill/preview', async (c) => {
     expiration: new Date(Date.now() + TTL_MS),
   })
 
-  // Devvit caps outbound bytes per app per domain. The extraction batch repeats
-  // a ~2KB system prompt per item, so large backfills blow that budget. Warn
-  // above a conservative item count so mods pick smaller windows.
-  const EGRESS_SAFE_ITEMS = 1500
-  const egressRisk = rawItems.length > EGRESS_SAFE_ITEMS
-
   return c.json({
     token,
     ...estimate,
+    realtimeEstimate: { estimatedMinutes: rtEstimate.estimatedMinutes, estimatedCostUsd: rtEstimate.estimatedCostUsd },
     willExceed: estimate.willExceed || willExceedItemCap,
-    egressRisk,
-    egressSafeItems: EGRESS_SAFE_ITEMS,
     currentItemCount: currentCount,
     itemCapacity: ITEM_CAPACITY,
     from,
@@ -2132,7 +2293,7 @@ app.post('/api/backfill/preview', async (c) => {
 
 app.post('/api/backfill/confirm', async (c) => {
   if (!context.subredditName) return c.json({ error: 'No subreddit context' }, 400)
-  const { token } = await c.req.json<{ token: string }>()
+  const { token, mode = 'batch' } = await c.req.json<{ token: string; mode?: 'realtime' | 'batch' }>()
   if (!token) return c.json({ error: 'token required' }, 400)
 
   const current = await redis.hGetAll('strata:ingest:status')
@@ -2162,12 +2323,15 @@ app.post('/api/backfill/confirm', async (c) => {
     await redis.set('strata:ingest:order', JSON.stringify(rawItems.map(i => i.id)))
 
     const backfillId = generateAlertId()
-    const estimate = estimateBackfill(rawItems.length, estimateCurrentBytes(currentCount))
+    const estimate = mode === 'realtime'
+      ? estimateBackfillRealtime(rawItems.length, estimateCurrentBytes(currentCount))
+      : estimateBackfill(rawItems.length, estimateCurrentBytes(currentCount))
     const initiatedBy = context.userId || 'unknown'
     const chunkCount = Math.ceil(rawItems.length / INGEST_CHUNK_SIZE)
 
     await redis.hSet('strata:ingest:status', {
-      phase: 'submit',
+      phase: mode === 'realtime' ? 'realtime-ingest' : 'submit',
+      mode,
       totalItems: String(rawItems.length),
       processed: '0',
       chunkIndex: '0',
@@ -2302,39 +2466,27 @@ app.post('/api/alerts/reset', async (c) => {
 })
 
 async function resetStrataData(): Promise<number> {
-  const ids = await store.getItemIds()
-  if (ids.length > 0) await store.deleteItems(ids)
+  const count = await store.getItemCount()
   const ENTITY_TYPES = ['person', 'location', 'object', 'organization', 'phone', 'email', 'url', 'username', 'quantity']
-  for (const t of ENTITY_TYPES) await redis.del(`strata:entity-emb:${t}`)
-  await redis.del('strata:entity-hub-counts')
-  await redis.del('strata:cases')
-  await redis.del('strata:rules')
-  await redis.del('strata:backfill:complete')
-  await redis.del('strata:backfill:history')
-  await redis.del('strata:scan:history')
-  await redis.del('strata:scan:status')
-  await redis.del('strata:scan:pairs')
-  await redis.del('strata:scan:new-alert-ids')
-  await redis.del('strata:ingest:status')
-  await redis.del('strata:ingest:raw')
-  await redis.del('strata:ingest:embeddings')
-  await redis.del('strata:ingest:entities')
-  await redis.del('strata:seed:complete')
-  await redis.del('strata:community-context')
-  // Cluster state
-  const clusterRepo = new ClusterRepo(redis)
-  const clusterRows = await clusterRepo.listBySize(2000)
-  for (const row of clusterRows) await redis.del(`strata:cluster:meta:${row.id}`)
-  await redis.del('strata:cluster:ids-by-size')
-  await redis.del('strata:cluster:centroids')
-  await redis.del('strata:cluster:alias')
-  await redis.del('strata:cluster:counter')
-  await redis.del('strata:cluster:config')
-  await redis.del('strata:cluster:status')
-  await redis.del('strata:cluster:ingest-counter')
+  const keys = [
+    'strata:items', 'strata:embeddings', 'strata:idx:time',
+    'strata:entity-hub-counts', 'strata:cases', 'strata:rules',
+    'strata:backfill:complete', 'strata:backfill:history',
+    'strata:scan:history', 'strata:scan:status', 'strata:scan:pairs', 'strata:scan:new-alert-ids',
+    'strata:ingest:status', 'strata:ingest:raw', 'strata:ingest:order',
+    'strata:ingest:embeddings', 'strata:ingest:entities',
+    'strata:seed:complete', 'strata:community-context',
+    'strata:cluster:ids-by-size', 'strata:cluster:centroids',
+    'strata:cluster:alias', 'strata:cluster:counter',
+    'strata:cluster:config', 'strata:cluster:status', 'strata:cluster:ingest-counter',
+    'strata:graph:layout',
+    ...ENTITY_TYPES.map(t => `strata:entity-emb:${t}`),
+    ...ENTITY_TYPES.map(t => `strata:idx:entity-surfaces:${t}`),
+  ]
+  for (const key of keys) await redis.del(key)
   await alertStore.resetAll()
-  console.log(`[Strata] Reset complete: ${ids.length} items removed (API key preserved)`)
-  return ids.length
+  console.log(`[Strata] Reset complete: ${count} items removed (API key preserved)`)
+  return count
 }
 
 app.post('/api/strata/reset', async (c) => {
@@ -2744,34 +2896,83 @@ app.get('/api/items', async (c) => {
   const search = c.req.query('search') || ''
 
   const maxScore = cursor !== null ? cursor - 1 : '+inf'
-  const entries = await redis.zRange('strata:idx:time', '-inf', maxScore as any, {
-    by: 'score',
-    reverse: true,
-    limit: { offset: 0, count: limit + 20 },
-  })
-
   const items: any[] = []
-  for (const entry of entries) {
-    if (items.length >= limit) break
-    const raw = await redis.hGet('strata:items', entry.member)
-    if (!raw) continue
-    const item = JSON.parse(raw) as StoredItem
-    if (type && item.type !== type) continue
-    if (search && !item.text.toLowerCase().includes(search.toLowerCase()) && !item.authorName.toLowerCase().includes(search.toLowerCase())) continue
-    items.push({
-      id: item.id,
-      type: item.type,
-      title: item.title,
-      text: item.text.slice(0, 200),
-      authorName: item.authorName,
-      createdAt: item.createdAt,
-      entityCount: item.entities.length,
+  let scanCursor = cursor !== null ? cursor - 1 : '+inf'
+  let rounds = 0
+  const MAX_ROUNDS = 10
+
+  while (items.length < limit && rounds < MAX_ROUNDS) {
+    rounds++
+    const entries = await redis.zRange('strata:idx:time', '-inf', scanCursor as any, {
+      by: 'score',
+      reverse: true,
+      limit: { offset: 0, count: 200 },
     })
+    if (entries.length === 0) break
+
+    for (const entry of entries) {
+      if (items.length >= limit) break
+      const raw = await redis.hGet('strata:items', entry.member)
+      if (!raw) continue
+      const item = JSON.parse(raw) as StoredItem
+      if (type && item.type !== type) continue
+      if (search && !item.text.toLowerCase().includes(search.toLowerCase()) && !item.authorName.toLowerCase().includes(search.toLowerCase())) continue
+      items.push({
+        id: item.id,
+        type: item.type,
+        title: item.title,
+        text: item.text.slice(0, 200),
+        authorName: item.authorName,
+        createdAt: item.createdAt,
+        entityCount: item.entities.length,
+      })
+    }
+
+    scanCursor = entries[entries.length - 1].score - 1
+    if (entries.length < 200) break
   }
 
   const nextCursor = items.length > 0 ? items[items.length - 1].createdAt : null
   const total = await redis.zCard('strata:idx:time')
   return c.json({ items, nextCursor, total })
+})
+
+// --- Debug ---
+
+app.get('/api/debug', async (c) => {
+  const timeCount = await redis.zCard('strata:idx:time')
+  const timeFirst5 = await redis.zRange('strata:idx:time', 0, 4)
+  const timeLast5 = await redis.zRange('strata:idx:time', '-inf', '+inf', { by: 'score', reverse: true, limit: { offset: 0, count: 5 } })
+
+  const itemsHashSample = await redis.hGet('strata:items', timeFirst5[0]?.member ?? '')
+  const embHashSample = await redis.hGet('strata:embeddings', timeFirst5[0]?.member ?? '')
+
+  const clusterRepo = new ClusterRepo(redis)
+  const clusterRows = await clusterRepo.listBySize(10)
+  const clusterStatus = await redis.hGetAll('strata:cluster:status')
+
+  const layoutCached = !!(await redis.get('strata:graph:layout'))
+  const ingestStatus = await redis.hGetAll('strata:ingest:status')
+
+  const decisionPending = await redis.zCard('strata:idx:decision:pending')
+
+  const sampleItem = itemsHashSample ? JSON.parse(itemsHashSample) : null
+
+  return c.json({
+    idx_time_count: timeCount,
+    idx_time_first5: timeFirst5.map(e => ({ id: e.member, score: e.score, date: new Date(e.score).toISOString() })),
+    idx_time_last5: timeLast5.map(e => ({ id: e.member, score: e.score, date: new Date(e.score).toISOString() })),
+    items_hash_has_sample: !!itemsHashSample,
+    emb_hash_has_sample: !!embHashSample,
+    sample_item_clusterId: sampleItem?.clusterId,
+    sample_item_type: sampleItem?.type,
+    sample_item_createdAt: sampleItem ? new Date(sampleItem.createdAt).toISOString() : null,
+    decision_pending_count: decisionPending,
+    cluster_status: clusterStatus,
+    cluster_rows_top10: clusterRows.map(r => ({ id: r.id, label: r.label, size: r.size })),
+    graph_layout_cached: layoutCached,
+    ingest_status: ingestStatus,
+  })
 })
 
 // --- Server ---

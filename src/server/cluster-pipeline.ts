@@ -75,7 +75,7 @@ export class ClusterRepo {
   }
 
   async listBySize(limit = 200): Promise<ClusterListRow[]> {
-    const raw = await this.redis.zRange(KEY_IDS_BY_SIZE, 0, limit - 1, { by: 'rank', reverse: true })
+    const raw = await this.redis.zRange(KEY_IDS_BY_SIZE, '-inf', '+inf', { by: 'score', reverse: true, limit: { offset: 0, count: limit } })
     const out: ClusterListRow[] = []
     for (const entry of raw) {
       const idStr = typeof entry === 'string' ? entry : entry.member

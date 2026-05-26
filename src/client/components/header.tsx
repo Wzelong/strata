@@ -1,7 +1,8 @@
-import { Moon, Sun, Settings, AlertTriangle } from 'lucide-react'
+import { Moon, Sun, Settings, AlertTriangle, Loader2 } from 'lucide-react'
 import { useTheme } from '../hooks/use-theme'
 import { useStats, refreshStats } from '../hooks/use-stats'
 import { useViewer } from '../hooks/use-viewer'
+import { useIngestStatus } from '../hooks/use-ingest-status'
 import { recheckApiKey } from '../lib/api'
 import { cn } from '../lib/utils'
 import logo from '../assets/logo.png'
@@ -15,8 +16,10 @@ export function Header({ settingsOpen, onToggleSettings }: Props) {
   const { theme, toggle } = useTheme()
   const stats = useStats()
   const { subredditName } = useViewer()
+  const ingest = useIngestStatus()
   const apiKeyInvalid = stats?.apiKeyInvalid ?? false
   const settingsUrl = subredditName ? `https://www.reddit.com/mod/${subredditName}/apps` : 'https://www.reddit.com'
+  const isBackfilling = ingest && !['idle', 'done', 'error', 'cancelled'].includes(ingest.phase)
 
   const handleRecheck = async () => {
     await recheckApiKey()
@@ -39,6 +42,15 @@ export function Header({ settingsOpen, onToggleSettings }: Props) {
       <div className="flex-1" />
 
       <div className="flex items-center gap-1 pr-[6px]">
+        {isBackfilling && (
+          <button
+            onClick={onToggleSettings}
+            className="h-7 px-2 inline-flex items-center gap-1.5 rounded-md text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-colors cursor-pointer tabular-nums"
+          >
+            <Loader2 className="size-3 animate-spin" />
+            {(ingest.processed ?? 0).toLocaleString()}/{ingest.totalItems.toLocaleString()}
+          </button>
+        )}
         {apiKeyInvalid && (
           <a
             href={settingsUrl}

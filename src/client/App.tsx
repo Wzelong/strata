@@ -6,7 +6,6 @@ import { OnboardingView } from './components/onboarding-view'
 import { ConfigureStrata } from './components/configure-strata'
 import { SettingsView } from './components/settings-view'
 import { BackfillProgress } from './components/backfill-progress'
-import { PipelineBanner } from './components/pipeline-banner'
 import { useViewer } from './hooks/use-viewer'
 import { useStats, refreshStats } from './hooks/use-stats'
 import { useIngestStatus } from './hooks/use-ingest-status'
@@ -20,12 +19,13 @@ export function App() {
 
   if (loading) return <div className="h-dvh" />
   if (!isMod) return <PublicLanding />
+  if (stats === null) return <div className="h-dvh" />
 
-  const itemCount = stats?.itemCount ?? 0
-  const needsApiKey = stats !== null && !stats.hasApiKey
+  const needsApiKey = !stats.hasApiKey
   const isBackfillRunning = ingest && !['idle', 'done', 'error', 'cancelled'].includes(ingest.phase)
+  const itemCount = Math.max(stats.itemCount ?? 0, ingest?.processed ?? 0)
   const showEmpty = itemCount === 0 && !isBackfillRunning
-  const showFullProgress = itemCount === 0 && isBackfillRunning
+  const showFullProgress = !!isBackfillRunning
 
   const openSettings = () => setSettingsOpen(true)
   const closeSettings = () => setSettingsOpen(false)
@@ -34,7 +34,7 @@ export function App() {
   if (needsApiKey) {
     body = <ConfigureStrata subredditName={subredditName} />
   } else if (showFullProgress) {
-    body = <BackfillProgress />
+    body = <BackfillProgress backfillId={ingest?.backfillId ?? undefined} subredditName={subredditName} />
   } else if (showEmpty) {
     body = <OnboardingView onStarted={() => refreshStats()} />
   } else if (settingsOpen) {
@@ -42,7 +42,6 @@ export function App() {
   } else {
     body = (
       <div className="flex flex-col h-full">
-        <PipelineBanner onOpenSettings={openSettings} />
         <div className="flex-1 min-h-0">
           <Dashboard />
         </div>

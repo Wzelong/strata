@@ -5,10 +5,10 @@ type Theme = 'light' | 'dark'
 const subscribers = new Set<(theme: Theme) => void>()
 
 let currentTheme: Theme = (() => {
-  if (typeof window === 'undefined') return 'light'
+  if (typeof window === 'undefined') return 'dark'
   const stored = localStorage.getItem('strata-theme')
   if (stored === 'dark' || stored === 'light') return stored
-  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+  return 'dark'
 })()
 
 if (typeof window !== 'undefined') {

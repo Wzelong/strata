@@ -1,20 +1,51 @@
 import { useState, useEffect } from 'react'
-import { Check, Loader2, AlertTriangle } from 'lucide-react'
+import { Check, Loader2, AlertTriangle, Circle } from 'lucide-react'
 import { useIngestStatus, refreshIngestStatus } from '../hooks/use-ingest-status'
 import { cancelBackfill } from '../lib/api'
 import { cn } from '../lib/utils'
 import { ConfirmDialog } from './confirm-dialog'
 import logo from '../assets/logo.png'
 
-function duration(ms: number): string {
-  const s = Math.max(0, Math.floor(ms / 1000))
-  if (s < 60) return `${s}s`
-  return `${Math.floor(s / 60)}m ${s % 60}s`
+const BATCH_STAGES = [
+  { key: 'submit', label: 'Uploading to OpenAI', weight: 0.10 },
+  { key: 'embedding', label: 'Embedding & extracting entities', weight: 0.40 },
+  { key: 'entity-embedding', label: 'Indexing entity connections', weight: 0.20 },
+  { key: 'storing', label: 'Writing to database', weight: 0.10 },
+  { key: 'clustering', label: 'Clustering topics', weight: 0.10 },
+  { key: 'scanning', label: 'Scanning for patterns', weight: 0.10 },
+]
+
+const RT_STAGES = [
+  { key: 'realtime-ingest', label: 'Processing items', weight: 0.85 },
+  { key: 'clustering', label: 'Clustering topics', weight: 0.15 },
+]
+
+const BATCH_POLL_S = 120
+
+function batchPhaseToStageIndex(phase: string): number {
+  if (phase === 'submit') return 0
+  if (phase === 'embedding' || phase === 'extracting') return 1
+  if (phase === 'entity-embedding') return 2
+  if (phase === 'storing') return 3
+  if (phase === 'clustering') return 4
+  if (phase === 'scanning') return 5
+  return 0
 }
 
-function ratio(done?: number, total?: number): number {
-  if (!total || total <= 0) return 0
-  return Math.min(1, (done ?? 0) / total)
+function rtPhaseToStageIndex(phase: string): number {
+  if (phase === 'realtime-ingest') return 0
+  if (phase === 'clustering') return 1
+  return 0
+}
+
+function formatDuration(ms: number): string {
+  const s = Math.max(0, Math.floor(ms / 1000))
+  if (s < 60) return `${s}s`
+  if (s < 3600) return `${Math.floor(s / 60)}m${s % 60}s`
+  const h = Math.floor(s / 3600)
+  const m = Math.floor((s % 3600) / 60)
+  const sec = s % 60
+  return `${h}h${m}m${sec}s`
 }
 
 interface Props {
@@ -24,10 +55,10 @@ interface Props {
 
 export function BackfillProgress({ backfillId, subredditName }: Props) {
   const status = useIngestStatus()
-  const [, tick] = useState(0)
+  const [now, setNow] = useState(Date.now())
 
   useEffect(() => {
-    const id = setInterval(() => tick(t => t + 1), 1000)
+    const id = setInterval(() => setNow(Date.now()), 1000)
     return () => clearInterval(id)
   }, [])
 
@@ -54,38 +85,53 @@ export function BackfillProgress({ backfillId, subredditName }: Props) {
     )
   }
 
-  const embR = ratio(status.embCompleted, status.embTotal)
-  const extractR = ratio(status.extractCompleted, status.extractTotal)
-  const entR = ratio(status.entCompleted, status.entTotal)
+  const isRealtime = status.mode === 'realtime'
+  const stages = isRealtime ? RT_STAGES : BATCH_STAGES
+  const currentStageIdx = isRealtime ? rtPhaseToStageIndex(status.phase) : batchPhaseToStageIndex(status.phase)
+  const totalItems = status.totalItems
+  const processedSoFar = status.processed ?? 0
 
-  const chunkCount = status.chunkCount ?? 0
+  // Batch-specific progress tracking
+  const embDone = status.embCompleted ?? 0
+  const extDone = status.extractCompleted ?? 0
+  const chunkTotal = status.embTotal ?? 0
   const chunkIndex = status.chunkIndex ?? 0
-  const chunked = chunkCount > 1
+  const embStageDone = processedSoFar + Math.min(embDone, extDone)
+  const embStageFrac = totalItems > 0 ? embStageDone / totalItems : 0
+  const entDone = status.entCompleted ?? 0
+  const entTotal = status.entTotal ?? 0
+  const entStageFrac = entTotal > 0 ? entDone / entTotal : 0
 
-  // Within-chunk fraction (submit 0 → embed+extract .7 → entity-embed .9 → store 1).
-  let chunkFrac = 0
-  let phaseLabel = 'Preparing…'
-  if (status.phase === 'submit') { chunkFrac = 0; phaseLabel = 'Submitting to OpenAI' }
-  else if (status.phase === 'embedding' || status.phase === 'extracting') { chunkFrac = ((embR + extractR) / 2) * 0.7; phaseLabel = 'Embedding & extracting entities' }
-  else if (status.phase === 'entity-embedding') { chunkFrac = 0.7 + entR * 0.2; phaseLabel = 'Embedding entities' }
-  else if (status.phase === 'storing') { chunkFrac = 0.95; phaseLabel = 'Writing to store' }
-
-  // Overall = completed chunks + current chunk's fraction, over total chunks.
-  const overall = chunkCount > 0 ? (chunkIndex + chunkFrac) / chunkCount : chunkFrac
-  const pct = Math.round(overall * 100)
-
-  const waitingMs = status.waitingUntil ? status.waitingUntil - Date.now() : 0
-  const waiting = status.phase === 'submit' && waitingMs > 1000
-
-  const rows: Array<{ label: string; done: number; total: number; active: boolean }> = [
-    { label: 'Embeddings', done: status.embCompleted ?? 0, total: status.embTotal ?? status.totalItems, active: status.phase === 'embedding' || status.phase === 'extracting' },
-    { label: 'Entity extraction', done: status.extractCompleted ?? 0, total: status.extractTotal ?? status.totalItems, active: status.phase === 'embedding' || status.phase === 'extracting' },
-  ]
-  if (status.phase === 'entity-embedding' || (status.entTotal ?? 0) > 0) {
-    rows.push({ label: 'Entity embeddings', done: status.entCompleted ?? 0, total: status.entTotal ?? 0, active: status.phase === 'entity-embedding' })
+  let stageFrac = 0
+  if (isRealtime && status.phase === 'realtime-ingest') {
+    stageFrac = totalItems > 0 ? processedSoFar / totalItems : 0
+  } else if (isRealtime && status.phase === 'clustering') {
+    const clusterEstMs = totalItems * 17
+    const phaseElapsed = (status.lastPolledAt ?? status.startedAt ?? now)
+    const sinceClusterStart = now - (status.lastPolledAt ?? now)
+    const rawFrac = clusterEstMs > 0 ? sinceClusterStart / clusterEstMs : 0
+    stageFrac = Math.min(0.95, rawFrac * (0.7 + Math.sin(now / 3000) * 0.05))
+  } else if (status.phase === 'embedding' || status.phase === 'extracting') {
+    stageFrac = chunkTotal > 0 ? Math.min(embDone, extDone) / chunkTotal : 0
+  } else if (status.phase === 'entity-embedding') {
+    stageFrac = entStageFrac
   }
 
-  const lastPolledAgo = status.lastPolledAt ? duration(Date.now() - status.lastPolledAt) : null
+  let overallPct: number
+  if (isRealtime) {
+    let pct = 0
+    for (let i = 0; i < currentStageIdx; i++) pct += stages[i].weight
+    pct += stages[currentStageIdx].weight * stageFrac
+    overallPct = Math.round(pct * 100)
+  } else {
+    let pct = 0
+    for (let i = 0; i < currentStageIdx; i++) pct += stages[i].weight
+    pct += stages[currentStageIdx].weight * stageFrac
+    if (currentStageIdx === 1) pct = stages[0].weight + stages[1].weight * embStageFrac
+    overallPct = Math.round(pct * 100)
+  }
+
+  const elapsed = status.startedAt ? now - status.startedAt : 0
 
   return (
     <div className="flex items-center justify-center h-full px-4">
@@ -96,45 +142,69 @@ export function BackfillProgress({ backfillId, subredditName }: Props) {
             Processing {status.totalItems.toLocaleString()} items
             {subredditName ? ` from r/${subredditName}` : ''}
           </p>
-          <p className="text-xs text-muted-foreground">
-            {chunked ? `Chunk ${Math.min(chunkIndex + 1, chunkCount)} of ${chunkCount} · ` : ''}{phaseLabel}
-          </p>
         </div>
 
         <div className="space-y-1.5">
           <div className="h-1.5 bg-muted rounded-full overflow-hidden">
-            <div className="h-full bg-foreground transition-all duration-500" style={{ width: `${pct}%` }} />
+            <div
+              className="h-full bg-foreground rounded-full transition-all duration-1000 ease-out"
+              style={{ width: `${Math.min(99, overallPct)}%` }}
+            />
           </div>
           <div className="flex justify-between text-[11px] text-muted-foreground tabular-nums">
-            <span>{pct}%</span>
-            <span>{status.startedAt ? duration(Date.now() - status.startedAt) : ''} elapsed</span>
+            <span>Stage {currentStageIdx + 1} of {stages.length}</span>
+            <span>{formatDuration(elapsed)}</span>
           </div>
         </div>
 
         <div className="space-y-2.5">
-          {rows.map(r => {
-            const done = r.total > 0 && r.done >= r.total
+          {stages.map((stage, i) => {
+            const isDone = i < currentStageIdx || (i === currentStageIdx && stageFrac >= 1)
+            const isActive = i === currentStageIdx && stageFrac < 1
+            const isPending = i > currentStageIdx
+
+            let count: string | null = null
+            if (isRealtime && i === 0 && (isActive || isDone)) {
+              count = `${processedSoFar.toLocaleString()} / ${totalItems.toLocaleString()}`
+            } else if (!isRealtime && i === 1 && (isActive || isDone)) {
+              count = `${embStageDone.toLocaleString()} / ${totalItems.toLocaleString()}`
+            } else if (!isRealtime && i === 2 && (isActive || isDone) && entTotal > 0) {
+              count = `${entDone.toLocaleString()} / ${entTotal.toLocaleString()}`
+            }
+
             return (
-              <div key={r.label} className="space-y-1">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="flex items-center gap-1.5">
-                    {done ? <Check className="size-3 text-green-500" /> : r.active ? <Loader2 className="size-3 animate-spin text-foreground" /> : null}
-                    <span className={r.active || done ? 'text-foreground' : 'text-muted-foreground'}>{r.label}</span>
-                  </span>
-                  <span className="text-muted-foreground tabular-nums">{r.done.toLocaleString()} / {r.total.toLocaleString()}</span>
+              <div key={stage.key} className="flex items-center gap-2.5 text-xs">
+                <div className="shrink-0">
+                  {isDone && <Check className="size-3.5 text-emerald-500" />}
+                  {isActive && <Loader2 className="size-3.5 animate-spin text-foreground" />}
+                  {isPending && <Circle className="size-3.5 text-muted-foreground/40" />}
                 </div>
-                <div className="h-1 bg-muted rounded-full overflow-hidden">
-                  <div className="h-full bg-foreground/50 transition-all duration-500" style={{ width: `${ratio(r.done, r.total) * 100}%` }} />
-                </div>
+                <span className={cn(
+                  'flex-1',
+                  isDone && 'text-muted-foreground',
+                  isActive && 'text-foreground font-medium',
+                  isPending && 'text-muted-foreground/60',
+                )}>
+                  {stage.label}
+                </span>
+                {count && (
+                  <span className="text-muted-foreground tabular-nums">{count}</span>
+                )}
               </div>
             )
           })}
         </div>
 
-        <p className="text-[11px] text-muted-foreground text-center leading-relaxed">
-          {waiting
-            ? `Paused for Reddit's data limit — resuming in ~${duration(waitingMs)}.`
-            : `Runs on OpenAI's batch queue — can take several minutes.${lastPolledAgo ? ` Last checked ${lastPolledAgo} ago; refreshes every ~2 min.` : ''}`}
+        <p className="text-[11px] text-muted-foreground text-center leading-relaxed max-w-[280px] mx-auto">
+          {isRealtime
+            ? currentStageIdx === 0
+              ? 'Each item is embedded, entities extracted, and connections indexed in parallel batches.'
+              : 'Grouping items by semantic similarity to discover topic clusters.'
+            : currentStageIdx <= 1
+            ? 'Waiting for OpenAI batch queue to process embeddings and entity extraction.'
+            : currentStageIdx === 2
+            ? 'Embedding extracted entities for cross-item semantic matching.'
+            : 'Writing processed items and indices to the database.'}
         </p>
 
         {backfillId && (

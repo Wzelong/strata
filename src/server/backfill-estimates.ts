@@ -1,21 +1,22 @@
-// Hardcoded OpenAI Batch API pricing (Batch tier = 50% discount) and storage
-// heuristics. Tune here after observing real runs. All prices in USD.
+const BATCH_PRICE_PER_M_EMBED_INPUT = 0.01
+const BATCH_PRICE_PER_M_EXTRACT_INPUT = 0.10
+const BATCH_PRICE_PER_M_EXTRACT_OUTPUT = 0.40
 
-const PRICE_PER_M_EMBED_INPUT = 0.01      // text-embedding-3-small batch tier
-const PRICE_PER_M_EXTRACT_INPUT = 0.10    // gpt-5.4-mini batch tier input
-const PRICE_PER_M_EXTRACT_OUTPUT = 0.40   // gpt-5.4-mini batch tier output
+const RT_PRICE_PER_M_EMBED_INPUT = 0.02
+const RT_PRICE_PER_M_EXTRACT_INPUT = 0.20
+const RT_PRICE_PER_M_EXTRACT_OUTPUT = 0.80
 
 const AVG_INPUT_TOKENS_PER_ITEM = 250
-const AVG_OUTPUT_TOKENS_PER_ITEM = 200    // entity-extraction JSON
+const AVG_OUTPUT_TOKENS_PER_ITEM = 200
 const AVG_ENTITIES_PER_ITEM = 5
 const AVG_ENTITY_TOKENS = 8
 
-// Per-item Redis bytes: text + 256-d quantized embedding (~400) + entity
-// payloads + index entries. Calibrated against seed.json (19 MB / 5391 items
-// ≈ 3.5 KB), conservatized for headroom.
+export const RT_ITEMS_PER_TICK = 500
+export const RT_TICK_SPACING_MS = 3000
+
 const BYTES_PER_ITEM = 2500
 
-export const REDIS_CAPACITY_BYTES = 500 * 1024 * 1024  // 500 MB Devvit cap
+export const REDIS_CAPACITY_BYTES = 500 * 1024 * 1024
 export const ITEM_CAPACITY = 330_000
 
 export type BackfillEstimate = {
@@ -28,32 +29,36 @@ export type BackfillEstimate = {
   willExceed: boolean
 }
 
-export function estimateBackfill(itemCount: number, currentBytes: number): BackfillEstimate {
+function computeCost(itemCount: number, embedRate: number, extractInRate: number, extractOutRate: number): number {
   const embedTokens = itemCount * AVG_INPUT_TOKENS_PER_ITEM
   const extractInputTokens = itemCount * AVG_INPUT_TOKENS_PER_ITEM
   const extractOutputTokens = itemCount * AVG_OUTPUT_TOKENS_PER_ITEM
   const entityEmbedTokens = itemCount * AVG_ENTITIES_PER_ITEM * AVG_ENTITY_TOKENS
+  return ((embedTokens + entityEmbedTokens) / 1_000_000) * embedRate +
+    (extractInputTokens / 1_000_000) * extractInRate +
+    (extractOutputTokens / 1_000_000) * extractOutRate
+}
 
-  const estimatedCostUsd =
-    ((embedTokens + entityEmbedTokens) / 1_000_000) * PRICE_PER_M_EMBED_INPUT +
-    (extractInputTokens / 1_000_000) * PRICE_PER_M_EXTRACT_INPUT +
-    (extractOutputTokens / 1_000_000) * PRICE_PER_M_EXTRACT_OUTPUT
-
+export function estimateBackfill(itemCount: number, currentBytes: number): BackfillEstimate {
+  const estimatedCostUsd = computeCost(itemCount, BATCH_PRICE_PER_M_EMBED_INPUT, BATCH_PRICE_PER_M_EXTRACT_INPUT, BATCH_PRICE_PER_M_EXTRACT_OUTPUT)
   const estimatedBytes = itemCount * BYTES_PER_ITEM
-  const projectedBytes = currentBytes + estimatedBytes
-  const willExceed = projectedBytes > REDIS_CAPACITY_BYTES
-
+  const willExceed = currentBytes + estimatedBytes > REDIS_CAPACITY_BYTES
   const estimatedMinutes = Math.max(3, Math.ceil(itemCount / 500))
 
-  return {
-    itemCount,
-    estimatedMinutes,
-    estimatedCostUsd: Math.round(estimatedCostUsd * 100) / 100,
-    estimatedBytes,
-    currentBytes,
-    capacityBytes: REDIS_CAPACITY_BYTES,
-    willExceed,
-  }
+  return { itemCount, estimatedMinutes, estimatedCostUsd: Math.round(estimatedCostUsd * 100) / 100, estimatedBytes, currentBytes, capacityBytes: REDIS_CAPACITY_BYTES, willExceed }
+}
+
+export function estimateBackfillRealtime(itemCount: number, currentBytes: number): BackfillEstimate {
+  const estimatedCostUsd = computeCost(itemCount, RT_PRICE_PER_M_EMBED_INPUT, RT_PRICE_PER_M_EXTRACT_INPUT, RT_PRICE_PER_M_EXTRACT_OUTPUT)
+  const estimatedBytes = itemCount * BYTES_PER_ITEM
+  const willExceed = currentBytes + estimatedBytes > REDIS_CAPACITY_BYTES
+  const RT_TICK_PROCESSING_MS = 15000
+  const CLUSTER_MS_PER_ITEM = 17
+  const tickCount = Math.ceil(itemCount / RT_ITEMS_PER_TICK)
+  const clusterMs = itemCount * CLUSTER_MS_PER_ITEM
+  const estimatedMinutes = Math.max(1, Math.ceil((tickCount * (RT_TICK_PROCESSING_MS + RT_TICK_SPACING_MS) + clusterMs) / 60000))
+
+  return { itemCount, estimatedMinutes, estimatedCostUsd: Math.round(estimatedCostUsd * 100) / 100, estimatedBytes, currentBytes, capacityBytes: REDIS_CAPACITY_BYTES, willExceed }
 }
 
 export function estimateCurrentBytes(itemCount: number): number {
