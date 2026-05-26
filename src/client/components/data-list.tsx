@@ -134,7 +134,7 @@ export function DataList<T>({
   return (
     <div className="flex flex-col h-full">
       {/* Toolbar */}
-      <div className="relative flex items-center justify-between gap-2 px-3 h-10 border-b shrink-0 select-none">
+      <div className="relative flex items-center justify-between gap-2 pl-3 pr-[6px] h-10 border-b shrink-0 select-none">
         <LoadingBar active={!!isLoading} />
         {hasSelection ? (
           <>

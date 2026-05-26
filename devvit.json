@@ -31,9 +31,9 @@
   },
   "settings": {
     "global": {
-      "openaiApiKey": {
+      "strataEncryptionKey": {
         "type": "string",
-        "label": "OpenAI API Key",
+        "label": "Encryption key for per-subreddit OpenAI keys",
         "isSecret": true
       }
     }
@@ -67,6 +67,13 @@
         "location": "subreddit",
         "forUserType": "moderator",
         "endpoint": "/internal/menu/seed-data"
+      },
+      {
+        "label": "Strata: Reset Data",
+        "description": "Wipe all Strata data from Redis (keeps your API key)",
+        "location": "subreddit",
+        "forUserType": "moderator",
+        "endpoint": "/internal/menu/reset"
       },
       {
         "label": "Strata: Surface",

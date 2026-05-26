@@ -21,6 +21,7 @@ import { createChatHandler } from './chat/route.js'
 import { runRecluster, assignItemLive, ClusterRepo } from './cluster-pipeline.js'
 import { LOUVAIN_RESOLUTION, MIN_CLUSTER_SIZE } from '../engine/cluster.js'
 import { dequantize } from '../engine/embed.js'
+import { encrypt, decrypt } from './crypto.js'
 import { gunzipSync } from 'node:zlib'
 
 const SEED_URL = 'https://github.com/Wzelong/strata/releases/download/seed-v1/seed.json.gz'
@@ -100,10 +101,25 @@ async function ensureDashboardPost(subredditName: string): Promise<string> {
   return post.id
 }
 
+const OPENAI_KEY_REDIS = 'strata:openai-key'
+
+async function getOpenAIKey(): Promise<string | null> {
+  try {
+    const blob = await redis.get(OPENAI_KEY_REDIS)
+    if (!blob) return null
+    const secret = await settings.get('strataEncryptionKey')
+    if (typeof secret !== 'string' || !secret) return null
+    return decrypt(blob, secret)
+  } catch (err) {
+    console.error('[Strata] Failed to read/decrypt stored key:', err)
+    return null
+  }
+}
+
 async function getEngine(): Promise<StrataEngine> {
-  const apiKey = await settings.get('openaiApiKey')
+  const apiKey = await getOpenAIKey()
   if (!apiKey) throw new Error('OpenAI API key not configured')
-  const client = new OpenAI({ apiKey: apiKey as string })
+  const client = new OpenAI({ apiKey })
   return new StrataEngine(store, client)
 }
 
@@ -1017,7 +1033,8 @@ app.post('/internal/scheduler/ingest-batch', async (c) => {
       return c.json({ status: 'ok' })
     }
 
-    const apiKey = await settings.get('openaiApiKey') as string
+    const apiKey = await getOpenAIKey()
+    if (!apiKey) { console.warn('[Strata] ingest-batch: no API key, skipping'); return c.json({ status: 'ok' }) }
     const openai = new OpenAI({ apiKey })
 
     const phase = status.phase as string
@@ -1347,13 +1364,42 @@ app.get('/api/stats', async (c) => {
   const itemCount = await store.getItemCount()
   const seeded = await redis.get('strata:seed:complete') || '0'
   const installed = await redis.get('strata:installed') || '0'
-  const apiKey = await settings.get('openaiApiKey').catch(() => null)
+  const apiKey = await getOpenAIKey()
   const hasApiKey = typeof apiKey === 'string' && apiKey.trim().length > 0
   const apiKeyInvalid = hasApiKey && (await redis.get(API_KEY_INVALID_FLAG)) === '1'
   return c.json({ itemCount, capacity: 330_000, seeded, installed, hasApiKey, apiKeyInvalid })
 })
 
 app.post('/api/apikey/recheck', async (c) => {
+  await clearApiKeyInvalid()
+  return c.json({ ok: true })
+})
+
+app.post('/api/apikey', async (c) => {
+  const body = await c.req.json<{ key?: string }>().catch(() => ({} as { key?: string }))
+  const key = (body.key ?? '').trim()
+  if (!key) return c.json({ error: 'Key required' }, 400)
+
+  const secret = await settings.get('strataEncryptionKey')
+  if (typeof secret !== 'string' || !secret) {
+    return c.json({ error: 'Server not configured (missing encryption key). Contact the app developer.' }, 500)
+  }
+
+  try {
+    const probe = new OpenAI({ apiKey: key })
+    await probe.models.list()
+  } catch (err) {
+    if (isOpenAIAuthError(err)) return c.json({ error: 'invalid_api_key' }, 401)
+    return c.json({ error: `Validation failed: ${String(err)}` }, 400)
+  }
+
+  await redis.set(OPENAI_KEY_REDIS, encrypt(key, secret))
+  await clearApiKeyInvalid()
+  return c.json({ ok: true })
+})
+
+app.delete('/api/apikey', async (c) => {
+  await redis.del(OPENAI_KEY_REDIS)
   await clearApiKeyInvalid()
   return c.json({ ok: true })
 })
@@ -1379,7 +1425,7 @@ app.post('/api/community-context', async (c) => {
 })
 
 app.post('/api/chat', async (c) => {
-  const apiKey = await settings.get('openaiApiKey')
+  const apiKey = await getOpenAIKey()
   if (!apiKey || typeof apiKey !== 'string') return c.json({ error: 'No API key' }, 500)
   const openai = new OpenAI({ apiKey })
 
@@ -1480,7 +1526,7 @@ async function getClusterConfig(): Promise<{ resolution: number; minClusterSize:
 }
 
 async function runReclusterAndRecord(): Promise<{ ok: true; report: Awaited<ReturnType<typeof runRecluster>> } | { ok: false; error: string; auth: boolean }> {
-  const apiKey = await settings.get('openaiApiKey')
+  const apiKey = await getOpenAIKey()
   if (!apiKey || typeof apiKey !== 'string') return { ok: false, error: 'No API key', auth: false }
   const openai = new OpenAI({ apiKey: apiKey as string })
   const config = await getClusterConfig()
@@ -1810,7 +1856,7 @@ app.post('/api/graph/extra-nodes', async (c) => {
 })
 
 app.post('/api/search', async (c) => {
-  const apiKey = await settings.get('openaiApiKey')
+  const apiKey = await getOpenAIKey()
   if (!apiKey || typeof apiKey !== 'string') return c.json({ error: 'No API key' }, 503)
   type SearchBody = { query: string; top_k?: number; time_window?: string }
   const body = await c.req.json<SearchBody>().catch(() => ({ query: '' } as SearchBody))
@@ -1967,7 +2013,8 @@ app.post('/api/backfill/confirm', async (c) => {
   }
 
   try {
-    const apiKey = await settings.get('openaiApiKey') as string
+    const apiKey = await getOpenAIKey()
+    if (!apiKey) return c.json({ error: 'OpenAI API key not configured' }, 500)
     const openai = new OpenAI({ apiKey })
 
     await redis.hSet('strata:ingest:raw', Object.fromEntries(
@@ -2035,10 +2082,12 @@ app.post('/api/backfill/cancel', async (c) => {
   // Best-effort: cancel in-flight OpenAI batches. Don't fail the request if
   // these don't go through — the scheduler bail-out is what stops the work.
   try {
-    const apiKey = await settings.get('openaiApiKey') as string
-    const openai = new OpenAI({ apiKey })
-    const ids = [status.embBatchId, status.extractBatchId, status.entityEmbBatchId].filter(Boolean) as string[]
-    await Promise.allSettled(ids.map(bid => openai.batches.cancel(bid)))
+    const apiKey = await getOpenAIKey()
+    if (apiKey) {
+      const openai = new OpenAI({ apiKey })
+      const ids = [status.embBatchId, status.extractBatchId, status.entityEmbBatchId].filter(Boolean) as string[]
+      await Promise.allSettled(ids.map(bid => openai.batches.cancel(bid)))
+    }
   } catch (err) {
     console.error('[Strata] Batch cancel error:', err)
   }
@@ -2119,7 +2168,7 @@ app.post('/api/alerts/reset', async (c) => {
   return c.json({ ok: true })
 })
 
-app.post('/api/strata/reset', async (c) => {
+async function resetStrataData(): Promise<number> {
   const ids = await store.getItemIds()
   if (ids.length > 0) await store.deleteItems(ids)
   const ENTITY_TYPES = ['person', 'location', 'object', 'organization', 'phone', 'email', 'url', 'username', 'quantity']
@@ -2137,9 +2186,37 @@ app.post('/api/strata/reset', async (c) => {
   await redis.del('strata:ingest:raw')
   await redis.del('strata:ingest:embeddings')
   await redis.del('strata:ingest:entities')
+  await redis.del('strata:seed:complete')
+  await redis.del('strata:community-context')
+  // Cluster state
+  const clusterRepo = new ClusterRepo(redis)
+  const clusterRows = await clusterRepo.listBySize(2000)
+  for (const row of clusterRows) await redis.del(`strata:cluster:meta:${row.id}`)
+  await redis.del('strata:cluster:ids-by-size')
+  await redis.del('strata:cluster:centroids')
+  await redis.del('strata:cluster:alias')
+  await redis.del('strata:cluster:counter')
+  await redis.del('strata:cluster:config')
+  await redis.del('strata:cluster:status')
+  await redis.del('strata:cluster:ingest-counter')
   await alertStore.resetAll()
-  console.log('[Strata] Full reset complete')
-  return c.json({ ok: true, deleted: ids.length })
+  console.log(`[Strata] Reset complete: ${ids.length} items removed (API key preserved)`)
+  return ids.length
+}
+
+app.post('/api/strata/reset', async (c) => {
+  const deleted = await resetStrataData()
+  return c.json({ ok: true, deleted })
+})
+
+app.post('/internal/menu/reset', async (c) => {
+  try {
+    const deleted = await resetStrataData()
+    return c.json<UiResponse>({ showToast: { text: `Strata reset — ${deleted} items wiped. API key kept.`, appearance: 'success' } })
+  } catch (err) {
+    console.error('[Strata] Menu reset failed:', err)
+    return c.json<UiResponse>({ showToast: { text: `Reset failed: ${String(err)}`, appearance: 'neutral' } })
+  }
 })
 
 // --- Scan ---
@@ -2450,7 +2527,7 @@ app.post('/api/alerts/:id/compose', async (c) => {
   const connections = await alertStore.getAlertConnections(id)
   const body = await c.req.json<{ refinementPrompt?: string; currentDraft?: { title: string; body: string } }>().catch(() => ({}))
 
-  const apiKey = await settings.get('openaiApiKey')
+  const apiKey = await getOpenAIKey()
   if (!apiKey) return c.json({ error: 'OpenAI API key not configured' }, 500)
   const client = new OpenAI({ apiKey: apiKey as string })
 

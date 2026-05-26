@@ -172,6 +172,19 @@ export async function recheckApiKey(): Promise<void> {
   await fetch('/api/apikey/recheck', { method: 'POST' })
 }
 
+export async function saveApiKey(key: string): Promise<{ ok?: boolean; error?: string }> {
+  const res = await fetch('/api/apikey', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ key }),
+  })
+  return res.json()
+}
+
+export async function deleteApiKey(): Promise<void> {
+  await fetch('/api/apikey', { method: 'DELETE' })
+}
+
 export interface ModelUsage {
   model: string
   inputTokens: number
