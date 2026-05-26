@@ -152,8 +152,7 @@ function componentsByItemOverlap(clusters: EntityCluster[], maxComponentSize: nu
 }
 
 export async function buildScanPairs(store: KVStore): Promise<ScanPair[]> {
-  const allItemIds = await store.getItemIds()
-  const N = allItemIds.length
+  const N = await store.getItemCount()
   if (N < 2) return []
 
   // 1) Load entity records for scan. Descriptive types come from the embedding
