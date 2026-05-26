@@ -471,7 +471,7 @@ export function AlertDetailPanel({ alertId, itemId, clusterId, listTab, requeste
   const [bulkActing, setBulkActing] = useState(false)
   const [confirmError, setConfirmError] = useState<string | null>(null)
   const [surfaceDraft, setSurfaceDraft] = useState<ComposeDraft | null>(null)
-  const [detailTab, setDetailTab] = useState<DetailTab>('explore')
+  const [detailTab, setDetailTab] = useState<DetailTab>('overview')
   const { subredditName } = useViewer()
 
   useEffect(() => {
