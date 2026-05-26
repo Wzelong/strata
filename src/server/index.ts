@@ -24,9 +24,8 @@ import { LOUVAIN_RESOLUTION, MIN_CLUSTER_SIZE } from '../engine/cluster.js'
 import { dequantize } from '../engine/embed.js'
 import { encrypt, decrypt } from './crypto.js'
 import seedRawItems from './seed-raw.json' with { type: 'json' }
+import seedPositions from './seed-positions.json' with { type: 'json' }
 import { gunzipSync } from 'node:zlib'
-
-const SEED_URL = 'https://raw.githubusercontent.com/Wzelong/strata/main/dataset/seed.json.gz'
 
 
 const app = new Hono()
@@ -677,86 +676,7 @@ app.post('/internal/forms/seed-results', async (c) => {
     for (const key of keys) {
       await redis.del(key)
     }
-    console.log('[Strata] Reset complete, fetching seed...')
-    const resp = await fetch(SEED_URL)
-    if (!resp.ok) throw new Error(`Seed fetch failed: ${resp.status}`)
-    const compressed = Buffer.from(await resp.arrayBuffer())
-    const json = gunzipSync(compressed).toString('utf8')
-    const seed = JSON.parse(json) as {
-      items: StoredItem[]
-      embeddings: Record<string, number[]>
-      entityEmbeddings?: Record<string, Record<string, string>>
-    }
-
-    console.log(`[Strata] Loaded ${seed.items.length} items, writing to Redis...`)
-
-    const BATCH = 100
-    for (let i = 0; i < seed.items.length; i += BATCH) {
-      const batch = seed.items.slice(i, i + BATCH)
-      const itemFields: Record<string, string> = {}
-      const embFields: Record<string, string> = {}
-
-      for (const item of batch) {
-        itemFields[item.id] = JSON.stringify(item)
-        const emb = seed.embeddings[item.id]
-        if (emb) embFields[item.id] = JSON.stringify(emb)
-      }
-
-      await redis.hSet('strata:items', itemFields)
-      if (Object.keys(embFields).length > 0) {
-        await redis.hSet('strata:embeddings', embFields)
-      }
-
-      for (const item of batch) {
-        await redis.zAdd('strata:idx:time', { member: item.id, score: item.createdAt })
-        await redis.zAdd(`strata:idx:author:${item.authorId}`, { member: item.id, score: item.createdAt })
-        await redis.zAdd(`strata:idx:thread:${item.threadRootId}`, { member: item.id, score: item.createdAt })
-        await redis.zAdd(`strata:idx:decision:${item.decision}`, { member: item.id, score: item.decisionAt ?? item.createdAt })
-
-        for (const e of item.entities) {
-          await redis.zAdd(`strata:idx:entity:${e.type}:${e.surfaceText}`, { member: item.id, score: item.createdAt })
-        }
-      }
-
-      if ((i + BATCH) % 500 === 0 || i + BATCH >= seed.items.length) {
-        console.log(`[Strata] Seeded ${Math.min(i + BATCH, seed.items.length)}/${seed.items.length}`)
-      }
-    }
-
-    // Seed entity embeddings
-    if (seed.entityEmbeddings) {
-      for (const [type, entries] of Object.entries(seed.entityEmbeddings)) {
-        const key = `strata:entity-emb:${type}`
-        const fields: Record<string, string> = {}
-        for (const [field, emb] of Object.entries(entries)) {
-          fields[field] = emb
-        }
-        if (Object.keys(fields).length > 0) {
-          await redis.hSet(key, fields)
-        }
-      }
-      const totalEntEmbs = Object.values(seed.entityEmbeddings).reduce((n, v) => n + Object.keys(v).length, 0)
-      console.log(`[Strata] Seeded ${totalEntEmbs} entity embeddings`)
-    }
-
-    // Write pre-computed 3D positions to graph layout cache
-    const layoutEntries: Array<[string, number[]]> = []
-    for (const item of seed.items) {
-      if ((item as any).position3d) layoutEntries.push([item.id, (item as any).position3d])
-    }
-    if (layoutEntries.length > 0) {
-      await redis.set('strata:graph:layout', JSON.stringify(layoutEntries))
-      console.log(`[Strata] Seeded ${layoutEntries.length} graph positions`)
-    }
-
-    await redis.set('strata:seed:complete', '1')
-    await redis.set('strata:seed:item-count', String(seed.items.length))
-    invalidateItemCache()
-    console.log(`[Strata] Seed complete: ${seed.items.length} items`)
-
-    return c.json<UiResponse>({
-      showToast: { text: `Seeded ${seed.items.length} items!`, appearance: 'success' },
-    })
+    return c.json<UiResponse>({ showToast: 'Use the demo backfill from the dashboard instead.' })
   } catch (err) {
     console.error('[Strata] Seed error:', err)
     return c.json<UiResponse>({ showToast: `Seed failed: ${err}` })
@@ -1727,6 +1647,12 @@ app.post('/internal/scheduler/recluster', async (c) => {
     await redis.hSet('strata:ingest:status', { phase: 'done', endedAt: String(endedAt) })
     if (ingestStatus?.backfillId) await updateBackfillRecord(ingestStatus.backfillId, { status: 'done', endedAt, totalItems: parseInt(ingestStatus.processed || '0'), processed: parseInt(ingestStatus.processed || '0') })
     console.log('[Strata] Backfill complete (processing + clustering)')
+    // Write bundled seed positions to graph layout cache (Python UMAP quality)
+    const posEntries = Object.entries(seedPositions as Record<string, number[]>)
+    if (posEntries.length > 0) {
+      await redis.set('strata:graph:layout', JSON.stringify(posEntries))
+      console.log(`[Strata] Wrote ${posEntries.length} seed positions to graph layout`)
+    }
     try {
       const scanId = generateAlertId()
       await redis.hSet('strata:scan:status', { phase: 'building', startedAt: String(Date.now()), scanId, anchorsProcessed: '0', anchorsTotal: '0' })
