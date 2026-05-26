@@ -118,11 +118,19 @@ async function getOpenAIKey(): Promise<string | null> {
   }
 }
 
+const usageTracker = {
+  total: 0,
+  track(usage: { input_tokens?: number; output_tokens?: number } | null | undefined) {
+    if (!usage) return
+    recordUsage('gpt-5.5', { inputTokens: usage.input_tokens ?? 0, outputTokens: usage.output_tokens ?? 0 })
+  },
+}
+
 async function getEngine(): Promise<StrataEngine> {
   const apiKey = await getOpenAIKey()
   if (!apiKey) throw new Error('OpenAI API key not configured')
   const client = new OpenAI({ apiKey })
-  return new StrataEngine(store, client)
+  return new StrataEngine(store, client, usageTracker)
 }
 
 function relativeAge(createdAt: number): string {
