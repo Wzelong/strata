@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { Check, Loader2, Circle } from 'lucide-react'
 import { useIngestStatus, refreshIngestStatus } from '../hooks/use-ingest-status'
 import { cancelBackfill } from '../lib/api'
-import { cn } from '../lib/utils'
+import { cn, compactCount } from '../lib/utils'
 import { ConfirmDialog } from './confirm-dialog'
 
 const BATCH_STAGES = [
@@ -69,7 +69,7 @@ export function BackfillCard() {
         <div className="flex items-center gap-2">
           <Loader2 className="size-3.5 animate-spin text-foreground" />
           <span className="text-sm font-medium">
-            Backfilling {totalItems.toLocaleString()} items
+            Backfilling {totalItems_COMPACT_PLACEHOLDER} items
           </span>
           <span className="text-[10px] px-1.5 py-0.5 rounded bg-accent text-accent-foreground font-medium">
             {isRealtime ? 'Fast' : 'Economy'}
@@ -104,7 +104,7 @@ export function BackfillCard() {
           />
         </div>
         <div className="flex justify-between text-[11px] text-muted-foreground tabular-nums">
-          <span>{processed.toLocaleString()} / {totalItems.toLocaleString()} items</span>
+          <span>{processed_COMPACT_PLACEHOLDER} / {totalItems_COMPACT_PLACEHOLDER} items</span>
           <span>{pct}%</span>
         </div>
       </div>

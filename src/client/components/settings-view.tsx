@@ -15,7 +15,7 @@ import {
   fetchClusterStatus, fetchClusterConfig, saveClusterConfig, triggerRecluster,
   type BackfillRecord, type RuleSummary, type ScanRecord, type UsageSummary, type ClusterStatus, type ClusterConfig,
 } from '../lib/api.js'
-import { cn, formatBytes, formatRelativeTime } from '../lib/utils.js'
+import { cn, formatBytes, formatRelativeTime, compactCount } from '../lib/utils.js'
 
 const isDev = import.meta.env.DEV
 const REDIS_CAP = 500 * 1024 * 1024
@@ -79,7 +79,7 @@ export function SettingsView({ onBack, forceForm }: Props) {
 
         <Section title="Storage">
           <div className="space-y-3 rounded-lg border border-border p-4">
-            <Gauge label="Items" value={`${itemCount.toLocaleString()} / ${ITEM_CAP.toLocaleString()}`} pct={itemPct} />
+            <Gauge label="Items" value={`${compactCount(itemCount)} / ${compactCount(ITEM_CAP)}`} pct={itemPct} />
             <Gauge label="Redis" value={`${formatBytes(bytes)} / ${formatBytes(REDIS_CAP)}`} pct={bytePct} />
           </div>
         </Section>
@@ -498,8 +498,8 @@ function BackfillHistoryRow({ record, onCancelled }: { record: BackfillRecord; o
           {record.from} – {record.to}
           <span className="text-muted-foreground ml-2 text-xs">
             {record.status === 'running'
-              ? `${record.processed.toLocaleString()} / ${record.totalItems.toLocaleString()}`
-              : `${record.totalItems.toLocaleString()} items`}
+              ? `${compactCount(record.processed)} / ${compactCount(record.totalItems)}`
+              : `${compactCount(record.totalItems)} items`}
           </span>
         </div>
         <div className="text-xs text-muted-foreground flex flex-wrap items-center gap-x-1.5">
@@ -582,10 +582,10 @@ function ScanHistoryRow({ record }: { record: ScanRecord }) {
       <div className="flex-1 min-w-0 space-y-0.5">
         <div className="text-sm">
           {record.anchorsTotal > 0
-            ? `${record.anchorsProcessed.toLocaleString()} / ${record.anchorsTotal.toLocaleString()} anchors`
+            ? `${compactCount(record.anchorsProcessed)} / ${compactCount(record.anchorsTotal)} anchors`
             : 'Scan'}
           <span className="text-muted-foreground ml-2 text-xs">
-            {record.alertsCreated.toLocaleString()} alerts
+            {compactCount(record.alertsCreated)} alerts
           </span>
         </div>
         <div className="text-xs text-muted-foreground flex flex-wrap items-center gap-x-1.5">
@@ -693,7 +693,7 @@ function DangerZone({ onChanged }: { onChanged: () => Promise<void> }) {
       },
       run: async () => {
         const res = await deleteAllItems()
-        return `Deleted ${res.deleted.toLocaleString()} items.`
+        return `Deleted ${compactCount(res.deleted)} items.`
       },
     },
     {
@@ -721,7 +721,7 @@ function DangerZone({ onChanged }: { onChanged: () => Promise<void> }) {
       },
       run: async () => {
         const res = await resetStrata()
-        return `Reset complete (${res.deleted.toLocaleString()} items removed).`
+        return `Reset complete (${compactCount(res.deleted)} items removed).`
       },
     },
   ]

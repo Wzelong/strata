@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, type ReactNode } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { Search, X, CheckCheck } from 'lucide-react'
-import { cn } from '../lib/utils'
+import { cn, compactCount } from '../lib/utils'
 import { FilterMenu } from './filter-menu'
 import { Tooltip, TooltipTrigger, TooltipContent } from './ui/tooltip'
 import { Checkbox } from './ui/checkbox'
@@ -306,7 +306,7 @@ export function DataList<T>({
                 )}
                 {!infinite.hasNextPage && data.length > 0 && (
                   <div className="px-3 py-3 text-center text-xs text-muted-foreground/70">
-                    {infinite.total != null ? `${infinite.total.toLocaleString()} items` : 'End'}
+                    {infinite.total != null ? `${compactCount(infinite.total)} items` : 'End'}
                   </div>
                 )}
               </>

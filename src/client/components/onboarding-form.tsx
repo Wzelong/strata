@@ -3,7 +3,7 @@ import { Loader2, AlertTriangle, CalendarIcon } from 'lucide-react'
 import { format } from 'date-fns'
 import { previewBackfill, confirmBackfill, type BackfillEstimate } from '../lib/api'
 import { refreshIngestStatus } from '../hooks/use-ingest-status'
-import { cn, formatBytes } from '../lib/utils'
+import { cn, formatBytes, compactCount } from '../lib/utils'
 import { Calendar } from './ui/calendar'
 import { Popover, PopoverTrigger, PopoverContent } from './ui/popover'
 import { InlineTabs } from './ui/inline-tabs'
@@ -208,7 +208,7 @@ export function OnboardingForm({ onStarted, onCancel }: Props) {
           <>
             <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Estimated</div>
             <div className="grid grid-cols-2 gap-x-4 gap-y-3">
-              <Metric label="Items" value={estimate.itemCount.toLocaleString()} />
+              <Metric label="Items" value={compactCount(estimate.itemCount)} />
               <Metric
                 label="Timing"
                 value={mode === 'realtime'
@@ -231,7 +231,7 @@ export function OnboardingForm({ onStarted, onCancel }: Props) {
               <div className="flex items-start gap-1.5 text-xs text-destructive pt-1">
                 <AlertTriangle className="size-3.5 shrink-0 mt-px" />
                 <span>
-                  Exceeds capacity. {estimate.currentItemCount.toLocaleString()} current + {estimate.itemCount.toLocaleString()} new &gt; {estimate.itemCapacity.toLocaleString()} items.
+                  Exceeds capacity. {compactCount(estimate.currentItemCount)} current + {compactCount(estimate.itemCount)} new &gt; {compactCount(estimate.itemCapacity)} items.
                 </span>
               </div>
             )}

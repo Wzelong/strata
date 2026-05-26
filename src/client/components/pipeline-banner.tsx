@@ -28,7 +28,7 @@ export function PipelineBanner({ onOpenSettings }: Props) {
       if (running) {
         return {
           kind: 'backfill', variant: 'running',
-          text: `Backfilling — ${ingest.processed.toLocaleString()} / ${ingest.totalItems.toLocaleString()}`,
+          text: `Backfilling — ${compactCount(ingest.processed)} / ${compactCount(ingest.totalItems)}`,
           phase: `bf:${ingest.phase}`,
         }
       }

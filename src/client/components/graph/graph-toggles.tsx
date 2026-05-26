@@ -23,9 +23,9 @@ export function GraphStats({ postCount, commentCount, clusterCount, isHighlighte
   }
   return (
     <div className="absolute top-3 right-3 z-10 flex items-center gap-3 text-xs leading-none text-muted-foreground select-none">
-      <span className="flex items-center gap-1"><PenTool className="size-3" />{postCount.toLocaleString()}</span>
-      <span className="flex items-center gap-1"><MessageSquareText className="size-3" />{commentCount.toLocaleString()}</span>
-      <span className="flex items-center gap-1"><Hash className="size-3" />{clusterCount.toLocaleString()}</span>
+      <span className="flex items-center gap-1"><PenTool className="size-3" />{compactCount(postCount)}</span>
+      <span className="flex items-center gap-1"><MessageSquareText className="size-3" />{compactCount(commentCount)}</span>
+      <span className="flex items-center gap-1"><Hash className="size-3" />{compactCount(clusterCount)}</span>
     </div>
   )
 }

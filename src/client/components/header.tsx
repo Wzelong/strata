@@ -4,7 +4,7 @@ import { useStats, refreshStats } from '../hooks/use-stats'
 import { useViewer } from '../hooks/use-viewer'
 import { useIngestStatus } from '../hooks/use-ingest-status'
 import { recheckApiKey } from '../lib/api'
-import { cn } from '../lib/utils'
+import { cn, compactCount } from '../lib/utils'
 import logo from '../assets/logo.png'
 
 interface Props {
@@ -26,7 +26,7 @@ export function Header({ settingsOpen, onToggleSettings }: Props) {
     await refreshStats()
   }
 
-  return (
+  return compactCount(
     <header className="fixed top-0 left-0 right-0 h-10 border-t border-b border-border bg-background/95 backdrop-blur flex items-center z-50">
       <div className="pl-[6px] flex items-center gap-1">
         <img
@@ -48,7 +48,7 @@ export function Header({ settingsOpen, onToggleSettings }: Props) {
             className="h-7 px-2 inline-flex items-center gap-1.5 rounded-md text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-colors cursor-pointer tabular-nums"
           >
             <Loader2 className="size-3 animate-spin" />
-            {(ingest.processed ?? 0).toLocaleString()}/{ingest.totalItems.toLocaleString()}
+            {(ingest.processed ?? 0)}/{compactCount(ingest.totalItems)}
           </button>
         )}
         {apiKeyInvalid && (

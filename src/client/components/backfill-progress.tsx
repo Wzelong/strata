@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { Check, Loader2, AlertTriangle, Circle } from 'lucide-react'
 import { useIngestStatus, refreshIngestStatus } from '../hooks/use-ingest-status'
 import { cancelBackfill } from '../lib/api'
-import { cn } from '../lib/utils'
+import { cn, compactCount } from '../lib/utils'
 import { ConfirmDialog } from './confirm-dialog'
 import logo from '../assets/logo.png'
 
@@ -139,7 +139,7 @@ export function BackfillProgress({ backfillId, subredditName }: Props) {
         <div className="text-center space-y-1.5">
           <img src={logo} alt="Strata" width={48} height={48} className="size-12 mx-auto animate-pulse" />
           <p className="text-sm font-medium">
-            Processing {status.totalItems.toLocaleString()} items
+            Processing {compactCount(status.totalItems)} items
             {subredditName ? ` from r/${subredditName}` : ''}
           </p>
         </div>
@@ -165,11 +165,11 @@ export function BackfillProgress({ backfillId, subredditName }: Props) {
 
             let count: string | null = null
             if (isRealtime && i === 0 && (isActive || isDone)) {
-              count = `${processedSoFar.toLocaleString()} / ${totalItems.toLocaleString()}`
+              count = `${compactCount(processedSoFar)} / ${compactCount(totalItems)}`
             } else if (!isRealtime && i === 1 && (isActive || isDone)) {
-              count = `${embStageDone.toLocaleString()} / ${totalItems.toLocaleString()}`
+              count = `${compactCount(embStageDone)} / ${compactCount(totalItems)}`
             } else if (!isRealtime && i === 2 && (isActive || isDone) && entTotal > 0) {
-              count = `${entDone.toLocaleString()} / ${entTotal.toLocaleString()}`
+              count = `${compactCount(entDone)} / ${compactCount(entTotal)}`
             }
 
             return (
