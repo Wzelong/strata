@@ -19,7 +19,8 @@
       "enable": true,
       "domains": [
         "api.openai.com",
-        "raw.githubusercontent.com"
+        "github.com",
+        "release-assets.githubusercontent.com"
       ]
     },
     "redis": true,
