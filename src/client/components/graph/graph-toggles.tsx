@@ -1,4 +1,5 @@
 import { RotateCcw, PenTool, MessageSquareText, Hash } from 'lucide-react'
+import { compactCount } from '../../lib/utils'
 
 interface GraphStatsProps {
   postCount: number
