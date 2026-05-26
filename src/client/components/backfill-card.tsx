@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Check, Loader2, Circle, X } from 'lucide-react'
+import { Check, Loader2, Circle } from 'lucide-react'
 import { useIngestStatus, refreshIngestStatus } from '../hooks/use-ingest-status'
 import { cancelBackfill } from '../lib/api'
 import { cn } from '../lib/utils'
@@ -81,15 +81,15 @@ export function BackfillCard() {
             <ConfirmDialog
               title="Cancel backfill?"
               description="Progress so far will be kept. In-flight jobs will be cancelled."
-              actionLabel="Cancel"
+              actionLabel="Cancel backfill"
               destructive
               onAction={async () => {
                 await cancelBackfill(status.backfillId!)
                 await refreshIngestStatus()
               }}
             >
-              <button className="cursor-pointer size-6 inline-flex items-center justify-center rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors">
-                <X className="size-3.5" />
+              <button className="cursor-pointer text-xs text-muted-foreground hover:text-destructive transition-colors">
+                Cancel
               </button>
             </ConfirmDialog>
           )}

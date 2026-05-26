@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Check, X, Loader2, AlertTriangle, Plus, Telescope, RefreshCw, Bot } from 'lucide-react'
+import { Check, X, Ban, Loader2, AlertTriangle, Plus, Telescope, RefreshCw, Bot } from 'lucide-react'
 import { useBackfillHistory } from '../hooks/use-backfill-history.js'
 import { useStats, refreshStats } from '../hooks/use-stats.js'
 import { useIngestStatus, refreshIngestStatus } from '../hooks/use-ingest-status.js'
@@ -93,21 +93,16 @@ export function SettingsView({ onBack, forceForm }: Props) {
             </button>
           )}
 
-          {bfHistory && bfHistory.records.length > 0 && (
+          {!isBackfillRunning && bfHistory && bfHistory.records.length > 0 && (
             <div className="rounded-lg border border-border divide-y divide-border">
-              {bfHistory.records
-                .filter(r => !(r.status === 'running' && isBackfillRunning))
-                .map(r => <BackfillHistoryRow key={r.id} record={r} onCancelled={refreshBfHistory} />)}
+              {bfHistory.records.map(r => <BackfillHistoryRow key={r.id} record={r} onCancelled={refreshBfHistory} />)}
             </div>
           )}
         </Section>
 
         <Section title="Scan">
-          {isScanRunning ? (
-            <div className="rounded-lg border border-border bg-muted/20 p-4">
-              <ScanProgress />
-            </div>
-          ) : (
+          <ScanProgress />
+          {!isScanRunning && (
             <ScanRunRow
               onStarted={async () => {
                 await Promise.all([refreshScanStatus(), refreshScanHistory()])
@@ -117,7 +112,7 @@ export function SettingsView({ onBack, forceForm }: Props) {
             />
           )}
 
-          {scanRecords && scanRecords.length > 0 && (
+          {!isScanRunning && scanRecords && scanRecords.length > 0 && (
             <div className="rounded-lg border border-border divide-y divide-border">
               {scanRecords.map(r => <ScanHistoryRow key={r.id} record={r} />)}
             </div>
@@ -484,7 +479,7 @@ function BackfillHistoryRow({ record, onCancelled }: { record: BackfillRecord; o
     : record.status === 'done'
       ? <Check className="size-3.5 text-green-500" />
       : record.status === 'cancelled'
-        ? <X className="size-3.5 text-muted-foreground" />
+        ? <Ban className="size-3.5 text-muted-foreground" />
         : <AlertTriangle className="size-3.5 text-destructive" />
 
   return (
@@ -571,7 +566,7 @@ function ScanHistoryRow({ record }: { record: ScanRecord }) {
     : record.status === 'done'
       ? <Check className="size-3.5 text-green-500" />
       : record.status === 'cancelled'
-        ? <X className="size-3.5 text-muted-foreground" />
+        ? <Ban className="size-3.5 text-muted-foreground" />
         : <AlertTriangle className="size-3.5 text-destructive" />
   return (
     <div className="flex items-start gap-3 p-3">
