@@ -1047,6 +1047,14 @@ app.post('/internal/scheduler/ingest-batch', async (c) => {
 
       console.log(`[Strata] Poll: emb=${embStatus.status}(${embStatus.completed}/${embStatus.total}), extract=${extractStatus.status}(${extractStatus.completed}/${extractStatus.total})`)
 
+      await redis.hSet('strata:ingest:status', {
+        embCompleted: String(embStatus.completed),
+        embTotal: String(embStatus.total || status.totalItems || 0),
+        extractCompleted: String(extractStatus.completed),
+        extractTotal: String(extractStatus.total || status.totalItems || 0),
+        lastPolledAt: String(Date.now()),
+      })
+
       if (embStatus.status === 'failed' || extractStatus.status === 'failed') {
         const endedAt = Date.now()
         await redis.hSet('strata:ingest:status', { phase: 'error', error: 'Batch failed', endedAt: String(endedAt) })
@@ -1099,6 +1107,12 @@ app.post('/internal/scheduler/ingest-batch', async (c) => {
     if (phase === 'entity-embedding') {
       const entEmbStatus = await checkBatch(openai, status.entityEmbBatchId)
       console.log(`[Strata] Poll entity-emb: ${entEmbStatus.status}(${entEmbStatus.completed}/${entEmbStatus.total})`)
+
+      await redis.hSet('strata:ingest:status', {
+        entCompleted: String(entEmbStatus.completed),
+        entTotal: String(entEmbStatus.total || 0),
+        lastPolledAt: String(Date.now()),
+      })
 
       if (entEmbStatus.status === 'failed') {
         const endedAt = Date.now()
@@ -1349,6 +1363,43 @@ function isOpenAIAuthError(err: unknown): boolean {
   if (e.code === 'invalid_api_key') return true
   const msg = (e.message || '').toLowerCase()
   return msg.includes('incorrect api key') || msg.includes('invalid api key') || msg.includes('invalid_api_key')
+}
+
+// OpenAI SDK wraps Devvit's gRPC errors as a vague "Connection error." with the
+// real detail buried in err.cause.details. Flatten the whole chain to text.
+function flattenError(err: unknown): string {
+  const parts: string[] = []
+  let cur: any = err
+  let depth = 0
+  while (cur && depth < 5) {
+    if (typeof cur === 'string') { parts.push(cur); break }
+    if (cur.message) parts.push(String(cur.message))
+    if (cur.details) parts.push(String(cur.details))
+    cur = cur.cause
+    depth++
+  }
+  return parts.join(' | ')
+}
+
+// Returns a human-readable message for known failure modes, or null.
+function describeOpenAIError(err: unknown): string | null {
+  const text = flattenError(err).toLowerCase()
+  if (text.includes('http_egress_bytes') || (text.includes('rate limit') && text.includes('egress'))) {
+    const m = text.match(/retry after\s+([0-9hm.\s]+s)/)
+    const when = m ? m[1].trim() : 'a while'
+    return `Reddit's outbound-data limit was hit (too much sent to OpenAI at once). Try a smaller date range. Retry in ${when}.`
+  }
+  if (text.includes('rate limit') || text.includes('429') || text.includes('rate_limit_exceeded')) {
+    return 'OpenAI rate limit reached. Wait a minute and retry, or use a smaller date range.'
+  }
+  if (text.includes('insufficient_quota') || text.includes('exceeded your current quota')) {
+    return 'Your OpenAI key has no remaining quota. Check billing on the OpenAI dashboard.'
+  }
+  if (isOpenAIAuthError(err)) return 'Your OpenAI key was rejected. Update it in settings.'
+  if (text.includes('connection error') || text.includes('timeout') || text.includes('etimedout')) {
+    return 'Connection to OpenAI failed. Retry; if it persists, the request may be too large — use a smaller date range.'
+  }
+  return null
 }
 
 async function noteOpenAIError(err: unknown): Promise<void> {
@@ -1909,13 +1960,21 @@ app.post('/api/search', async (c) => {
 app.get('/api/ingest/status', async (c) => {
   const status = await redis.hGetAll('strata:ingest:status')
   if (!status || !status.phase) return c.json({ phase: 'idle' })
+  const num = (k: string) => parseInt(status[k] || '0', 10)
   return c.json({
     phase: status.phase,
-    totalItems: parseInt(status.totalItems || '0', 10),
-    processed: parseInt(status.processed || '0', 10),
-    startedAt: parseInt(status.startedAt || '0', 10),
-    endedAt: status.endedAt ? parseInt(status.endedAt, 10) : null,
+    totalItems: num('totalItems'),
+    processed: num('processed'),
+    startedAt: num('startedAt'),
+    endedAt: status.endedAt ? num('endedAt') : null,
     error: status.error || null,
+    embCompleted: num('embCompleted'),
+    embTotal: num('embTotal'),
+    extractCompleted: num('extractCompleted'),
+    extractTotal: num('extractTotal'),
+    entCompleted: num('entCompleted'),
+    entTotal: num('entTotal'),
+    lastPolledAt: status.lastPolledAt ? num('lastPolledAt') : null,
   })
 })
 
@@ -1999,10 +2058,18 @@ app.post('/api/backfill/preview', async (c) => {
     expiration: new Date(Date.now() + TTL_MS),
   })
 
+  // Devvit caps outbound bytes per app per domain. The extraction batch repeats
+  // a ~2KB system prompt per item, so large backfills blow that budget. Warn
+  // above a conservative item count so mods pick smaller windows.
+  const EGRESS_SAFE_ITEMS = 1500
+  const egressRisk = rawItems.length > EGRESS_SAFE_ITEMS
+
   return c.json({
     token,
     ...estimate,
     willExceed: estimate.willExceed || willExceedItemCap,
+    egressRisk,
+    egressSafeItems: EGRESS_SAFE_ITEMS,
     currentItemCount: currentCount,
     itemCapacity: ITEM_CAPACITY,
     from,
@@ -2085,7 +2152,9 @@ app.post('/api/backfill/confirm', async (c) => {
     return c.json({ id: backfillId, totalItems: rawItems.length })
   } catch (err) {
     console.error('[Strata] Confirm error:', err)
-    return c.json({ error: `Failed to start backfill: ${err}` }, 500)
+    await noteOpenAIError(err)
+    const friendly = describeOpenAIError(err)
+    return c.json({ error: friendly ?? `Failed to start backfill: ${err}` }, friendly && isOpenAIAuthError(err) ? 401 : 500)
   }
 })
 
@@ -2583,7 +2652,7 @@ app.post('/api/alerts/:id/compose', async (c) => {
     console.error('[Strata] compose failed:', err)
     await noteOpenAIError(err)
     if (isOpenAIAuthError(err)) return c.json({ error: 'invalid_api_key' }, 401)
-    return c.json({ error: String(err) }, 500)
+    return c.json({ error: describeOpenAIError(err) ?? String(err) }, 500)
   }
 })
 

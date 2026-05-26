@@ -322,6 +322,13 @@ export interface IngestStatus {
   startedAt: number
   endedAt: number | null
   error: string | null
+  embCompleted?: number
+  embTotal?: number
+  extractCompleted?: number
+  extractTotal?: number
+  entCompleted?: number
+  entTotal?: number
+  lastPolledAt?: number | null
 }
 
 export async function fetchIngestStatus(): Promise<IngestStatus> {
@@ -346,6 +353,8 @@ export interface BackfillEstimate {
   currentBytes: number
   capacityBytes: number
   willExceed: boolean
+  egressRisk?: boolean
+  egressSafeItems?: number
   currentItemCount: number
   itemCapacity: number
   from: string

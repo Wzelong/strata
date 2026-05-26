@@ -27,6 +27,16 @@ interface Props {
   onCancel?: () => void
 }
 
+function Metric({ label, value, sub }: { label: string; value: string; sub?: string }) {
+  return (
+    <div>
+      <div className="text-[11px] text-muted-foreground">{label}</div>
+      <div className="text-sm font-medium tabular-nums mt-0.5">{value}</div>
+      {sub && <div className="text-[11px] text-muted-foreground tabular-nums mt-0.5">{sub}</div>}
+    </div>
+  )
+}
+
 export function OnboardingForm({ onStarted, onCancel }: Props) {
   const [range, setRange] = useState<DateRange>({ from: offsetDate(-30), to: offsetDate(0) })
   const [estimate, setEstimate] = useState<BackfillEstimate | null>(null)
@@ -163,22 +173,30 @@ export function OnboardingForm({ onStarted, onCancel }: Props) {
         )}
         {!estimating && estimate && (
           <>
-            <div className="flex items-center justify-between gap-4">
-              <div className="text-sm font-medium">~ {estimate.itemCount.toLocaleString()} items</div>
-              <div className="text-xs text-muted-foreground">~ {estimate.estimatedMinutes} min</div>
-            </div>
-            <div className="text-xs text-muted-foreground flex flex-wrap gap-x-1.5">
-              <span>~ ${estimate.estimatedCostUsd.toFixed(2)} OpenAI</span>
-              <span>·</span>
-              <span>~ {formatBytes(estimate.estimatedBytes)} Redis</span>
-              <span>·</span>
-              <span>{formatBytes(estimate.currentBytes)} → {formatBytes(estimate.currentBytes + estimate.estimatedBytes)} / {formatBytes(estimate.capacityBytes)}</span>
+            <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Estimated</div>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+              <Metric label="Items" value={estimate.itemCount.toLocaleString()} />
+              <Metric label="Processing" value={`${estimate.estimatedMinutes} min`} />
+              <Metric label="OpenAI cost" value={`$${estimate.estimatedCostUsd.toFixed(2)}`} />
+              <Metric
+                label="Redis"
+                value={formatBytes(estimate.estimatedBytes)}
+                sub={`${formatBytes(estimate.currentBytes + estimate.estimatedBytes)} / ${formatBytes(estimate.capacityBytes)}`}
+              />
             </div>
             {estimate.willExceed && (
               <div className="flex items-start gap-1.5 text-xs text-destructive pt-1">
                 <AlertTriangle className="size-3.5 shrink-0 mt-px" />
                 <span>
-                  Exceeds capacity. Current {estimate.currentItemCount.toLocaleString()} + backfill {estimate.itemCount.toLocaleString()} &gt; {estimate.itemCapacity.toLocaleString()} items.
+                  Exceeds capacity. {estimate.currentItemCount.toLocaleString()} current + {estimate.itemCount.toLocaleString()} new &gt; {estimate.itemCapacity.toLocaleString()} items.
+                </span>
+              </div>
+            )}
+            {!estimate.willExceed && estimate.egressRisk && (
+              <div className="flex items-start gap-1.5 text-xs text-amber-600 dark:text-amber-400 pt-1">
+                <AlertTriangle className="size-3.5 shrink-0 mt-px" />
+                <span>
+                  Large backfill. Reddit limits how much data an app can send to OpenAI at once, so this may stall or fail. A window under {(estimate.egressSafeItems ?? 1500).toLocaleString()} items is safer.
                 </span>
               </div>
             )}
