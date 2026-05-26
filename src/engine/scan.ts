@@ -395,7 +395,9 @@ export async function buildScanPairs(store: KVStore, allItemsMap?: Map<string, {
       .sort((a, b) => (c.component.bridgeScore.get(b) ?? 0) - (c.component.bridgeScore.get(a) ?? 0))
     if (fresh.length < 2) continue
     const anchorId = fresh[0]
-    const connectionIds = fresh.slice(1)
+    const anchorThread = itemThread.get(anchorId)
+    const connectionIds = fresh.slice(1).filter(id => !anchorThread || itemThread.get(id) !== anchorThread)
+    if (connectionIds.length === 0) continue
 
     // Highlights only span bridging clusters — those holding the anchor AND
     // at least one connection. The purpose of a highlight is to explain why
