@@ -261,7 +261,6 @@ export function Dashboard() {
           <div className="text-sm truncate">{cluster.label}</div>
           <div className="text-xs text-muted-foreground truncate mt-0.5">
             {compactCount(cluster.postCount)} posts · {compactCount(cluster.commentCount)} comments
-            {cluster.recentCount > 0 && ` · ${compactCount(cluster.recentCount)} in 24h`}
             {cluster.lastActivity > 0 && ` · ${formatRelativeTime(cluster.lastActivity)}`}
           </div>
         </div>

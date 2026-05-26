@@ -154,6 +154,7 @@ const PARALLEL_CALLS = 100
 async function extractEntitiesBatched(
   client: OpenAI,
   items: Array<{ id: string; text: string }>,
+  usage?: { extractInputTokens: number; extractOutputTokens: number; extractCalls: number },
 ): Promise<Map<string, Entity[]>> {
   const entities = new Map<string, Entity[]>()
   if (items.length === 0) return entities
@@ -177,6 +178,11 @@ async function extractEntitiesBatched(
           ],
           text: { format: { type: 'json_schema', name: 'multi_entity_extraction', schema: MULTI_ENTITY_SCHEMA, strict: true } },
         })
+        if (usage) {
+          usage.extractInputTokens += response.usage?.input_tokens ?? 0
+          usage.extractOutputTokens += response.usage?.output_tokens ?? 0
+          usage.extractCalls++
+        }
         const parsed = JSON.parse(response.output_text) as { results: Array<{ index: number; entities: Entity[] }> }
         return { group, parsed: parsed.results }
       } catch {
@@ -199,12 +205,19 @@ async function extractEntitiesBatched(
   return entities
 }
 
+export interface IngestChunkResult {
+  stored: number
+  usage: { embedInputTokens: number; extractInputTokens: number; extractOutputTokens: number; extractCalls: number }
+}
+
 export async function ingestChunkRealTime(
   client: OpenAI,
   redis: BulkRedis,
   items: RawItem[],
-): Promise<number> {
-  if (items.length === 0) return 0
+): Promise<IngestChunkResult> {
+  if (items.length === 0) return { stored: 0, usage: { embedInputTokens: 0, extractInputTokens: 0, extractOutputTokens: 0, extractCalls: 0 } }
+
+  const usage = { embedInputTokens: 0, extractInputTokens: 0, extractOutputTokens: 0, extractCalls: 0 }
 
   const normalized = items.map(r => ({
     id: r.id,
@@ -214,8 +227,9 @@ export async function ingestChunkRealTime(
   const embeddingArrays = await embedBatch(client, normalized.map(i => i.text))
   const embeddings = new Map<string, number[]>()
   for (let i = 0; i < items.length; i++) embeddings.set(items[i].id, embeddingArrays[i])
+  usage.embedInputTokens += normalized.reduce((s, it) => s + Math.ceil(it.text.length / 4), 0)
 
-  const entities = await extractEntitiesBatched(client, normalized)
+  const entities = await extractEntitiesBatched(client, normalized, usage)
 
   const entityItems: Array<{ id: string; text: string }> = []
   for (const [itemId, ents] of entities) {
@@ -226,9 +240,11 @@ export async function ingestChunkRealTime(
   if (entityItems.length > 0) {
     const entEmbs = await embedBatch(client, entityItems.map(e => e.text))
     for (let i = 0; i < entityItems.length; i++) entityEmbeddings.set(entityItems[i].id, entEmbs[i])
+    usage.embedInputTokens += entityItems.reduce((s, it) => s + Math.ceil(it.text.length / 4), 0)
   }
 
-  return storeResultsBulk(redis, items, embeddings, entities, entityEmbeddings)
+  const stored = await storeResultsBulk(redis, items, embeddings, entities, entityEmbeddings)
+  return { stored, usage }
 }
 
 // --- Store results ---

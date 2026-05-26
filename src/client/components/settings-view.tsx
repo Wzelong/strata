@@ -248,8 +248,11 @@ function ClustersSection() {
 
   const load = async () => {
     try {
-      const [s, c] = await Promise.all([fetchClusterStatus(), fetchClusterConfig()])
+      const s = await fetchClusterStatus()
       setStatus(s)
+    } catch {}
+    try {
+      const c = await fetchClusterConfig()
       if (c?.resolution != null) {
         setConfig(c)
         setResolution(c.resolution)
@@ -258,7 +261,11 @@ function ClustersSection() {
     } catch {}
   }
 
-  useEffect(() => { load() }, [])
+  useEffect(() => {
+    load()
+    const id = setInterval(load, 10000)
+    return () => clearInterval(id)
+  }, [])
 
   const dirty = config !== null && (resolution !== config.resolution || minSize !== config.minClusterSize)
 
@@ -272,15 +279,19 @@ function ClustersSection() {
     }
   }
 
+  const [success, setSuccess] = useState<string | null>(null)
+
   const handleRecluster = async () => {
     setReclustering(true)
     setError(null)
+    setSuccess(null)
     try {
       const res = await triggerRecluster()
       if ('error' in res) {
         setError(res.error)
       } else {
         await load()
+        setSuccess(`Done — ${(res as any).clusters} clusters, ${(res as any).orphans} orphans, ${((res as any).elapsedMs / 1000).toFixed(1)}s`)
       }
     } finally {
       setReclustering(false)
@@ -312,6 +323,7 @@ function ClustersSection() {
             </button>
           </div>
           {error && <p className="border-t border-border px-3 py-2 text-xs text-destructive">{error}</p>}
+          {success && <p className="border-t border-border px-3 py-2 text-xs text-emerald-500">{success}</p>}
         </div>
 
         <div className="rounded-md border border-border p-3 space-y-3">

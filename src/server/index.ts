@@ -309,6 +309,7 @@ app.post('/internal/triggers/post-submit', async (c) => {
 
     console.log(`[Strata] Ingesting post ${post.id} by ${authorName}: "${text.slice(0, 60)}..."`)
     const item = await engine.ingest(raw)
+    addToItemCache(item)
 
     assignItemLive(redis, store, item.id, item.embedding).catch(err => console.error('[Strata] live cluster assign failed:', err))
     bumpIngestCounter()
@@ -535,6 +536,7 @@ app.post('/internal/triggers/comment-submit', async (c) => {
     }
 
     const item = await engine.ingest(raw)
+    addToItemCache(item)
     console.log(`[Strata] Ingested comment ${comment.id}`)
 
     assignItemLive(redis, store, item.id, item.embedding).catch(err => console.error('[Strata] live cluster assign failed:', err))
@@ -1089,8 +1091,11 @@ app.post('/internal/scheduler/ingest-batch', async (c) => {
       }
 
       try {
-        const stored = await ingestChunkRealTime(openai, redis, chunkRaw)
-        const newProcessed = processedSoFar + stored
+        const result = await ingestChunkRealTime(openai, redis, chunkRaw)
+        invalidateItemCache()
+        await recordUsage('text-embedding-3-small', { inputTokens: result.usage.embedInputTokens, outputTokens: 0 })
+        await recordUsage('gpt-5.4-mini', { inputTokens: result.usage.extractInputTokens, outputTokens: result.usage.extractOutputTokens })
+        const newProcessed = processedSoFar + result.stored
         await redis.hSet('strata:ingest:status', { processed: String(newProcessed), lastPolledAt: String(Date.now()) })
         if (status.backfillId) await updateBackfillRecord(status.backfillId, { processed: newProcessed })
         console.log(`[Strata] Real-time tick: ${newProcessed}/${totalItems} items`)
@@ -1242,6 +1247,7 @@ app.post('/internal/scheduler/ingest-batch', async (c) => {
       }
 
       const stored = await storeResults(store, chunkRaw, embeddings, entities, entityEmbeddings)
+      invalidateItemCache()
       const totalStored = processedSoFar + stored
 
       // Per-chunk temp cleanup (raw + order kept until all chunks done)
@@ -1337,7 +1343,10 @@ app.post('/internal/scheduler/scan', async (c) => {
         return c.json({ status: 'ok' })
       }
 
-      await redis.set('strata:scan:pairs', JSON.stringify(pairs))
+      await redis.set('strata:scan:pairs', JSON.stringify(pairs.map(p => ({
+        ...p,
+        entitiesByItem: Object.fromEntries(p.entitiesByItem),
+      }))))
       await redis.hSet('strata:scan:status', {
         phase: 'classifying',
         anchorsTotal: String(pairs.length),
@@ -1352,7 +1361,11 @@ app.post('/internal/scheduler/scan', async (c) => {
       const index = input.data?.index as number
       const pairsJson = await redis.get('strata:scan:pairs')
       if (!pairsJson) return c.json({ status: 'ok' })
-      const pairs: ScanPair[] = JSON.parse(pairsJson)
+      const rawPairs = JSON.parse(pairsJson) as Array<any>
+      const pairs: ScanPair[] = rawPairs.map(p => ({
+        ...p,
+        entitiesByItem: new Map(Object.entries(p.entitiesByItem ?? {})),
+      }))
 
       const finalizeScan = async () => {
         const idsJson = await redis.get('strata:scan:new-alert-ids') || '[]'
@@ -1605,7 +1618,7 @@ app.post('/api/chat', async (c) => {
 app.get('/api/clusters', async (c) => {
   const repo = new ClusterRepo(redis)
   const rows = await repo.listBySize(500)
-  const allItems = await listAllItemsViaHScan()
+  const allItems = await getAllItems()
   const postsByCluster = new Map<number, number>()
   const commentsByCluster = new Map<number, number>()
   const lastActivityByCluster = new Map<number, number>()
@@ -1634,38 +1647,6 @@ app.get('/api/clusters', async (c) => {
       hotScore,
     }
   }) })
-})
-
-app.get('/api/clusters/:id', async (c) => {
-  const raw = c.req.param('id').replace(/^cluster:/, '')
-  const id = parseInt(raw, 10)
-  if (!Number.isFinite(id)) return c.json({ error: 'Invalid id' }, 400)
-  const repo = new ClusterRepo(redis)
-  const resolved = await repo.resolveAlias(id)
-  const meta = await repo.getMeta(resolved)
-  if (!meta) return c.json({ error: 'Not found' }, 404)
-  const allItems = await listAllItemsViaHScan()
-  const members = allItems.filter(it => it.clusterId === resolved)
-  const posts = members.filter(it => it.type === 'post').sort((a, b) => b.createdAt - a.createdAt)
-  const comments = members.filter(it => it.type === 'comment')
-  return c.json({
-    id: `cluster:${resolved}`,
-    label: meta.label,
-    postCount: posts.length,
-    commentCount: comments.length,
-    recentCount: members.filter(it => it.createdAt >= Date.now() - 86_400_000).length,
-    lastActivity: members.reduce((m, it) => Math.max(m, it.createdAt), 0),
-    posts: posts.slice(0, 200).map(p => ({
-      id: p.id,
-      type: p.type,
-      title: p.title ?? null,
-      text: p.text,
-      author: p.authorName,
-      createdAt: p.createdAt,
-      permalink: null,
-      commentCount: allItems.filter(it => it.threadRootId === p.id && it.type === 'comment').length,
-    })),
-  })
 })
 
 async function getClusterConfig(): Promise<{ resolution: number; minClusterSize: number }> {
@@ -1717,6 +1698,7 @@ app.post('/internal/scheduler/recluster', async (c) => {
     return c.json({ error: result.error })
   }
   await redis.del('strata:graph:layout')
+  invalidateItemCache()
   console.log('[Strata] Recluster:', result.report)
   if (body.fromBackfill) {
     const endedAt = Date.now()
@@ -1741,6 +1723,7 @@ app.post('/api/clusters/recluster', async (c) => {
     return c.json({ error: result.error }, 500)
   }
   await redis.del('strata:graph:layout')
+  invalidateItemCache()
   return c.json(result.report)
 })
 
@@ -1776,6 +1759,38 @@ app.get('/api/clusters/status', async (c) => {
   })
 })
 
+app.get('/api/clusters/:id', async (c) => {
+  const raw = c.req.param('id').replace(/^cluster:/, '')
+  const id = parseInt(raw, 10)
+  if (!Number.isFinite(id)) return c.json({ error: 'Invalid id' }, 400)
+  const repo = new ClusterRepo(redis)
+  const resolved = await repo.resolveAlias(id)
+  const meta = await repo.getMeta(resolved)
+  if (!meta) return c.json({ error: 'Not found' }, 404)
+  const allItems = await getAllItems()
+  const members = allItems.filter(it => it.clusterId === resolved)
+  const posts = members.filter(it => it.type === 'post').sort((a, b) => b.createdAt - a.createdAt)
+  const comments = members.filter(it => it.type === 'comment')
+  return c.json({
+    id: `cluster:${resolved}`,
+    label: meta.label,
+    postCount: posts.length,
+    commentCount: comments.length,
+    recentCount: members.filter(it => it.createdAt >= Date.now() - 86_400_000).length,
+    lastActivity: members.reduce((m, it) => Math.max(m, it.createdAt), 0),
+    posts: posts.slice(0, 200).map(p => ({
+      id: p.id,
+      type: p.type,
+      title: p.title ?? null,
+      text: p.text,
+      author: p.authorName,
+      createdAt: p.createdAt,
+      permalink: null,
+      commentCount: allItems.filter(it => it.threadRootId === p.id && it.type === 'comment').length,
+    })),
+  })
+})
+
 const RECLUSTER_VOLUME_RATIO = 0.05
 const RECLUSTER_VOLUME_MIN = 50
 
@@ -1803,25 +1818,70 @@ const ENTITY_EMBED_SIM_THRESHOLD = 0.78
 const STRING_ONLY_ENTITY_TYPES = new Set(['quantity', 'url', 'username', 'phone', 'email'])
 import { UMAP } from 'umap-js'
 
-function normalizeCoords(coords: number[][], n: number): number[][] {
-  const targetRadius = 10 * Math.pow(n / 200, 1 / 3)
-  let sum = 0, sumSq = 0, count = 0
-  for (const p of coords) for (const v of p) { sum += v; sumSq += v * v; count++ }
-  const mean = count > 0 ? sum / count : 0
-  const std = count > 1 ? Math.sqrt((sumSq - sum * sum / count) / (count - 1)) : 1
-  const denom = (std * 2) || 1
-  return coords.map(p => p.map(v => ((v - mean) / denom) * targetRadius))
+function normalizeCoords(coords: number[][], n: number, clusterIds?: number[]): number[][] {
+  // Center
+  const d = coords[0]?.length ?? 3
+  const center = new Array(d).fill(0)
+  for (const p of coords) for (let i = 0; i < d; i++) center[i] += p[i]
+  for (let i = 0; i < d; i++) center[i] /= n
+
+  let result = coords.map(p => p.map((v, i) => v - center[i]))
+
+  // If cluster info available, tighten clusters + spread centroids
+  if (clusterIds && clusterIds.length === n) {
+    const centroids = new Map<number, number[]>()
+    const counts = new Map<number, number>()
+    for (let i = 0; i < n; i++) {
+      const c = clusterIds[i]
+      if (c === -1) continue
+      if (!centroids.has(c)) { centroids.set(c, new Array(d).fill(0)); counts.set(c, 0) }
+      const ct = centroids.get(c)!
+      for (let j = 0; j < d; j++) ct[j] += result[i][j]
+      counts.set(c, counts.get(c)! + 1)
+    }
+    for (const [c, ct] of centroids) {
+      const cnt = counts.get(c)!
+      for (let j = 0; j < d; j++) ct[j] /= cnt
+    }
+
+    const INTRA_SHRINK = 0.6
+    const INTER_EXPAND = 1.8
+    for (let i = 0; i < n; i++) {
+      const c = clusterIds[i]
+      if (c === -1) continue
+      const ct = centroids.get(c)!
+      for (let j = 0; j < d; j++) {
+        const offset = result[i][j] - ct[j]
+        result[i][j] = ct[j] * INTER_EXPAND + offset * INTRA_SHRINK
+      }
+    }
+  }
+
+  // Scale to target radius
+  const targetRadius = 12 * Math.pow(n / 200, 1 / 3)
+  let std = 0
+  for (const p of result) for (const v of p) std += v * v
+  std = Math.sqrt(std / (n * d)) || 1
+  return result.map(p => p.map(v => (v / (std * 2)) * targetRadius))
 }
 
-function computeLayout(embeddings: number[][], n: number): number[][] {
+function computeLayout(embeddings: number[][], n: number, clusterIds?: number[]): number[][] {
   if (n < 3) return embeddings.map(() => [0, 0, 0])
   const nNeighbors = Math.max(10, Math.min(50, Math.floor(Math.sqrt(n))))
   const umap = new UMAP({ nComponents: 3, nNeighbors, minDist: 0.5, spread: 2.0 })
   const coords = umap.fit(embeddings)
-  return normalizeCoords(coords, n)
+  return normalizeCoords(coords, n, clusterIds)
 }
 
-async function listAllItemsViaHScan(): Promise<StoredItem[]> {
+// --- In-memory item cache (persists across requests in Devvit's long-lived process) ---
+
+let itemCache: StoredItem[] | null = null
+let itemCacheById: Map<string, StoredItem> | null = null
+let itemCacheAt = 0
+const ITEM_CACHE_TTL_MS = 5 * 60_000
+
+async function getAllItems(): Promise<StoredItem[]> {
+  if (itemCache && Date.now() - itemCacheAt < ITEM_CACHE_TTL_MS) return itemCache
   const items: StoredItem[] = []
   let cursor = 0
   do {
@@ -1838,7 +1898,31 @@ async function listAllItemsViaHScan(): Promise<StoredItem[]> {
       }
     }
   } while (cursor !== 0)
+  itemCache = items
+  itemCacheById = new Map(items.map(i => [i.id, i]))
+  itemCacheAt = Date.now()
   return items
+}
+
+function getItemFromCache(id: string): StoredItem | undefined {
+  return itemCacheById?.get(id)
+}
+
+function invalidateItemCache() {
+  itemCache = null
+  itemCacheById = null
+  itemCacheAt = 0
+}
+
+function addToItemCache(item: StoredItem) {
+  if (!itemCache) return
+  const existing = itemCacheById?.get(item.id)
+  if (existing) {
+    Object.assign(existing, item)
+  } else {
+    itemCache.push(item)
+    itemCacheById?.set(item.id, item)
+  }
 }
 
 async function listAllItemsSorted(): Promise<StoredItem[]> {
@@ -1998,7 +2082,7 @@ app.get('/api/threads/:postId', async (c) => {
 })
 
 app.get('/api/graph', async (c) => {
-  const items = await listAllItemsViaHScan()
+  const items = await getAllItems()
   const labelById = await loadClusterLabelMap()
   const { alerts } = await alertStore.listAlerts({ limit: 1000 })
   const alertIncludeIds = new Set<string>()
@@ -2034,10 +2118,14 @@ app.get('/api/graph', async (c) => {
     const embMap = await store.getEmbeddings(layoutIds)
     const validIds = layoutIds.filter(id => embMap.has(id))
     const validEmbs = validIds.map(id => embMap.get(id)!)
+    const validClusterIds = validIds.map(id => {
+      const item = filteredItems.find(i => i.id === id)
+      return item?.clusterId ?? -1
+    })
     console.log(`[Strata] /api/graph: computing UMAP for ${validEmbs.length} items...`)
     if (validEmbs.length > 2) {
       const t = Date.now()
-      const positions = computeLayout(validEmbs, validEmbs.length)
+      const positions = computeLayout(validEmbs, validEmbs.length, validClusterIds)
       console.log(`[Strata] /api/graph: UMAP done in ${Date.now() - t}ms`)
       for (let i = 0; i < validIds.length; i++) layoutMap.set(validIds[i], positions[i])
       await redis.set('strata:graph:layout', JSON.stringify([...layoutMap.entries()]))
@@ -2485,6 +2573,7 @@ async function resetStrataData(): Promise<number> {
   ]
   for (const key of keys) await redis.del(key)
   await alertStore.resetAll()
+  invalidateItemCache()
   console.log(`[Strata] Reset complete: ${count} items removed (API key preserved)`)
   return count
 }
