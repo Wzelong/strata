@@ -38,6 +38,14 @@ export function SettingsView({ onBack, forceForm }: Props) {
   const isScanRunning = scan && (scan.phase === 'building' || scan.phase === 'classifying')
   const runningBfRecord = bfHistory?.records.find(r => r.status === 'running') ?? null
 
+  useEffect(() => {
+    if (scan && ['done', 'error', 'cancelled'].includes(scan.phase)) refreshScanHistory()
+  }, [scan?.phase])
+
+  useEffect(() => {
+    if (ingest && ['done', 'error', 'cancelled'].includes(ingest.phase)) refreshBfHistory()
+  }, [ingest?.phase])
+
   const itemCount = stats?.itemCount ?? bfHistory?.currentItemCount ?? 0
   const bytes = bfHistory?.currentBytes ?? 0
   const itemPct = Math.min(100, (itemCount / ITEM_CAP) * 100)
