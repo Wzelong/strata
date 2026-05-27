@@ -432,7 +432,7 @@ function SurfaceDraftCard({
         <p className="text-base font-semibold leading-snug break-words mb-3">{draft.title}</p>
         <MarkdownBody text={draft.body} />
       </div>
-      <div className="border-t">
+      <div className="px-3 pb-3 pt-1">
         <ChatInput
           value={refinement}
           onChange={setRefinement}
@@ -478,6 +478,8 @@ interface AlertDetailPanelProps {
   listTab?: 'alerts' | 'items' | 'clusters'
   requestedTab?: DetailTab | null
   onTabConsumed?: () => void
+  embedded?: boolean
+  forcedTab?: DetailTab
   highlightRequest?: { ids: string[]; version: number } | null
   chatContext?: ChatContext
   onBack: () => void
@@ -486,7 +488,7 @@ interface AlertDetailPanelProps {
   onAgentSideEffect?: (effect: ToolSideEffect, source: 'right-pane' | 'detail-tab') => void
 }
 
-export function AlertDetailPanel({ alertId, alertData, itemId, itemData, clusterId, clusterData, listTab, requestedTab, onTabConsumed, highlightRequest, chatContext, onBack, onStatusChange, onGraphNodeSelect, onAgentSideEffect }: AlertDetailPanelProps) {
+export function AlertDetailPanel({ alertId, alertData, itemId, itemData, clusterId, clusterData, listTab, requestedTab, onTabConsumed, embedded, forcedTab, highlightRequest, chatContext, onBack, onStatusChange, onGraphNodeSelect, onAgentSideEffect }: AlertDetailPanelProps) {
   const { theme } = useTheme()
   const isDark = theme === 'dark'
   const [alert, setAlert] = useState<AlertDetail | null>(null)
@@ -500,7 +502,8 @@ export function AlertDetailPanel({ alertId, alertData, itemId, itemData, cluster
   const [bulkActing, setBulkActing] = useState(false)
   const [confirmError, setConfirmError] = useState<string | null>(null)
   const [surfaceDraft, setSurfaceDraft] = useState<ComposeDraft | null>(null)
-  const [detailTab, setDetailTab] = useState<DetailTab>('overview')
+  const [detailTabState, setDetailTab] = useState<DetailTab>('overview')
+  const detailTab = embedded ? (forcedTab ?? 'overview') : detailTabState
   const { subredditName } = useViewer()
 
   useEffect(() => {
@@ -698,9 +701,10 @@ export function AlertDetailPanel({ alertId, alertData, itemId, itemData, cluster
   const activeDraft = surfaceDraft ?? storedDraft
 
   return (
-    <div className="flex flex-col h-full overflow-hidden">
-      {/* Header — always visible */}
-      <div className="h-10 px-3 border-b flex items-center justify-between shrink-0 gap-2">
+    <div className="flex flex-col h-full min-w-0 flex-1 overflow-hidden">
+      {/* Header */}
+      {!embedded && (
+      <div className="h-10 pl-3 pr-[6px] border-b flex items-center justify-between shrink-0 gap-2">
         <div className="flex-1 flex items-center gap-1.5 min-w-0">
           <ArrowLeft
             className="size-3.5 cursor-pointer text-muted-foreground hover:text-foreground transition-colors shrink-0 lg:hidden"
@@ -731,8 +735,10 @@ export function AlertDetailPanel({ alertId, alertData, itemId, itemData, cluster
             <button
               key={t.value}
               className={cn(
-                'h-7 w-7 inline-flex items-center justify-center rounded cursor-pointer text-muted-foreground transition-colors',
-                detailTab === t.value && 'bg-muted',
+                'cursor-pointer h-7 w-7 inline-flex items-center justify-center rounded-md transition-colors',
+                detailTab === t.value
+                  ? 'bg-accent text-foreground'
+                  : 'hover:bg-accent text-muted-foreground hover:text-foreground',
                 t.hideOnXl && 'xl:hidden',
               )}
               onClick={() => setDetailTab(t.value)}
@@ -743,6 +749,7 @@ export function AlertDetailPanel({ alertId, alertData, itemId, itemData, cluster
           ))}
         </div>
       </div>
+      )}
 
       {/* Body */}
       <>

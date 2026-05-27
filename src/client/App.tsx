@@ -17,9 +17,9 @@ export function App() {
   const ingest = useIngestStatus()
   const [settingsOpen, setSettingsOpen] = useState(false)
 
-  if (loading) return <div className="h-dvh" />
+  if (loading) return <div className="h-full" />
   if (!isMod) return <PublicLanding />
-  if (stats === null) return <div className="h-dvh" />
+  if (stats === null) return <div className="h-full" />
 
   const needsApiKey = !stats.hasApiKey
   const isBackfillRunning = ingest && !['idle', 'done', 'error', 'cancelled'].includes(ingest.phase)
@@ -52,7 +52,7 @@ export function App() {
   const chromeless = needsApiKey || showEmpty || showFullProgress
 
   return (
-    <div className="h-dvh flex flex-col">
+    <div className="h-full flex flex-col">
       {!chromeless && (
         <Header
           settingsOpen={settingsOpen}

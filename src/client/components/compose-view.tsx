@@ -242,9 +242,7 @@ function ComposeEditor({ alertId, subredditName, onBack, onPublished }: ComposeE
           className="mt-3 w-full resize-none bg-transparent text-sm leading-relaxed outline-none placeholder:text-muted-foreground whitespace-pre-wrap disabled:opacity-50"
         />
 
-        <div className="mt-3 border-t border-border" />
-
-        <div className="mt-1">
+        <div className="mt-3">
           <ChatInput
             value={refineInput}
             onChange={setRefineInput}

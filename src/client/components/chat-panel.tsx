@@ -119,14 +119,14 @@ export function ChatPanel({ surface = 'right-pane', context, onAgentSideEffect }
   const handlePick = useCallback((text: string) => send(text), [send])
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full min-w-0 w-full">
       <ChatHeader
         model={model}
         onModelChange={setModel}
         onReset={reset}
         canReset={messages.length > 0 || streaming}
       />
-      <div ref={scrollRef} className="flex-1 overflow-y-auto px-3 py-3">
+      <div ref={scrollRef} className="flex-1 min-w-0 overflow-y-auto px-3 py-3">
         {messages.length === 0 ? (
           <WelcomeScreen onPick={handlePick} />
         ) : (
@@ -140,7 +140,7 @@ export function ChatPanel({ surface = 'right-pane', context, onAgentSideEffect }
           </div>
         )}
       </div>
-      <div className="shrink-0 border-t">
+      <div className="shrink-0 px-3 pb-3 pt-1">
         <ChatInput
           value={input}
           onChange={setInput}

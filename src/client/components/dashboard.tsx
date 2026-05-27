@@ -7,20 +7,22 @@ import type { ChatContext, ToolSideEffect } from '../types/chat'
 import { fetchAlerts, fetchItems, fetchClusters, alertAction, type AlertListItem, type ItemListItem, type ClusterListItem } from '../lib/api'
 import { buildClusterColorMap } from '../lib/graph-utils'
 import { useTheme } from '../hooks/use-theme'
+import { useIsMobile } from '../hooks/use-is-mobile'
 import { cn, formatRelativeTime, compactCount } from '../lib/utils'
 
 const GraphCanvas = lazy(() => import('./graph/graph-canvas').then(m => ({ default: m.GraphCanvas })))
 
 type Tab = 'alerts' | 'items' | 'clusters'
-type ContentView = 'list' | 'detail'
+type MobileView = 'graph' | 'ai' | null
 
 const PAGE_SIZE = 50
 
 export function Dashboard() {
   const { theme } = useTheme()
   const isDark = theme === 'dark'
+  const isMobile = useIsMobile()
   const [tab, setTab] = useState<Tab>('alerts')
-  const [contentView, setContentView] = useState<ContentView>('list')
+  const [mobileView, setMobileView] = useState<MobileView>(null)
   const [requestedDetailTab, setRequestedDetailTab] = useState<'overview' | 'explore' | 'chat' | null>(null)
   const [highlightRequest, setHighlightRequest] = useState<{ ids: string[]; version: number } | null>(null)
   const [alerts, setAlerts] = useState<AlertListItem[]>([])
@@ -28,7 +30,6 @@ export function Dashboard() {
   const [selectedAlertId, setSelectedAlertId] = useState<string | null>(null)
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null)
   const [selectedClusterId, setSelectedClusterId] = useState<string | null>(null)
-  const [mobileOverlay, setMobileOverlay] = useState<'explore' | 'chat' | null>(null)
 
   const [clusters, setClusters] = useState<ClusterListItem[]>([])
   const [clustersLoading, setClustersLoading] = useState(false)
@@ -268,74 +269,76 @@ export function Dashboard() {
     { label: 'Topics', value: 'clusters', icon: <Hash className="size-3.5" /> },
   ]
 
-  const switchTab = (t: string) => {
-    setTab(t as Tab)
+  const clearSelection = () => {
     setSelectedAlertId(null)
     setSelectedItemId(null)
     setSelectedClusterId(null)
-    setMobileOverlay(null)
-    setContentView('list')
+    setMobileView(null)
+  }
+
+  const switchTab = (t: string) => {
+    setTab(t as Tab)
+    clearSelection()
+  }
+
+  const handleMobileTab = (t: string) => {
+    if (t === 'graph') setMobileView('graph')
+    else if (t === 'ai') setMobileView('ai')
+    else switchTab(t)
   }
 
 
   const highlightVersion = useRef(0)
   const handleAgentSideEffect = useCallback((effect: ToolSideEffect, source: ChatSurface) => {
+    // On the mobile AI tab, agent tool calls update selection/context but never navigate away.
+    const stayOnChat = isMobile && mobileView === 'ai'
+    const goToDetail = () => { if (!stayOnChat) setMobileView(null) }
     switch (effect.type) {
       case 'select_alert':
         setSelectedAlertId(effect.alert_id)
         setSelectedItemId(null)
         setSelectedClusterId(null)
         setTab('alerts')
-        setContentView('detail')
+        goToDetail()
         break
       case 'select_topic':
         setSelectedClusterId(effect.cluster_id)
         setSelectedAlertId(null)
         setSelectedItemId(null)
         setTab('clusters')
-        setContentView('detail')
+        goToDetail()
         break
       case 'select_post':
         setSelectedItemId(effect.post_id)
         setSelectedAlertId(null)
         setSelectedClusterId(null)
         setTab('items')
-        setContentView('detail')
+        goToDetail()
         break
       case 'select_comment':
         setSelectedItemId(effect.thread_root_id)
         setSelectedAlertId(null)
         setSelectedClusterId(null)
         setTab('items')
-        setContentView('detail')
+        goToDetail()
         break
       case 'highlight':
         highlightVersion.current += 1
         setHighlightRequest({ ids: effect.ids, version: highlightVersion.current })
         if (source === 'right-pane') setRequestedDetailTab('explore')
-        setContentView('detail')
+        else if (!stayOnChat) setMobileView('graph')
         break
     }
-  }, [])
+  }, [isMobile, mobileView])
 
-  const toolbarButtons = [
-    {
-      icon: <Telescope className="size-3.5" />,
-      onClick: () => setMobileOverlay(prev => prev === 'explore' ? null : 'explore'),
-      ariaLabel: 'View graph',
-      active: mobileOverlay === 'explore',
-      className: 'lg:hidden',
-    },
-    {
-      icon: <Sparkles className="size-3.5" />,
-      onClick: () => setMobileOverlay(prev => prev === 'chat' ? null : 'chat'),
-      ariaLabel: 'AI chat',
-      active: mobileOverlay === 'chat',
-      className: 'lg:hidden',
-    },
-  ]
+  const hasSelection = !!(selectedAlertId || selectedItemId || selectedClusterId)
 
-  const hasDetail = tab === 'alerts' && selectedAlertId
+  const handleGraphNodeSelect = (id: string) => {
+    setSelectedAlertId(null)
+    setSelectedClusterId(null)
+    setSelectedItemId(id)
+    setTab('items')
+  }
 
   const chatContext = useMemo<ChatContext>(() => {
     if (selectedAlertId) {
@@ -355,37 +358,68 @@ export function Dashboard() {
     return { view: tab }
   }, [tab, selectedAlertId, selectedItemId, selectedClusterId, alerts, items, clusters])
 
-  const mobileOverlayNode = mobileOverlay === 'explore' ? (
-    <Suspense fallback={<div className="flex-1 flex items-center justify-center text-xs text-muted-foreground">Loading graph...</div>}>
-      <GraphCanvas onNodeSelect={id => { setMobileOverlay(null); setSelectedItemId(id); setTab('items'); setContentView('detail') }} />
-    </Suspense>
-  ) : mobileOverlay === 'chat' ? (
-    <ChatPanel surface="detail-tab" context={chatContext} onAgentSideEffect={handleAgentSideEffect} />
-  ) : undefined
+  const detailProps = {
+    alertId: selectedAlertId,
+    alertData: selectedAlertId ? alerts.find(a => a.id === selectedAlertId) ?? null : null,
+    itemId: selectedItemId,
+    itemData: selectedItemId ? items.find(i => i.id === selectedItemId) ?? null : null,
+    clusterId: selectedClusterId,
+    clusterData: selectedClusterId ? clusters.find(c => c.id === selectedClusterId) ?? null : null,
+    listTab: tab,
+    highlightRequest,
+    chatContext,
+    onBack: clearSelection,
+    onStatusChange: loadAlerts,
+    onGraphNodeSelect: handleGraphNodeSelect,
+    onAgentSideEffect: handleAgentSideEffect,
+  }
+
+  const mobileContent = !isMobile ? undefined
+    : mobileView === 'graph'
+      ? (hasSelection
+        ? <AlertDetailPanel {...detailProps} embedded forcedTab="explore" />
+        : (
+          <Suspense fallback={<div className="flex-1 flex items-center justify-center text-xs text-muted-foreground">Loading graph...</div>}>
+            <GraphCanvas onNodeSelect={handleGraphNodeSelect} />
+          </Suspense>
+        ))
+      : mobileView === 'ai'
+        ? <ChatPanel surface="detail-tab" context={chatContext} onAgentSideEffect={handleAgentSideEffect} />
+        : hasSelection
+          ? <AlertDetailPanel {...detailProps} embedded forcedTab="overview" />
+          : undefined
+
+  const mobileTabs = [
+    ...sharedTabs,
+    { label: 'Graph', value: 'graph', icon: <Telescope className="size-3.5" /> },
+    { label: 'AI', value: 'ai', icon: <Sparkles className="size-3.5" /> },
+  ]
+
+  const listTabs = isMobile ? mobileTabs : sharedTabs
+  const listActiveTab = isMobile ? (mobileView ?? tab) : tab
+  const onListTabChange = isMobile ? handleMobileTab : switchTab
+  const detailActive = isMobile && (!!mobileView || hasSelection)
 
   return (
-    <div className="flex h-full">
-      {/* Left panel — list */}
-      <div className={cn(
-        'shrink-0 lg:w-[280px] flex-1 lg:flex-none border-r flex-col h-full min-h-0 relative',
-        contentView !== 'list' ? 'hidden lg:flex' : 'flex',
-      )}>
+    <div className="flex h-full overflow-hidden">
+      {/* Left panel — list (full width on mobile, sidebar at lg+) */}
+      <div className="w-full min-w-0 shrink-0 lg:w-[280px] lg:border-r flex flex-col h-full min-h-0 relative">
         {tab === 'alerts' ? (
           <DataList
             data={alerts}
             getItemId={a => a.id}
             renderItem={renderAlertItem}
             activeId={selectedAlertId ?? undefined}
-            onItemClick={a => { setSelectedAlertId(a.id); setSelectedItemId(null); setSelectedClusterId(null); setMobileOverlay(null); setContentView('detail') }}
+            onItemClick={a => { setSelectedAlertId(a.id); setSelectedItemId(null); setSelectedClusterId(null); setMobileView(null) }}
             isLoading={alertsLoading}
             emptyIcon={<Bell className="size-6 text-muted-foreground" />}
             emptyMessage={alertsLoading ? 'Loading alerts...' : 'No alerts yet'}
-            tabs={sharedTabs}
-            activeTab={mobileOverlay ? undefined : tab}
-            onTabChange={switchTab}
-            filters={alertFilters}
+            tabs={listTabs}
+            activeTab={listActiveTab}
+            onTabChange={onListTabChange}
+            filters={detailActive ? [] : alertFilters}
             searchValue={search}
-            onSearchChange={setSearch}
+            onSearchChange={detailActive ? undefined : setSearch}
             selectedIds={selectedIds}
             onSelectOne={id => {
               const next = new Set(selectedIds)
@@ -402,8 +436,7 @@ export function Dashboard() {
               { icon: <Stamp className="size-3" />, onClick: handleBulkResolve, ariaLabel: 'Resolve selected' },
               { icon: <Ban className="size-3" />, onClick: handleBulkDismiss, ariaLabel: 'Dismiss selected' },
             ]}
-            toolbarButtons={toolbarButtons}
-            overlay={mobileOverlayNode}
+            overlay={mobileContent}
             scrollToId={selectedAlertId}
           />
         ) : tab === 'items' ? (
@@ -412,16 +445,16 @@ export function Dashboard() {
             getItemId={i => i.id}
             renderItem={renderItemRow}
             activeId={selectedItemId ?? undefined}
-            onItemClick={i => { setSelectedItemId(i.id); setSelectedAlertId(null); setSelectedClusterId(null); setMobileOverlay(null); setContentView('detail') }}
+            onItemClick={i => { setSelectedItemId(i.id); setSelectedAlertId(null); setSelectedClusterId(null); setMobileView(null) }}
             isLoading={itemsLoading}
             emptyIcon={<PenTool className="size-6 text-muted-foreground" />}
             emptyMessage={itemsLoading ? 'Loading items...' : 'No items ingested'}
-            tabs={sharedTabs}
-            activeTab={mobileOverlay ? undefined : tab}
-            onTabChange={switchTab}
-            filters={itemFilters}
+            tabs={listTabs}
+            activeTab={listActiveTab}
+            onTabChange={onListTabChange}
+            filters={detailActive ? [] : itemFilters}
             searchValue={search}
-            onSearchChange={setSearch}
+            onSearchChange={detailActive ? undefined : setSearch}
             infinite={{
               hasNextPage: itemsHasMore,
               isFetchingNextPage: itemsFetchingMore,
@@ -429,8 +462,7 @@ export function Dashboard() {
               total: itemsTotal,
             }}
             scrollToId={selectedItemId}
-            toolbarButtons={toolbarButtons}
-            overlay={mobileOverlayNode}
+            overlay={mobileContent}
           />
         ) : (
           <DataList
@@ -438,51 +470,38 @@ export function Dashboard() {
             getItemId={c => c.id}
             renderItem={renderClusterRow}
             activeId={selectedClusterId ?? undefined}
-            onItemClick={c => { setSelectedClusterId(c.id); setSelectedAlertId(null); setSelectedItemId(null); setMobileOverlay(null); setContentView('detail') }}
+            onItemClick={c => { setSelectedClusterId(c.id); setSelectedAlertId(null); setSelectedItemId(null); setMobileView(null) }}
             isLoading={clustersLoading}
             emptyIcon={<Hash className="size-6 text-muted-foreground" />}
             emptyMessage={clustersLoading ? 'Loading topics...' : 'No topics'}
-            tabs={sharedTabs}
-            activeTab={mobileOverlay ? undefined : tab}
-            onTabChange={switchTab}
+            tabs={listTabs}
+            activeTab={listActiveTab}
+            onTabChange={onListTabChange}
             filters={[]}
             searchValue={search}
-            onSearchChange={setSearch}
-            toolbarButtons={toolbarButtons}
-            overlay={mobileOverlayNode}
+            onSearchChange={detailActive ? undefined : setSearch}
+            overlay={mobileContent}
             scrollToId={selectedClusterId}
           />
         )}
       </div>
 
-      {/* Center panel — detail (always visible at lg+) */}
-      <div className={cn(
-        'flex-1 min-w-0 border-r flex-col h-full min-h-0',
-        contentView === 'list' ? 'hidden lg:flex' : 'flex',
-      )}>
-        <AlertDetailPanel
-          alertId={selectedAlertId}
-          alertData={selectedAlertId ? alerts.find(a => a.id === selectedAlertId) ?? null : null}
-          itemId={selectedItemId}
-          itemData={selectedItemId ? items.find(i => i.id === selectedItemId) ?? null : null}
-          clusterId={selectedClusterId}
-          clusterData={selectedClusterId ? clusters.find(c => c.id === selectedClusterId) ?? null : null}
-          listTab={tab}
-          requestedTab={requestedDetailTab}
-          onTabConsumed={() => setRequestedDetailTab(null)}
-          highlightRequest={highlightRequest}
-          chatContext={chatContext}
-          onBack={() => { setSelectedAlertId(null); setSelectedItemId(null); setSelectedClusterId(null); setContentView('list') }}
-          onStatusChange={loadAlerts}
-          onGraphNodeSelect={id => { setSelectedAlertId(null); setSelectedClusterId(null); setSelectedItemId(id); setTab('items'); setContentView('detail') }}
-          onAgentSideEffect={handleAgentSideEffect}
-        />
-      </div>
+      {/* Center & right panels — desktop only */}
+      {!isMobile && (
+        <>
+          <div className="flex-1 min-w-0 border-r flex flex-col h-full min-h-0">
+            <AlertDetailPanel
+              {...detailProps}
+              requestedTab={requestedDetailTab}
+              onTabConsumed={() => setRequestedDetailTab(null)}
+            />
+          </div>
 
-      {/* Right panel — AI chat (xl+ only) */}
-      <div className="xl:w-[400px] xl:shrink-0 xl:flex-none min-w-0 flex-col h-full min-h-0 hidden xl:flex">
-        <ChatPanel surface="right-pane" context={chatContext} onAgentSideEffect={handleAgentSideEffect} />
-      </div>
+          <div className="xl:w-[400px] xl:shrink-0 xl:flex-none min-w-0 flex-col h-full min-h-0 hidden xl:flex">
+            <ChatPanel surface="right-pane" context={chatContext} onAgentSideEffect={handleAgentSideEffect} />
+          </div>
+        </>
+      )}
     </div>
   )
 }

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { ChevronDown, Search, Hash, PenTool, Bell, Telescope, Loader2, type LucideIcon } from 'lucide-react'
+import { ChevronDown, Search, Hash, Layers, PenTool, Bell, Telescope, Loader2, type LucideIcon } from 'lucide-react'
 import type { ToolCallData } from '../../types/chat'
 import { cn } from '../../lib/utils'
 
@@ -8,6 +8,7 @@ const ICON_FOR: Record<string, LucideIcon> = {
   list_alerts: Bell,
   get_alert: Bell,
   get_topic: Hash,
+  list_topics: Layers,
   get_thread: PenTool,
   get_item: PenTool,
   mark_relevant: Telescope,
@@ -28,6 +29,7 @@ export function titleFor(step: ToolCallData): string {
   }
   if (step.name === 'get_alert') return 'Reading alert'
   if (step.name === 'get_topic') return `Reading topic ${args.label ?? ''}`.trim()
+  if (step.name === 'list_topics') return 'Ranking topics'
   if (step.name === 'get_thread') return 'Reading thread'
   if (step.name === 'get_item') return 'Reading item'
   if (step.name === 'mark_relevant') {

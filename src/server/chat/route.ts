@@ -57,6 +57,9 @@ export function createChatHandler(deps: ChatRouteDeps) {
       ...userMessages,
     ]
 
+    // Hint proxies/gateways not to buffer or transform the SSE stream.
+    c.header('X-Accel-Buffering', 'no')
+
     return streamSSE(c, async (stream) => {
       const send = async (event: string, data: unknown) => {
         await stream.writeSSE({ event, data: JSON.stringify(data) })

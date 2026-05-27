@@ -180,10 +180,24 @@ export function buildToolSchemas() {
       parameters: {
         type: 'object',
         properties: {
-          label: { type: 'string', description: 'Topic label as returned by semantic_search or get_alert.' },
+          label: { type: 'string', description: 'Topic label as returned by list_topics, semantic_search, or get_alert.' },
           sample_k: { type: 'integer', description: 'How many sampled items to include (default 8).' },
         },
         required: ['label', 'sample_k'],
+        additionalProperties: false,
+      },
+    },
+    {
+      type: 'function' as const,
+      name: 'list_topics',
+      description: 'List topics (semantic clusters) ranked by size, each with member count, recent (7d) activity, last-activity time, and top terms. Use for "biggest topic", "most active topics", "what are people discussing" — anything that needs to find a topic rather than name one. Then call get_topic(label) to summarize a specific one.',
+      strict: true,
+      parameters: {
+        type: 'object',
+        properties: {
+          limit: { type: 'integer', description: 'How many topics to return, ranked by size (default 10, max 30).' },
+        },
+        required: ['limit'],
         additionalProperties: false,
       },
     },
@@ -365,6 +379,29 @@ export function createToolDispatcher(deps: ChatToolDeps) {
     }
   }
 
+  async function listTopics(args: { limit: number }): Promise<{ topics: Array<{ label: string; size: number; recent_count: number; last_activity: number; top_terms: string[] }> }> {
+    const limit = Math.max(1, Math.min(args.limit || 10, 30))
+    const all = await getAllItems()
+    const recentCutoff = Date.now() - 7 * 24 * 60 * 60_000
+    const byLabel = new Map<string, StoredItem[]>()
+    for (const it of all) {
+      const label = clusterLabelFor(it, clusterLabelById)
+      if (!label) continue
+      const arr = byLabel.get(label)
+      if (arr) arr.push(it)
+      else byLabel.set(label, [it])
+    }
+    const topics = [...byLabel.entries()].map(([label, members]) => ({
+      label,
+      size: members.length,
+      recent_count: members.filter(m => m.createdAt >= recentCutoff).length,
+      last_activity: Math.max(...members.map(m => m.createdAt)),
+      top_terms: topTerms(members.map(m => `${m.title ?? ''} ${m.text}`)),
+    }))
+    topics.sort((a, b) => b.size - a.size)
+    return { topics: topics.slice(0, limit) }
+  }
+
   async function getThread(args: { post_id: string }): Promise<ThreadResult | { error: string }> {
     const post = await getItem(args.post_id)
     if (!post || post.type !== 'post') return { error: `Post not found: ${args.post_id}` }
@@ -433,6 +470,12 @@ export function createToolDispatcher(deps: ChatToolDeps) {
         preview,
         sideEffect: clusterId ? { type: 'select_topic', cluster_id: clusterId, label: out.label } : undefined,
       }
+    }
+
+    if (name === 'list_topics') {
+      const out = await listTopics(args)
+      const preview = out.topics.slice(0, 5).map(t => `${t.label} · ${t.size} items`).join('\n')
+      return { result: out, summary: `${out.topics.length} topics`, preview }
     }
 
     if (name === 'get_thread') {

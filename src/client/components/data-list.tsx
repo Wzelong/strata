@@ -134,7 +134,7 @@ export function DataList<T>({
   }, [scrollToId, data, virtualizer, getItemId])
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full min-w-0">
       {/* Toolbar */}
       <div className="relative flex items-center justify-between gap-2 pl-3 pr-[6px] h-10 border-b shrink-0 select-none">
         <LoadingBar active={!!isLoading} />
@@ -178,10 +178,10 @@ export function DataList<T>({
                       <button
                         onClick={() => onTabChange(t.value)}
                         className={cn(
-                          'h-6 w-6 inline-flex items-center justify-center rounded cursor-pointer transition-colors',
+                          'cursor-pointer h-7 w-7 inline-flex items-center justify-center rounded-md transition-colors',
                           activeTab === t.value
-                            ? 'bg-foreground/10 text-foreground'
-                            : 'text-muted-foreground hover:text-foreground',
+                            ? 'bg-accent text-foreground'
+                            : 'hover:bg-accent text-muted-foreground hover:text-foreground',
                         )}
                       >
                         {t.icon ?? <span className="text-[11px]">{t.label}</span>}
@@ -259,7 +259,7 @@ export function DataList<T>({
 
       {/* List */}
       {overlay ? (
-        <div className="flex-1 min-h-0 flex">{overlay}</div>
+        <div className="flex-1 min-h-0 min-w-0 flex">{overlay}</div>
       ) : (
       <div ref={listRef} className="flex-1 overflow-y-auto min-h-0">
         {data.length === 0 ? (

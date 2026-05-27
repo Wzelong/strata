@@ -6,7 +6,7 @@ const isDev = import.meta.env.DEV
 export function PublicLanding() {
   const override = useViewerOverride()
   return (
-    <div className="min-h-dvh flex flex-col items-center justify-center px-4">
+    <div className="h-full overflow-y-auto flex flex-col items-center justify-center px-4">
       <div className="w-full max-w-[440px] flex flex-col items-center space-y-3">
         <img src={logo} alt="Strata" width={64} height={64} className="size-16" />
         <div className="text-center space-y-1.5">

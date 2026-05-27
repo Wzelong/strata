@@ -1,9 +1,8 @@
-import { useCallback, useEffect, useRef, useState, type ChangeEvent, type KeyboardEvent } from 'react'
+import { useCallback, useEffect, useRef, type ChangeEvent, type KeyboardEvent } from 'react'
 import { ArrowUp } from 'lucide-react'
 import { cn } from '../../lib/utils'
 
 const MAX_HEIGHT = 200
-const MOBILE_BREAKPOINT = 768
 
 interface ChatInputProps {
   value: string
@@ -17,22 +16,12 @@ interface ChatInputProps {
 
 export function ChatInput({ value, onChange, onSubmit, streaming, disabled, placeholder = 'Ask Strata...', className }: ChatInputProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
-  const [mobile, setMobile] = useState(false)
-  const [focused, setFocused] = useState(false)
 
   const resize = useCallback(() => {
     const el = textareaRef.current
     if (!el) return
     el.style.height = 'auto'
     el.style.height = `${Math.min(el.scrollHeight, MAX_HEIGHT)}px`
-  }, [])
-
-  useEffect(() => {
-    const media = window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT - 1}px)`)
-    const update = () => setMobile(media.matches)
-    update()
-    media.addEventListener('change', update)
-    return () => media.removeEventListener('change', update)
   }, [])
 
   useEffect(() => { resize() }, [value, resize])
@@ -50,10 +39,9 @@ export function ChatInput({ value, onChange, onSubmit, streaming, disabled, plac
   }
 
   const canSend = value.trim().length > 0 && !disabled && !streaming
-  const minHeight = mobile ? (focused ? 84 : 56) : undefined
 
   return (
-    <div className={cn('relative flex items-end bg-background px-1 py-1', className)}>
+    <div className={cn('flex items-end gap-1.5 border border-border bg-background px-2 py-1.5', className)}>
       <textarea
         ref={textareaRef}
         value={value}
@@ -62,21 +50,19 @@ export function ChatInput({ value, onChange, onSubmit, streaming, disabled, plac
         placeholder={placeholder}
         disabled={disabled || streaming}
         rows={1}
-        onFocus={() => setFocused(true)}
-        onBlur={() => setFocused(false)}
-        className="flex-1 resize-none bg-transparent px-3 py-2 text-base md:text-sm outline-none placeholder:text-muted-foreground disabled:opacity-50 transition-[min-height] duration-150"
-        style={{ maxHeight: MAX_HEIGHT, minHeight }}
+        className="flex-1 min-w-0 resize-none bg-transparent px-1.5 py-1 text-base md:text-sm leading-6 outline-none placeholder:text-muted-foreground disabled:opacity-50"
+        style={{ maxHeight: MAX_HEIGHT }}
       />
       <button
         type="button"
         onClick={onSubmit}
         disabled={!canSend}
         className={cn(
-          'mb-1.5 mr-1.5 flex size-6 shrink-0 items-center justify-center rounded-full transition-colors',
+          'mb-0.5 flex size-7 shrink-0 items-center justify-center rounded-full transition-colors',
           canSend ? 'bg-foreground text-background hover:bg-foreground/80 cursor-pointer' : 'bg-muted text-muted-foreground cursor-default',
         )}
       >
-        <ArrowUp className="size-3.5" />
+        <ArrowUp className="size-4" />
       </button>
     </div>
   )
