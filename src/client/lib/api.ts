@@ -107,7 +107,7 @@ export async function fetchPostDetail(id: string): Promise<PostDetail | null> {
   }
 }
 
-export async function alertAction(id: string, action: 'resolved' | 'dismissed'): Promise<void> {
+export async function alertAction(id: string, action: 'resolved' | 'dismissed' | 'pending'): Promise<void> {
   const res = await fetch(`/api/alerts/${id}/action`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -115,6 +115,10 @@ export async function alertAction(id: string, action: 'resolved' | 'dismissed'):
   })
   const parsed = await readJson<{ ok: boolean }>(res, 'Alert action failed')
   if ('error' in parsed) throw new Error(parsed.error)
+}
+
+export async function deleteAlert(id: string): Promise<void> {
+  await fetch(`/api/alerts/${id}`, { method: 'DELETE' })
 }
 
 export async function removeItem(id: string): Promise<{ ok: boolean; error?: string }> {
@@ -243,26 +247,6 @@ export async function fetchClusterStatus(): Promise<ClusterStatus> {
 
 export async function triggerRecluster(): Promise<{ clusters: number; orphans: number; relabeled: number; elapsedMs: number } | { error: string }> {
   const res = await fetch('/api/clusters/recluster', { method: 'POST' })
-  return res.json()
-}
-
-export interface ClusterConfig {
-  resolution: number
-  minClusterSize: number
-  defaults: { resolution: number; minClusterSize: number }
-}
-
-export async function fetchClusterConfig(): Promise<ClusterConfig> {
-  const res = await fetch('/api/clusters/config')
-  return res.json()
-}
-
-export async function saveClusterConfig(patch: { resolution?: number; minClusterSize?: number }): Promise<ClusterConfig> {
-  const res = await fetch('/api/clusters/config', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(patch),
-  })
   return res.json()
 }
 

@@ -16,7 +16,7 @@ import {
 } from '../engine/batch-ingest.js'
 import { buildScanPairs, classifyAndCreateAlerts, type ScanPair } from '../engine/scan.js'
 import { routeFlag, formatReportReason, brigadeLockKey, BRIGADE_LOCK_TTL_MS } from '../engine/flag-routing.js'
-import { estimateBackfill, estimateBackfillRealtime, estimateCurrentBytes, ITEM_CAPACITY, RT_ITEMS_PER_TICK, RT_TICK_SPACING_MS } from './backfill-estimates.js'
+import { estimateBackfill, estimateBackfillRealtime, estimateCurrentBytes, ITEM_CAPACITY, EVICTION_THRESHOLD, EVICTION_BATCH_SIZE, RT_ITEMS_PER_TICK, RT_TICK_SPACING_MS } from './backfill-estimates.js'
 import { recordUsage, getUsageSummary, usageMonthKey, USAGE_TOTAL_KEY } from './usage.js'
 import { createChatHandler } from './chat/route.js'
 import { runRecluster, assignItemLive, ClusterRepo } from './cluster-pipeline.js'
@@ -65,11 +65,12 @@ async function runJobWithRetry(opts: Parameters<typeof scheduler.runJob>[0], tri
   throw lastErr
 }
 
-function buildPermalink(item: { id: string; type: 'post' | 'comment'; threadRootId: string }, subredditName: string): string {
+function buildPermalink(item: { id: string; type: 'post' | 'comment'; threadRootId: string; permalink?: string }, subredditName: string): string {
+  if (item.permalink) return item.permalink
   if (item.type === 'comment') {
-    return `/r/${subredditName}/comments/${item.threadRootId}/_/${item.id}`
+    return `/r/${subredditName}/comments/${item.threadRootId.replace(/^t3_/, '')}/_/${item.id.replace(/^t1_/, '')}`
   }
-  return `/r/${subredditName}/comments/${item.id}`
+  return `/r/${subredditName}/comments/${item.id.replace(/^t3_/, '')}`
 }
 
 function buildDashboardUrl(postId: string, subredditName: string): string {
@@ -181,8 +182,10 @@ function renderDigestMarkdown(
       return 0
     })[0]
     const summary = strongest?.reasoning?.split(/[.\n]/)[0]?.trim() || 'See dashboard for details.'
+    const permalink = alert.anchorPermalink ? `https://reddit.com${alert.anchorPermalink}` : null
+    const titleLine = permalink ? `[${title}](${permalink})` : title
     return [
-      `### ${i + 1}. ${title}`,
+      `### ${i + 1}. ${titleLine}`,
       `- **${connections.length} connection${connections.length === 1 ? '' : 's'}** across ${threadCount} thread${threadCount === 1 ? '' : 's'} · posted ${relativeAge(alert.createdAt)} by u/${alert.anchorAuthor}`,
       `- ${summary}`,
       `- Confidence: ${alert.confidence}`,
@@ -194,7 +197,7 @@ function renderDigestMarkdown(
     blocks,
     '---',
     `**Open the dashboard:** [Strata · Moderator Dashboard](${dashboardUrl})`,
-    `*Automated by Strata. Configure under r/${subredditName}/about/edit/modules.*`,
+    `*Automated by Strata.*`,
   ].join('\n\n')
 }
 
@@ -350,11 +353,17 @@ app.post('/internal/triggers/post-submit', async (c) => {
     }
 
     console.log(`[Strata] Ingesting post ${post.id} by ${authorName}: "${text.slice(0, 60)}..."`)
+    await evictOldestIfNeeded()
     const item = await engine.ingest(raw)
     addToItemCache(item)
 
     assignItemLive(redis, store, item.id, item.embedding).catch(err => console.error('[Strata] live cluster assign failed:', err))
     bumpIngestCounter()
+
+    if (await engine.isNearDuplicate(item.embedding, item.id)) {
+      console.log(`[Strata] Skipping surface/flag — near-duplicate of existing item`)
+      return c.json<TriggerResponse>({ status: 'ok' })
+    }
 
     const [surfaceResult, flagResults] = await Promise.all([
       engine.surface(item),
@@ -582,12 +591,18 @@ app.post('/internal/triggers/comment-submit', async (c) => {
       parentId: comment.parentId || null,
     }
 
+    await evictOldestIfNeeded()
     const item = await engine.ingest(raw)
     addToItemCache(item)
     console.log(`[Strata] Ingested comment ${comment.id}`)
 
     assignItemLive(redis, store, item.id, item.embedding).catch(err => console.error('[Strata] live cluster assign failed:', err))
     bumpIngestCounter()
+
+    if (await engine.isNearDuplicate(item.embedding, item.id)) {
+      console.log(`[Strata] Skipping flag — near-duplicate comment`)
+      return c.json<TriggerResponse>({ status: 'ok' })
+    }
 
     const flagResults = await engine.flag(item)
     if (flagResults.length > 0 && context.subredditName) {
@@ -1083,6 +1098,7 @@ app.post('/internal/forms/similar-decisions-results', async (c) => {
   return c.json<UiResponse>({ showToast: 'Done.' })
 })
 
+
 // --- Ingest ---
 
 
@@ -1143,16 +1159,20 @@ app.post('/internal/scheduler/ingest-batch', async (c) => {
           for (const c of clusters) {
             await clusterRepo.writeCluster({ id: c.id, label: c.label, size: c.size, createdAt: Date.now(), updatedAt: Date.now() }, [0])
           }
-          const itemFields: Record<string, string> = {}
           const cachedItems = await getAllItems()
-          for (const item of cachedItems) {
-            const cid = assignments[item.id]
-            if (cid !== undefined) {
-              (item as any).clusterId = cid
-              itemFields[item.id] = JSON.stringify(item)
+          const CHUNK = 500
+          for (let i = 0; i < cachedItems.length; i += CHUNK) {
+            const batch = cachedItems.slice(i, i + CHUNK)
+            const itemFields: Record<string, string> = {}
+            for (const item of batch) {
+              const cid = assignments[item.id]
+              if (cid !== undefined) {
+                (item as any).clusterId = cid
+                itemFields[item.id] = JSON.stringify(item)
+              }
             }
+            if (Object.keys(itemFields).length > 0) await redis.hSet('strata:items', itemFields)
           }
-          if (Object.keys(itemFields).length > 0) await redis.hSet('strata:items', itemFields)
           await redis.hSet('strata:cluster:status', { lastRun: String(Date.now()), totalItems: String(processedSoFar), clusters: String(clusters.length), orphans: String(processedSoFar - Object.keys(assignments).length), relabeled: '0', elapsedMs: '0' })
           const posEntries = Object.entries(seedPositions as Record<string, number[]>)
           if (posEntries.length > 0) await redis.set('strata:graph:layout', JSON.stringify(posEntries))
@@ -1850,24 +1870,6 @@ app.post('/api/clusters/recluster', async (c) => {
   return c.json(result.report)
 })
 
-app.get('/api/clusters/config', async (c) => {
-  const cfg = await getClusterConfig()
-  return c.json({ ...cfg, defaults: { resolution: LOUVAIN_RESOLUTION, minClusterSize: MIN_CLUSTER_SIZE } })
-})
-
-app.post('/api/clusters/config', async (c) => {
-  const body = await c.req.json<{ resolution?: number; minClusterSize?: number }>().catch(() => ({} as { resolution?: number; minClusterSize?: number }))
-  const updates: Record<string, string> = {}
-  if (typeof body.resolution === 'number' && Number.isFinite(body.resolution)) {
-    updates.resolution = String(Math.max(0.1, Math.min(3.0, body.resolution)))
-  }
-  if (typeof body.minClusterSize === 'number' && Number.isFinite(body.minClusterSize)) {
-    updates.minClusterSize = String(Math.max(2, Math.min(100, Math.round(body.minClusterSize))))
-  }
-  if (Object.keys(updates).length > 0) await redis.hSet('strata:cluster:config', updates)
-  return c.json(await getClusterConfig())
-})
-
 app.get('/api/clusters/status', async (c) => {
   const status = await redis.hGetAll('strata:cluster:status')
   const counter = await redis.get('strata:cluster:ingest-counter')
@@ -1913,6 +1915,20 @@ app.get('/api/clusters/:id', async (c) => {
     })),
   })
 })
+
+async function evictOldestIfNeeded(): Promise<void> {
+  try {
+    const count = await store.getItemCount()
+    if (count < ITEM_CAPACITY * EVICTION_THRESHOLD) return
+    const oldest = await store.getOldestItemIds(EVICTION_BATCH_SIZE)
+    if (oldest.length === 0) return
+    await store.deleteItems(oldest)
+    invalidateItemCache()
+    console.log(`[Strata] Evicted ${oldest.length} oldest items (was ${count}/${ITEM_CAPACITY})`)
+  } catch (err) {
+    console.error('[Strata] Eviction failed:', err)
+  }
+}
 
 const RECLUSTER_VOLUME_RATIO = 0.05
 const RECLUSTER_VOLUME_MIN = 50
@@ -2950,13 +2966,19 @@ app.get('/api/alerts/:id', async (c) => {
 
 app.post('/api/alerts/:id/action', async (c) => {
   const id = c.req.param('id')
-  const { action } = await c.req.json<{ action: 'resolved' | 'dismissed' }>()
-  if (action !== 'resolved' && action !== 'dismissed') {
+  const { action } = await c.req.json<{ action: 'resolved' | 'dismissed' | 'pending' }>()
+  if (action !== 'resolved' && action !== 'dismissed' && action !== 'pending') {
     return c.json({ error: 'Invalid action' }, 400)
   }
   const alert = await alertStore.getAlert(id)
   if (!alert) return c.json({ error: 'Not found' }, 404)
   await alertStore.updateAlertStatus(id, action)
+  return c.json({ ok: true })
+})
+
+app.delete('/api/alerts/:id', async (c) => {
+  const id = c.req.param('id')
+  await alertStore.deleteAlert(id)
   return c.json({ ok: true })
 })
 
@@ -3228,7 +3250,7 @@ app.get('/api/items', async (c) => {
   let filtered = allItems
     .filter(it => {
       if (type && it.type !== type) return false
-      if (searchLower && !it.text.toLowerCase().includes(searchLower) && !it.authorName.toLowerCase().includes(searchLower)) return false
+      if (searchLower && !(it.title ?? '').toLowerCase().includes(searchLower) && !it.text.toLowerCase().includes(searchLower) && !it.authorName.toLowerCase().includes(searchLower)) return false
       if (cursor !== null && it.createdAt >= cursor) return false
       return true
     })
@@ -3252,7 +3274,7 @@ app.get('/api/items', async (c) => {
         commentCount: it.type === 'post' ? comments.length : undefined,
         entities: (it.entities ?? []).filter(e => e.surfaceText).map(e => ({ text: e.surfaceText, clusterId: e.type })),
         clusterLabel: it.clusterId !== undefined && it.clusterId !== -1 ? (labelById.get(it.clusterId) ?? null) : null,
-        permalink: it.type === 'post' ? `/r/${sub}/comments/${it.id.replace(/^t3_/, '')}/` : undefined,
+        permalink: it.permalink || (it.type === 'post' ? `/r/${sub}/comments/${it.id.replace(/^t3_/, '')}/` : undefined),
         comments: it.type === 'post' ? comments.map(cm => ({
           id: cm.id,
           text: cm.text,

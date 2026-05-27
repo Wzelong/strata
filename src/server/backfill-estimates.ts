@@ -18,6 +18,8 @@ const BYTES_PER_ITEM = 2500
 
 export const REDIS_CAPACITY_BYTES = 500 * 1024 * 1024
 export const ITEM_CAPACITY = 330_000
+export const EVICTION_THRESHOLD = 0.9
+export const EVICTION_BATCH_SIZE = 500
 
 export type BackfillEstimate = {
   itemCount: number
