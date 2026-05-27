@@ -25,6 +25,7 @@ function isoDate(d: Date): string {
 interface Props {
   onStarted?: () => void
   onCancel?: () => void
+  onSkip?: () => void
 }
 
 function Metric({ label, value, sub }: { label: string; value: string; sub?: string }) {
@@ -66,7 +67,7 @@ function DatePicker({ value, onChange, label, disabled }: {
   )
 }
 
-export function OnboardingForm({ onStarted, onCancel }: Props) {
+export function OnboardingForm({ onStarted, onCancel, onSkip }: Props) {
   const [from, setFrom] = useState(offsetDate(-30))
   const [to, setTo] = useState(offsetDate(0))
   const [estimate, setEstimate] = useState<BackfillEstimate | null>(null)
@@ -261,6 +262,15 @@ export function OnboardingForm({ onStarted, onCancel }: Props) {
         >
           {submitting ? 'Starting…' : 'Start backfill'}
         </button>
+        {onSkip && (
+          <button
+            onClick={onSkip}
+            disabled={submitting}
+            className="ml-auto cursor-pointer h-8 px-3 text-xs rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors disabled:opacity-50"
+          >
+            Skip for now
+          </button>
+        )}
       </div>
     </div>
   )

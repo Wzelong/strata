@@ -48,7 +48,7 @@
     "tasks": {
       "ingest-batch": { "endpoint": "/internal/scheduler/ingest-batch" },
       "scan": { "endpoint": "/internal/scheduler/scan" },
-      "recluster": { "endpoint": "/internal/scheduler/recluster", "cron": "0 */6 * * *" }
+      "recluster": { "endpoint": "/internal/scheduler/recluster" }
     }
   },
   "menu": {
@@ -66,6 +66,13 @@
         "location": "subreddit",
         "forUserType": "moderator",
         "endpoint": "/internal/menu/seed-data"
+      },
+      {
+        "label": "Strata: Demo Setup",
+        "description": "Plant a recording-ready scene: brigade alert + removed pattern precedents",
+        "location": "subreddit",
+        "forUserType": "moderator",
+        "endpoint": "/internal/menu/demo-setup"
       },
       {
         "label": "Strata: Reset Data",

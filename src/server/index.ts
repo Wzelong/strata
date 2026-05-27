@@ -21,11 +21,12 @@ import { recordUsage, getUsageSummary, usageMonthKey, USAGE_TOTAL_KEY } from './
 import { createChatHandler } from './chat/route.js'
 import { runRecluster, assignItemLive, ClusterRepo } from './cluster-pipeline.js'
 import { LOUVAIN_RESOLUTION, MIN_CLUSTER_SIZE } from '../engine/cluster.js'
-import { dequantize } from '../engine/embed.js'
+import { dequantize, cosine } from '../engine/embed.js'
 import { encrypt, decrypt } from './crypto.js'
 import seedRawItems from './seed-raw.json' with { type: 'json' }
 import seedPositions from './seed-positions.json' with { type: 'json' }
 import seedClusterData from './seed-clusters.json' with { type: 'json' }
+import demoSignals from './demo-signals.json' with { type: 'json' }
 import { gunzipSync } from 'node:zlib'
 
 
@@ -52,7 +53,19 @@ function generateAlertId(): string {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 8)
 }
 
-function buildPermalink(item: Item, subredditName: string): string {
+// Devvit's scheduler occasionally throws a transient "check rate limit … i/o timeout"
+// when enqueuing a job. Retry a few times with backoff so a momentary platform blip
+// doesn't kill a backfill/scan whose actual work succeeded.
+async function runJobWithRetry(opts: Parameters<typeof scheduler.runJob>[0], tries = 3): Promise<void> {
+  let lastErr: unknown
+  for (let i = 0; i < tries; i++) {
+    try { await scheduler.runJob(opts); return }
+    catch (err) { lastErr = err; await new Promise(r => setTimeout(r, 300 * (i + 1))) }
+  }
+  throw lastErr
+}
+
+function buildPermalink(item: { id: string; type: 'post' | 'comment'; threadRootId: string }, subredditName: string): string {
   if (item.type === 'comment') {
     return `/r/${subredditName}/comments/${item.threadRootId}/_/${item.id}`
   }
@@ -79,6 +92,14 @@ async function isMod(userId: string | undefined, subredditName: string): Promise
     console.error('[Strata] isMod check failed:', err)
     return false
   }
+}
+
+// Whether a moderator's own posts/comments get ingested. Default ON so a mod testing
+// the app sees their posts show up; mods turn it OFF in production to keep topics,
+// surfaces, and brigade detection focused on the community.
+const PROCESS_MOD_KEY = 'strata:config:process-mod-content'
+async function getProcessModContent(): Promise<boolean> {
+  return (await redis.get(PROCESS_MOD_KEY)) !== '0'
 }
 
 async function ensureDashboardPost(subredditName: string): Promise<string> {
@@ -289,8 +310,12 @@ app.post('/internal/triggers/post-submit', async (c) => {
   const dashboardPostId = await redis.get('strata:dashboard-post-id')
   if (post.id === dashboardPostId) return c.json<TriggerResponse>({ status: 'ok' })
 
+  // Never re-ingest Strata's own published surface posts — that would feed the
+  // pipeline its own output and loop. Skip regardless of the moderator-content toggle.
+  if (await redis.hGet('strata:published-posts', post.id)) return c.json<TriggerResponse>({ status: 'ok' })
+
   const authorId = post.authorId || post.author
-  if (authorId && await isMod(authorId, context.subredditName ?? '')) {
+  if (authorId && !(await getProcessModContent()) && await isMod(authorId, context.subredditName ?? '')) {
     return c.json<TriggerResponse>({ status: 'ok' })
   }
 
@@ -305,7 +330,10 @@ app.post('/internal/triggers/post-submit', async (c) => {
 
     const fullPost = await reddit.getPostById(post.id)
     const title = fullPost.title
-    const text = fullPost.body || ''
+    // Include the title in the text — for many Reddit posts (esp. warnings/PSAs) the
+    // substance is in the title and the body is empty. Body-only left text blank, so
+    // the classifier and recommender saw "no content" and never flagged.
+    const text = fullPost.body ? `${title}\n\n${fullPost.body}` : title
     const authorName = fullPost.authorName || post.author || 'unknown'
     const authorId = post.authorId || authorName
 
@@ -527,6 +555,11 @@ app.post('/internal/triggers/comment-submit', async (c) => {
 
   const seeded = await redis.get('strata:seed:complete')
   if (!seeded) return c.json<TriggerResponse>({ status: 'ok' })
+
+  const cAuthorId = comment.authorId || comment.author
+  if (cAuthorId && !(await getProcessModContent()) && await isMod(cAuthorId, context.subredditName ?? '')) {
+    return c.json<TriggerResponse>({ status: 'ok' })
+  }
 
   try {
     const engine = await getEngine()
@@ -798,6 +831,85 @@ app.post('/internal/menu/mock-alerts', async (c) => {
   await alertStore.createAlert(brigadeAlert, brigadeConnections)
 
   return c.json<UiResponse>({ showToast: { text: 'Inserted 2 mock alerts (1 surface + 1 brigade).', appearance: 'success' } })
+})
+
+// Demo Setup — plants a recording-ready scene on top of the demo backfill:
+//   1. ingests the case-thread brigade (real nodes w/ bundled embeddings → the graph
+//      can highlight them),
+//   2. creates a brigade flag alert from those real comments,
+//   3. marks the seed's witch-hunt precedents as "removed" so a follow-up "dark green
+//      SUV" post fires pattern detection into the Reddit mod queue (with its reason).
+app.post('/internal/menu/demo-setup', async (c) => {
+  if (!context.subredditName) return c.json<UiResponse>({ showToast: 'No subreddit context.' })
+  const sub = context.subredditName
+  const now = Date.now()
+  try {
+    const createdAtById: Record<string, number> = {
+      t3_strata_casepost: now - 150 * 60_000,
+      t1_strata_brigade1: now - 95 * 60_000,
+      t1_strata_brigade2: now - 90 * 60_000,
+      t1_strata_brigade3: now - 85 * 60_000,
+      t1_strata_brigade4: now - 80 * 60_000,
+    }
+    for (const s of demoSignals as Array<{ id: string; type: 'post' | 'comment'; title: string; text: string; authorId: string; authorName: string; threadRootId: string; parentId: string | null; entities: Entity[]; embedding: number[] }>) {
+      const createdAt = createdAtById[s.id] ?? now
+      const item: StoredItem = {
+        id: s.id, type: s.type, title: s.title, text: s.text, textNormalized: s.text,
+        authorId: s.authorId, authorName: s.authorName, createdAt,
+        threadRootId: s.threadRootId, parentId: s.parentId, entities: s.entities,
+        decision: 'pending', decisionAt: null, decisionBy: null, decisionReason: null,
+      }
+      await store.setItem(item)
+      await store.setEmbedding(s.id, s.embedding)
+      if (s.entities.length) await store.addToEntityIndex(s.entities, s.id, createdAt)
+      await assignItemLive(redis, store, s.id, s.embedding).catch(() => {})
+    }
+    invalidateItemCache()
+
+    // Brigade alert anchored on the first coordinated comment.
+    const brigadeIds = ['t1_strata_brigade1', 't1_strata_brigade2', 't1_strata_brigade3', 't1_strata_brigade4']
+    const brigadeItems = (await Promise.all(brigadeIds.map(id => store.getItem(id)))).filter((x): x is StoredItem => !!x)
+    if (brigadeItems.length >= 2) {
+      const anchor = brigadeItems[0]
+      const connections: AlertConnection[] = brigadeItems.slice(1).map((ci): AlertConnection => ({
+        itemId: ci.id, author: ci.authorName, type: ci.type, title: ci.title,
+        text: ci.text, permalink: buildPermalink(ci, sub),
+        classification: 'confirms', confidence: 'high', entities: [], reasoning: '',
+        createdAt: ci.createdAt, sameAuthor: false,
+      }))
+      const alert: Alert = {
+        id: generateAlertId(), mode: 'flag', status: 'pending', confidence: 'high',
+        connectionCount: connections.length, createdAt: now,
+        anchorId: anchor.id, anchorAuthor: anchor.authorName, anchorType: anchor.type,
+        anchorTitle: anchor.title, anchorText: anchor.text, anchorPermalink: buildPermalink(anchor, sub),
+        anchorEntities: [],
+        reasoning: '4 fresh accounts pushed the same "it\'s just a green Subaru, witch hunt" line in the case thread within a 2-hour window.',
+        flagType: 'brigade',
+      }
+      await alertStore.createAlert(alert, connections)
+    }
+
+    // Mark the witch-hunt precedents removed (real nodes from the demo backfill) so a
+    // follow-up matching post is reported to the mod queue as a pattern repeat.
+    let removed = 0
+    for (const id of ['t3_strata_flag3a', 't3_strata_flag3b', 't3_strata_flag3c']) {
+      const it = await store.getItem(id)
+      if (!it) continue
+      const at = it.createdAt + 3600_000
+      await store.setItem({ ...it, decision: 'removed', decisionAt: at, decisionBy: 'mod_team', decisionReason: 'witch-hunting / no evidence' })
+      await store.moveDecision(id, it.decision || 'pending', 'removed', at).catch(() => {})
+      removed++
+    }
+    invalidateItemCache()
+
+    const note = removed > 0
+      ? `Brigade alert created, ${removed} precedents removed. Post a "dark green SUV running reds on Mass Ave" update to see the pattern hit your mod queue.`
+      : 'Brigade alert created. Run the demo backfill first so the removed-pattern precedents exist.'
+    return c.json<UiResponse>({ showToast: { text: `Demo ready — ${note}`, appearance: 'success' } })
+  } catch (err) {
+    console.error('[Strata] demo-setup failed:', err)
+    return c.json<UiResponse>({ showToast: `Demo setup failed: ${String(err)}` })
+  }
 })
 
 app.post('/internal/menu/surface', async (c) => {
@@ -1096,7 +1208,7 @@ app.post('/internal/scheduler/ingest-batch', async (c) => {
       } catch (err) {
         console.warn(`[Strata] Real-time tick failed (transient), retrying: ${err}`)
       }
-      await scheduler.runJob({ name: 'ingest-batch', runAt: new Date(Date.now() + RT_TICK_SPACING_MS), data: {} })
+      await runJobWithRetry({ name: 'ingest-batch', runAt: new Date(Date.now() + RT_TICK_SPACING_MS), data: {} })
       return c.json({ status: 'ok' })
     }
 
@@ -1136,13 +1248,13 @@ app.post('/internal/scheduler/ingest-batch', async (c) => {
           lastPolledAt: String(Date.now()),
         })
         console.log(`[Strata] Chunk ${chunkIndex + 1}/${chunkCount} submitted (${chunkRaw.length} items)`)
-        await scheduler.runJob({ name: 'ingest-batch', runAt: new Date(Date.now() + INGEST_POLL_MS), data: {} })
+        await runJobWithRetry({ name: 'ingest-batch', runAt: new Date(Date.now() + INGEST_POLL_MS), data: {} })
       } catch (err) {
         if (isEgressOrRateError(err)) {
           const backoff = parseRetryAfterMs(err) ?? EGRESS_BACKOFF_MIN_MS
           await redis.hSet('strata:ingest:status', { waitingUntil: String(Date.now() + backoff), lastError: 'egress' })
           console.warn(`[Strata] Chunk ${chunkIndex + 1}: egress limit, retrying in ${Math.round(backoff / 1000)}s`)
-          await scheduler.runJob({ name: 'ingest-batch', runAt: new Date(Date.now() + backoff), data: {} })
+          await runJobWithRetry({ name: 'ingest-batch', runAt: new Date(Date.now() + backoff), data: {} })
         } else {
           throw err
         }
@@ -1191,7 +1303,7 @@ app.post('/internal/scheduler/ingest-batch', async (c) => {
             if (isEgressOrRateError(err)) {
               const backoff = parseRetryAfterMs(err) ?? EGRESS_BACKOFF_MIN_MS
               console.warn(`[Strata] Entity-emb submit: egress limit, retrying in ${Math.round(backoff / 1000)}s`)
-              await scheduler.runJob({ name: 'ingest-batch', runAt: new Date(Date.now() + backoff), data: {} })
+              await runJobWithRetry({ name: 'ingest-batch', runAt: new Date(Date.now() + backoff), data: {} })
               return c.json({ status: 'ok' })
             }
             throw err
@@ -1199,11 +1311,11 @@ app.post('/internal/scheduler/ingest-batch', async (c) => {
         } else {
           await redis.hSet('strata:ingest:status', { phase: 'storing' })
         }
-        await scheduler.runJob({ name: 'ingest-batch', runAt: new Date(Date.now() + INGEST_POLL_MS), data: {} })
+        await runJobWithRetry({ name: 'ingest-batch', runAt: new Date(Date.now() + INGEST_POLL_MS), data: {} })
         return c.json({ status: 'ok' })
       }
 
-      await scheduler.runJob({ name: 'ingest-batch', runAt: new Date(Date.now() + INGEST_POLL_MS), data: {} })
+      await runJobWithRetry({ name: 'ingest-batch', runAt: new Date(Date.now() + INGEST_POLL_MS), data: {} })
       return c.json({ status: 'ok' })
     }
 
@@ -1221,7 +1333,7 @@ app.post('/internal/scheduler/ingest-batch', async (c) => {
       if (entEmbStatus.status === 'completed') {
         await redis.hSet('strata:ingest:status', { phase: 'storing' })
       } else {
-        await scheduler.runJob({ name: 'ingest-batch', runAt: new Date(Date.now() + INGEST_POLL_MS), data: {} })
+        await runJobWithRetry({ name: 'ingest-batch', runAt: new Date(Date.now() + INGEST_POLL_MS), data: {} })
         return c.json({ status: 'ok' })
       }
     }
@@ -1258,7 +1370,7 @@ app.post('/internal/scheduler/ingest-batch', async (c) => {
         })
         if (status.backfillId) await updateBackfillRecord(status.backfillId, { processed: totalStored })
         console.log(`[Strata] Chunk ${chunkIndex + 1} stored (${stored}). ${totalStored}/${status.totalItems} done. Next chunk queued.`)
-        await scheduler.runJob({ name: 'ingest-batch', runAt: new Date(Date.now() + 3000), data: {} })
+        await runJobWithRetry({ name: 'ingest-batch', runAt: new Date(Date.now() + 3000), data: {} })
         return c.json({ status: 'ok' })
       }
 
@@ -1288,7 +1400,7 @@ app.post('/internal/scheduler/ingest-batch', async (c) => {
           anchorsTotal: 0, anchorsProcessed: 0, alertsCreated: 0,
           autoTriggered: true, initiatedBy: 'auto-scan',
         })
-        await scheduler.runJob({ name: 'scan', runAt: new Date(Date.now() + 1000), data: { step: 'build' } })
+        await runJobWithRetry({ name: 'scan', runAt: new Date(Date.now() + 1000), data: { step: 'build' } })
         console.log('[Strata] Auto-scan scheduled after backfill')
         try {
           await scheduler.runJob({ name: 'recluster', runAt: new Date(Date.now() + 5000), data: {} })
@@ -1349,7 +1461,7 @@ app.post('/internal/scheduler/scan', async (c) => {
         anchorsProcessed: '0',
       })
       if (status?.scanId) await updateScanRecord(status.scanId, { anchorsTotal: pairs.length })
-      await scheduler.runJob({ name: 'scan', runAt: new Date(Date.now() + 1000), data: { step: 'classify', index: 0 } })
+      await runJobWithRetry({ name: 'scan', runAt: new Date(Date.now() + 1000), data: { step: 'classify', index: 0 } })
       console.log(`[Strata] Scan: ${pairs.length} anchor groups, classifying...`)
     }
 
@@ -1431,7 +1543,7 @@ app.post('/internal/scheduler/scan', async (c) => {
       }
 
       if (nextIndex < pairs.length) {
-        await scheduler.runJob({ name: 'scan', runAt: new Date(Date.now() + 2000), data: { step: 'classify', index: nextIndex } })
+        await runJobWithRetry({ name: 'scan', runAt: new Date(Date.now() + 2000), data: { step: 'classify', index: nextIndex } })
       } else {
         await finalizeScan()
       }
@@ -1522,7 +1634,8 @@ app.get('/api/stats', async (c) => {
   const hasApiKey = typeof apiKey === 'string' && apiKey.trim().length > 0
   const apiKeyInvalid = hasApiKey && (await redis.get(API_KEY_INVALID_FLAG)) === '1'
   const alertCount = await redis.zCard('strata:alerts').catch(() => 0)
-  return c.json({ itemCount, capacity: 330_000, seeded, installed, hasApiKey, apiKeyInvalid, hasAlerts: alertCount > 0 })
+  const processModContent = await getProcessModContent()
+  return c.json({ itemCount, capacity: 330_000, seeded, installed, hasApiKey, apiKeyInvalid, hasAlerts: alertCount > 0, processModContent })
 })
 
 app.post('/api/apikey/recheck', async (c) => {
@@ -2122,22 +2235,46 @@ app.get('/api/graph', async (c) => {
     } catch {}
   }
 
-  const needsLayout = filteredItems.some(i => !layoutMap.has(i.id))
-  if (needsLayout || layoutMap.size === 0) {
+  const missing = filteredItems.filter(i => !layoutMap.has(i.id))
+  if (layoutMap.size === 0) {
+    // Cold start: no cached layout → one full UMAP over everything.
     const layoutIds = filteredItems.map(i => i.id)
     const embMap = await store.getEmbeddings(layoutIds)
     const validIds = layoutIds.filter(id => embMap.has(id))
     const validEmbs = validIds.map(id => embMap.get(id)!)
-    const validClusterIds = validIds.map(id => {
-      const item = filteredItems.find(i => i.id === id)
-      return item?.clusterId ?? -1
-    })
+    const validClusterIds = validIds.map(id => filteredItems.find(i => i.id === id)?.clusterId ?? -1)
     console.log(`[Strata] /api/graph: computing UMAP for ${validEmbs.length} items...`)
     if (validEmbs.length > 2) {
       const t = Date.now()
       const positions = computeLayout(validEmbs, validEmbs.length, validClusterIds)
       console.log(`[Strata] /api/graph: UMAP done in ${Date.now() - t}ms`)
       for (let i = 0; i < validIds.length; i++) layoutMap.set(validIds[i], positions[i])
+      await redis.set('strata:graph:layout', JSON.stringify([...layoutMap.entries()]))
+    }
+  } else if (missing.length > 0) {
+    // Incremental: place only the new nodes near their nearest already-positioned
+    // neighbors (by embedding cosine). Existing positions stay put — no reshuffle, no
+    // full O(n) recompute. The full layout is refreshed later when clustering re-runs.
+    const positionedIds = filteredItems.filter(i => layoutMap.has(i.id)).map(i => i.id)
+    const embMap = await store.getEmbeddings([...missing.map(i => i.id), ...positionedIds])
+    const anchors = positionedIds
+      .filter(id => embMap.has(id))
+      .map(id => ({ pos: layoutMap.get(id)!, emb: embMap.get(id)! }))
+    const jitter = () => (Math.random() - 0.5) * 0.6
+    let placed = 0
+    for (const m of missing) {
+      const emb = embMap.get(m.id)
+      if (!emb || anchors.length === 0) continue
+      const top = anchors
+        .map(a => ({ pos: a.pos, score: cosine(emb, a.emb) }))
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 8)
+      const avg = top.reduce((acc, t) => [acc[0] + t.pos[0], acc[1] + t.pos[1], acc[2] + t.pos[2]], [0, 0, 0])
+      layoutMap.set(m.id, [avg[0] / top.length + jitter(), avg[1] / top.length + jitter(), avg[2] / top.length + jitter()])
+      placed++
+    }
+    if (placed > 0) {
+      console.log(`[Strata] /api/graph: placed ${placed} new node(s) incrementally`)
       await redis.set('strata:graph:layout', JSON.stringify([...layoutMap.entries()]))
     }
   }
@@ -2340,7 +2477,7 @@ app.post('/api/backfill/preview', async (c) => {
         if (post.createdAt.getTime() < start) break
         if (post.createdAt.getTime() > end) continue
         rawItems.push({
-          id: post.id, type: 'post', title: post.title, text: post.body || '',
+          id: post.id, type: 'post', title: post.title, text: post.body ? `${post.title}\n\n${post.body}` : post.title,
           authorId: post.authorId || post.authorName || 'unknown',
           authorName: post.authorName || 'unknown',
           createdAt: post.createdAt.getTime(),
@@ -2457,7 +2594,7 @@ app.post('/api/backfill/confirm', async (c) => {
     })
 
     await redis.del(`strata:backfill:preview:${token}`)
-    await scheduler.runJob({ name: 'ingest-batch', runAt: new Date(Date.now() + 2000), data: {} })
+    await runJobWithRetry({ name: 'ingest-batch', runAt: new Date(Date.now() + 2000), data: {} })
 
     console.log(`[Strata] Backfill ${backfillId} queued: ${newItems.length} items in ${chunkCount} chunk(s)`)
     return c.json({ id: backfillId, totalItems: newItems.length })
@@ -2533,6 +2670,26 @@ app.post('/api/backfill/cancel', async (c) => {
   return c.json({ ok: true, kept: false })
 })
 
+app.get('/api/config/mod-content', async (c) => {
+  return c.json({ enabled: await getProcessModContent() })
+})
+
+app.post('/api/config/mod-content', async (c) => {
+  const { enabled } = await c.req.json<{ enabled?: boolean }>().catch(() => ({ enabled: undefined }))
+  await redis.set(PROCESS_MOD_KEY, enabled ? '1' : '0')
+  return c.json({ ok: true })
+})
+
+// Dismiss the "backfill failed" notice — clears the live ingest status (the failed
+// run stays in backfill history). Only acts on a terminal error/cancelled state.
+app.post('/api/backfill/dismiss', async (c) => {
+  const status = await redis.hGetAll('strata:ingest:status')
+  if (status?.phase === 'error' || status?.phase === 'cancelled') {
+    await redis.del('strata:ingest:status')
+  }
+  return c.json({ ok: true })
+})
+
 app.get('/api/backfill/history', async (c) => {
   const records = await listBackfillRecords()
   const currentCount = await store.getItemCount()
@@ -2599,15 +2756,14 @@ app.post('/api/alerts/reset', async (c) => {
 })
 
 async function resetStrataData(opts: { includeApiKey?: boolean } = {}): Promise<number> {
-  // Delete items via deleteItems so every per-item entity zset/embedding/index is
-  // reversed — bulk-deleting the items hash would leave orphaned entity keys behind.
-  const ids = await store.getItemIds()
-  const count = ids.length
-  if (ids.length > 0) await store.deleteItems(ids)
+  // Full reset = wipe the keyspace, not item-by-item. We delete the whole items hash
+  // and its index/registry keys in one shot. (Per-surface entity zsets and per-author
+  // index zsets are unreachable once the items hash and surface registries are gone, so
+  // we don't pay to enumerate them — that's what deleteItems is for in scoped discards.)
+  const count = await store.getItemCount()
 
   const ENTITY_TYPES = ['person', 'location', 'object', 'organization', 'phone', 'email', 'url', 'username', 'quantity']
   const keys = [
-    // Idempotent safety even after deleteItems above.
     'strata:items', 'strata:embeddings', 'strata:idx:time', 'strata:entity-hub-counts',
     'strata:cases', 'strata:rules',
     'strata:backfill:complete', 'strata:backfill:history',
@@ -2710,7 +2866,7 @@ app.post('/api/scan/start', async (c) => {
     anchorsTotal: 0, anchorsProcessed: 0, alertsCreated: 0,
     autoTriggered: false, initiatedBy: context.userId || 'unknown',
   })
-  await scheduler.runJob({ name: 'scan', runAt: new Date(Date.now() + 1000), data: { step: 'build' } })
+  await runJobWithRetry({ name: 'scan', runAt: new Date(Date.now() + 1000), data: { step: 'build' } })
   return c.json({ id })
 })
 
@@ -3042,6 +3198,7 @@ app.post('/api/alerts/:id/publish', async (c) => {
       publishedBy: by,
     })
     await alertStore.updateAlertStatus(id, 'resolved')
+    await redis.hSet('strata:published-posts', { [post.id]: '1' })
     return c.json({ ok: true, postId: post.id, permalink, publishedAt: at, publishedBy: by })
   } catch (err) {
     console.error('[Strata] publish failed:', err)

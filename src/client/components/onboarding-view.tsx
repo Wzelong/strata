@@ -19,17 +19,7 @@ export function OnboardingView({ onStarted, onSkip }: Props) {
               surfaces connections, and clusters topics — then keeps working on new posts.
             </p>
           </div>
-          <OnboardingForm onStarted={onStarted} />
-          {onSkip && (
-            <div className="text-center">
-              <button
-                onClick={onSkip}
-                className="text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
-              >
-                Skip for now — go to the dashboard
-              </button>
-            </div>
-          )}
+          <OnboardingForm onStarted={onStarted} onSkip={onSkip} />
         </div>
       </div>
     </div>

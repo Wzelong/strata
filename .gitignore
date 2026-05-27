@@ -15,3 +15,5 @@ dataset/cluster-test.ts
 dataset/cluster-label-test.ts
 dataset/cluster-resolution-sweep.ts
 benchmark/results-*.json
+# Demo recording assets (local only)
+demo/

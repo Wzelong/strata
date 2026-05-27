@@ -13,7 +13,7 @@ import { CancelBackfillDialog } from './cancel-backfill-dialog.js'
 import {
   cancelBackfill, deleteAllItems, resetAllAlerts, resetStrata, fetchRules, reloadRules, startScan, fetchUsage,
   fetchCommunityContext, saveCommunityContext,
-  fetchClusterStatus, fetchClusterConfig, saveClusterConfig, triggerRecluster,
+  fetchClusterStatus, fetchClusterConfig, saveClusterConfig, triggerRecluster, saveModContentSetting,
   type BackfillRecord, type RuleSummary, type ScanRecord, type UsageSummary, type ClusterStatus, type ClusterConfig,
 } from '../lib/api.js'
 import { cn, formatBytes, formatRelativeTime, compactCount } from '../lib/utils.js'
@@ -130,6 +130,8 @@ export function SettingsView({ onBack, forceForm }: Props) {
 
         <RulesSection />
 
+        <ModContentSection />
+
         <CommunityContextSection />
 
         <ClustersSection />
@@ -183,6 +185,45 @@ function formatTokens(n: number): string {
   if (n < 1_000) return n.toString()
   if (n < 1_000_000) return `${(n / 1_000).toFixed(1)}k`
   return `${(n / 1_000_000).toFixed(2)}M`
+}
+
+function ModContentSection() {
+  const stats = useStats()
+  const [override, setOverride] = useState<boolean | null>(null)
+  const [saving, setSaving] = useState(false)
+  const on = override ?? stats?.processModContent ?? true
+
+  const toggle = async () => {
+    const next = !on
+    setOverride(next)
+    setSaving(true)
+    try { await saveModContentSetting(next); await refreshStats() } finally { setSaving(false) }
+  }
+
+  return (
+    <Section title="Moderator content">
+      <div className="rounded-lg border border-border p-4 flex items-start justify-between gap-4">
+        <div className="space-y-0.5">
+          <div className="text-sm font-medium">Process moderator posts &amp; comments</div>
+          <p className="text-xs text-muted-foreground leading-relaxed">
+            On — moderators' own posts and comments are ingested like any member's, useful while testing so Strata visibly reacts. Off (recommended in production) — moderator content is skipped, keeping topics, surfaces, and brigade detection focused on the community.
+          </p>
+        </div>
+        <button
+          onClick={toggle}
+          disabled={saving}
+          role="switch"
+          aria-checked={on}
+          className={cn(
+            'mt-0.5 shrink-0 flex h-5 w-9 items-center rounded-full px-0.5 transition-colors cursor-pointer disabled:opacity-50',
+            on ? 'bg-foreground' : 'bg-muted',
+          )}
+        >
+          <span className={cn('size-4 rounded-full bg-background transition-transform', on && 'translate-x-4')} />
+        </button>
+      </div>
+    </Section>
+  )
 }
 
 function CommunityContextSection() {

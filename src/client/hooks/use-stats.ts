@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { fetchStats } from '../lib/api.js'
 
-type Stats = { itemCount: number; capacity: number; hasApiKey: boolean; apiKeyInvalid: boolean; hasAlerts: boolean } | null
+type Stats = { itemCount: number; capacity: number; hasApiKey: boolean; apiKeyInvalid: boolean; hasAlerts: boolean; processModContent: boolean } | null
 
 let cached: Stats = null
 let inflight: Promise<void> | null = null

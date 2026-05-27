@@ -170,7 +170,7 @@ export async function fetchItems(opts?: { limit?: number; cursor?: number; type?
   return res.json()
 }
 
-export async function fetchStats(): Promise<{ itemCount: number; capacity: number; hasApiKey: boolean; apiKeyInvalid: boolean; hasAlerts: boolean }> {
+export async function fetchStats(): Promise<{ itemCount: number; capacity: number; hasApiKey: boolean; apiKeyInvalid: boolean; hasAlerts: boolean; processModContent: boolean }> {
   const res = await fetch('/api/stats')
   return res.json()
 }
@@ -401,6 +401,25 @@ export async function confirmBackfill(token: string, mode: 'realtime' | 'batch' 
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ token, mode }),
   })
+  return res.json()
+}
+
+export async function fetchModContentSetting(): Promise<{ enabled: boolean }> {
+  const res = await fetch('/api/config/mod-content')
+  return res.json()
+}
+
+export async function saveModContentSetting(enabled: boolean): Promise<{ ok: boolean }> {
+  const res = await fetch('/api/config/mod-content', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ enabled }),
+  })
+  return res.json()
+}
+
+export async function dismissBackfillError(): Promise<{ ok: boolean }> {
+  const res = await fetch('/api/backfill/dismiss', { method: 'POST' })
   return res.json()
 }
 

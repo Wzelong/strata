@@ -136,11 +136,15 @@ export class StrataEngine {
       excludeIds: new Set([item.id]),
     })
     const strong = precedents.filter(p => p.weight >= 0.5)
+    console.log(`[Strata] pattern check: ${precedents.length} removed precedents, top cosine ${(precedents[0]?.weight ?? 0).toFixed(3)}, ${strong.length} ≥0.5`)
     if (strong.length === 0) return null
 
     const rules = await this.store.getRules()
     const recommendation = await recommendDecision(this.client, item, strong, rules, this.cost)
-    if (recommendation.recommendation !== 'remove') return null
+    if (recommendation.recommendation !== 'remove') {
+      console.log(`[Strata] pattern: recommend=${recommendation.recommendation}, not firing`)
+      return null
+    }
 
     return {
       type: 'pattern',
