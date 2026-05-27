@@ -214,7 +214,7 @@ export class RedisKVStore implements KVStore {
 
   async deleteItems(ids: string[]): Promise<void> {
     if (ids.length === 0) return
-    // Read items first to get their index keys
+    // Read items first to reverse every index entry they created.
     for (const id of ids) {
       const raw = await this.redis.hGet('strata:items', id)
       if (!raw) continue
@@ -222,6 +222,19 @@ export class RedisKVStore implements KVStore {
       await this.redis.zRem(`strata:idx:author:${item.authorId}`, [id])
       await this.redis.zRem(`strata:idx:thread:${item.threadRootId}`, [id])
       await this.redis.zRem(`strata:idx:decision:${item.decision}`, [id])
+      for (const e of item.entities ?? []) {
+        const zkey = `strata:idx:entity:${e.type}:${e.surfaceText}`
+        await this.redis.zRem(zkey, [id])
+        await this.redis.hDel(`strata:entity-emb:${e.type}`, [`${id}:${e.surfaceText}`])
+        const hubField = `${e.type}:${e.surfaceText.toLowerCase()}`
+        const remaining = await this.redis.hIncrBy('strata:entity-hub-counts', hubField, -1)
+        // Last reference gone: drop the empty entity set, surface registry entry, and hub count.
+        if (await this.redis.zCard(zkey) === 0) {
+          await this.redis.del(zkey)
+          await this.redis.hDel(`strata:idx:entity-surfaces:${e.type}`, [e.surfaceText])
+        }
+        if (remaining <= 0) await this.redis.hDel('strata:entity-hub-counts', [hubField])
+      }
     }
     await this.redis.hDel('strata:items', ids)
     await this.redis.hDel('strata:embeddings', ids)

@@ -69,7 +69,7 @@
       },
       {
         "label": "Strata: Reset Data",
-        "description": "Wipe all Strata data from Redis (keeps your API key)",
+        "description": "Wipe all Strata data from Redis, including the OpenAI API key",
         "location": "subreddit",
         "forUserType": "moderator",
         "endpoint": "/internal/menu/reset"

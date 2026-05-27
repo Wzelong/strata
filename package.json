@@ -10,7 +10,8 @@
     "dev:client": "vite",
     "seed": "tsx dataset/build-seed.ts",
     "benchmark": "tsx benchmark/stability-10x.ts",
-    "benchmark:viz": "python3 benchmark/viz.py"
+    "benchmark:viz": "python3 benchmark/viz.py",
+    "test:detection": "tsx --env-file=.env benchmark/detection-10x.ts"
   },
   "engines": {
     "node": ">=22.2.0"

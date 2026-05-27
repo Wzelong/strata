@@ -3,9 +3,10 @@ import { OnboardingForm } from './onboarding-form'
 
 interface Props {
   onStarted: () => void
+  onSkip?: () => void
 }
 
-export function OnboardingView({ onStarted }: Props) {
+export function OnboardingView({ onStarted, onSkip }: Props) {
   return (
     <div className="h-full overflow-y-auto">
       <div className="min-h-full flex flex-col items-center justify-center px-4 py-10">
@@ -19,6 +20,16 @@ export function OnboardingView({ onStarted }: Props) {
             </p>
           </div>
           <OnboardingForm onStarted={onStarted} />
+          {onSkip && (
+            <div className="text-center">
+              <button
+                onClick={onSkip}
+                className="text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+              >
+                Skip for now — go to the dashboard
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>

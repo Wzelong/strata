@@ -201,9 +201,9 @@ export interface ModelUsage {
 }
 
 export interface UsageSummary {
-  today: ModelUsage[]
   month: ModelUsage[]
-  totals: { today: ModelUsage; month: ModelUsage }
+  allTime: ModelUsage[]
+  totals: { month: ModelUsage; allTime: ModelUsage }
 }
 
 export async function fetchUsage(): Promise<UsageSummary> {
@@ -404,11 +404,11 @@ export async function confirmBackfill(token: string, mode: 'realtime' | 'batch' 
   return res.json()
 }
 
-export async function cancelBackfill(id: string): Promise<{ ok: boolean } | { error: string }> {
+export async function cancelBackfill(id: string, mode: 'discard' | 'keep' = 'discard'): Promise<{ ok: boolean; kept?: boolean } | { error: string }> {
   const res = await fetch('/api/backfill/cancel', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ id }),
+    body: JSON.stringify({ id, mode }),
   })
   return res.json()
 }

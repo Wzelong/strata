@@ -17,13 +17,18 @@ type MobileView = 'graph' | 'ai' | null
 
 const PAGE_SIZE = 50
 
-export function Dashboard() {
+interface DashboardProps {
+  initialTab?: Tab
+  initialDetailTab?: 'overview' | 'explore' | 'chat' | null
+}
+
+export function Dashboard({ initialTab = 'alerts', initialDetailTab = null }: DashboardProps) {
   const { theme } = useTheme()
   const isDark = theme === 'dark'
   const isMobile = useIsMobile()
-  const [tab, setTab] = useState<Tab>('alerts')
+  const [tab, setTab] = useState<Tab>(initialTab)
   const [mobileView, setMobileView] = useState<MobileView>(null)
-  const [requestedDetailTab, setRequestedDetailTab] = useState<'overview' | 'explore' | 'chat' | null>(null)
+  const [requestedDetailTab, setRequestedDetailTab] = useState<'overview' | 'explore' | 'chat' | null>(initialDetailTab)
   const [highlightRequest, setHighlightRequest] = useState<{ ids: string[]; version: number } | null>(null)
   const [alerts, setAlerts] = useState<AlertListItem[]>([])
   const [alertsLoading, setAlertsLoading] = useState(true)

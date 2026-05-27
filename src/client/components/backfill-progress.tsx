@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react'
 import { Check, Loader2, AlertTriangle, Circle } from 'lucide-react'
 import { useIngestStatus, refreshIngestStatus } from '../hooks/use-ingest-status'
+import { refreshStats } from '../hooks/use-stats'
 import { cancelBackfill } from '../lib/api'
 import { cn, compactCount } from '../lib/utils'
-import { ConfirmDialog } from './confirm-dialog'
+import { CancelBackfillDialog } from './cancel-backfill-dialog'
 import logo from '../assets/logo.png'
 
 const BATCH_STAGES = [
@@ -66,6 +67,18 @@ export function BackfillProgress({ backfillId, subredditName }: Props) {
     return (
       <div className="flex items-center justify-center h-full">
         <Loader2 className="size-4 animate-spin text-muted-foreground" />
+      </div>
+    )
+  }
+
+  if (status.phase === 'cancelling') {
+    return (
+      <div className="flex items-center justify-center h-full px-4">
+        <div className="w-full max-w-sm text-center space-y-3">
+          <Loader2 className="size-6 mx-auto animate-spin text-muted-foreground" />
+          <div className="text-sm font-medium">Discarding…</div>
+          <p className="text-xs text-muted-foreground">Removing this run's items.</p>
+        </div>
       </div>
     )
   }
@@ -209,21 +222,16 @@ export function BackfillProgress({ backfillId, subredditName }: Props) {
 
         {backfillId && (
           <div className="flex items-center justify-center">
-            <ConfirmDialog
-              title="Cancel backfill?"
-              description="Progress so far will be discarded. In-flight OpenAI batch jobs will be cancelled if possible."
-              actionLabel="Cancel backfill"
-              cancelLabel="Keep running"
-              destructive
-              onAction={async () => {
-                await cancelBackfill(backfillId)
-                await refreshIngestStatus()
-              }}
+            <CancelBackfillDialog
+              processed={processedSoFar}
+              total={totalItems}
+              onKeep={async () => { await cancelBackfill(backfillId, 'keep'); await Promise.all([refreshIngestStatus(), refreshStats()]) }}
+              onDiscard={async () => { await cancelBackfill(backfillId, 'discard'); await Promise.all([refreshIngestStatus(), refreshStats()]) }}
             >
               <button className="cursor-pointer text-xs px-2 py-1 rounded-md border border-destructive/50 text-destructive hover:bg-destructive/10 transition-colors">
                 Cancel backfill
               </button>
-            </ConfirmDialog>
+            </CancelBackfillDialog>
           </div>
         )}
       </div>

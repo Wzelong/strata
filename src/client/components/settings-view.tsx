@@ -9,6 +9,7 @@ import { OnboardingForm } from './onboarding-form.js'
 import { BackfillCard } from './backfill-card.js'
 import { ScanProgress } from './scan-progress.js'
 import { ConfirmDialog } from './confirm-dialog.js'
+import { CancelBackfillDialog } from './cancel-backfill-dialog.js'
 import {
   cancelBackfill, deleteAllItems, resetAllAlerts, resetStrata, fetchRules, reloadRules, startScan, fetchUsage,
   fetchCommunityContext, saveCommunityContext,
@@ -407,7 +408,7 @@ function UsageSection() {
   }
   useEffect(() => { load() }, [])
 
-  const rows = usage?.month ?? []
+  const rows = usage?.allTime ?? []
   const totals = usage?.totals
 
   return (
@@ -415,17 +416,17 @@ function UsageSection() {
       <div className="rounded-md border border-border">
         <div className="grid grid-cols-2 divide-x divide-border">
           <div className="p-3">
-            <div className="text-[11px] text-muted-foreground uppercase tracking-wider">Today</div>
-            <div className="mt-1 text-lg font-semibold tabular-nums">{formatCents(totals?.today.costCents ?? 0)}</div>
-            <div className="text-[11px] text-muted-foreground tabular-nums">
-              {formatTokens((totals?.today.inputTokens ?? 0) + (totals?.today.outputTokens ?? 0))} tokens · {totals?.today.calls ?? 0} calls
-            </div>
-          </div>
-          <div className="p-3">
             <div className="text-[11px] text-muted-foreground uppercase tracking-wider">This month</div>
             <div className="mt-1 text-lg font-semibold tabular-nums">{formatCents(totals?.month.costCents ?? 0)}</div>
             <div className="text-[11px] text-muted-foreground tabular-nums">
               {formatTokens((totals?.month.inputTokens ?? 0) + (totals?.month.outputTokens ?? 0))} tokens · {totals?.month.calls ?? 0} calls
+            </div>
+          </div>
+          <div className="p-3">
+            <div className="text-[11px] text-muted-foreground uppercase tracking-wider">All time</div>
+            <div className="mt-1 text-lg font-semibold tabular-nums">{formatCents(totals?.allTime.costCents ?? 0)}</div>
+            <div className="text-[11px] text-muted-foreground tabular-nums">
+              {formatTokens((totals?.allTime.inputTokens ?? 0) + (totals?.allTime.outputTokens ?? 0))} tokens · {totals?.allTime.calls ?? 0} calls
             </div>
           </div>
         </div>
@@ -448,7 +449,7 @@ function UsageSection() {
           </div>
         )}
         {!loading && rows.length === 0 && (
-          <div className="border-t border-border px-3 py-3 text-xs text-muted-foreground">No usage recorded this month yet.</div>
+          <div className="border-t border-border px-3 py-3 text-xs text-muted-foreground">No usage recorded yet.</div>
         )}
       </div>
     </Section>
@@ -511,23 +512,18 @@ function BackfillHistoryRow({ record, onCancelled }: { record: BackfillRecord; o
         </div>
       </div>
       {record.status === 'running' && (
-        <ConfirmDialog
-          title="Cancel backfill?"
-          description="Progress so far will be discarded. In-flight OpenAI batch jobs will be cancelled if possible."
-          actionLabel="Cancel backfill"
-          cancelLabel="Keep running"
-          destructive
-          onAction={async () => {
-            await cancelBackfill(record.id)
-            onCancelled()
-          }}
+        <CancelBackfillDialog
+          processed={record.processed}
+          total={record.totalItems}
+          onKeep={async () => { await cancelBackfill(record.id, 'keep'); onCancelled() }}
+          onDiscard={async () => { await cancelBackfill(record.id, 'discard'); onCancelled() }}
         >
           <button
             className="cursor-pointer text-xs text-muted-foreground hover:text-destructive transition-colors shrink-0"
           >
             Cancel
           </button>
-        </ConfirmDialog>
+        </CancelBackfillDialog>
       )}
     </div>
   )

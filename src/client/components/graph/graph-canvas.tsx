@@ -319,11 +319,11 @@ export function GraphCanvas({
         {isDark && (
           <EffectComposer>
             <Bloom
-              kernelSize={5}
-              luminanceThreshold={0.6}
-              luminanceSmoothing={0.4}
-              intensity={0.35}
-              radius={0.4}
+              kernelSize={4}
+              luminanceThreshold={0.5}
+              luminanceSmoothing={0.3}
+              intensity={0.55}
+              radius={0.35}
             />
           </EffectComposer>
         )}

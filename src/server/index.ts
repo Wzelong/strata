@@ -17,7 +17,7 @@ import {
 import { buildScanPairs, classifyAndCreateAlerts, type ScanPair } from '../engine/scan.js'
 import { routeFlag, formatReportReason, brigadeLockKey, BRIGADE_LOCK_TTL_MS } from '../engine/flag-routing.js'
 import { estimateBackfill, estimateBackfillRealtime, estimateCurrentBytes, ITEM_CAPACITY, RT_ITEMS_PER_TICK, RT_TICK_SPACING_MS } from './backfill-estimates.js'
-import { recordUsage, getUsageSummary } from './usage.js'
+import { recordUsage, getUsageSummary, usageMonthKey, USAGE_TOTAL_KEY } from './usage.js'
 import { createChatHandler } from './chat/route.js'
 import { runRecluster, assignItemLive, ClusterRepo } from './cluster-pipeline.js'
 import { LOUVAIN_RESOLUTION, MIN_CLUSTER_SIZE } from '../engine/cluster.js'
@@ -1066,9 +1066,27 @@ app.post('/internal/scheduler/ingest-batch', async (c) => {
         if (v) chunkRaw.push(JSON.parse(v))
       }
 
+      // A cancel can land between the start-of-tick check and now. Re-read right
+      // before the expensive ingest so a cancel that arrived in that window skips
+      // the chunk entirely instead of storing orphaned items.
+      if ((await redis.hGet('strata:ingest:status', 'phase')) !== 'realtime-ingest') {
+        return c.json({ status: 'ok' })
+      }
+
       try {
         const result = await ingestChunkRealTime(openai, redis, chunkRaw)
         invalidateItemCache()
+
+        // The ingest itself takes several seconds; a cancel may have landed while
+        // it ran. If so, drop the chunk we just stored — "if the result comes back,
+        // throw it away" — so discard only has to clean the already-counted prefix.
+        if ((await redis.hGet('strata:ingest:status', 'phase')) !== 'realtime-ingest') {
+          await store.deleteItems(chunkIds)
+          invalidateItemCache()
+          console.log(`[Strata] Real-time tick: cancelled mid-chunk, dropped ${chunkIds.length} items`)
+          return c.json({ status: 'ok' })
+        }
+
         await recordUsage('text-embedding-3-small', { inputTokens: result.usage.embedInputTokens, outputTokens: 0 })
         await recordUsage('gpt-5.4-mini', { inputTokens: result.usage.extractInputTokens, outputTokens: result.usage.extractOutputTokens })
         const newProcessed = processedSoFar + result.stored
@@ -2452,7 +2470,7 @@ app.post('/api/backfill/confirm', async (c) => {
 })
 
 app.post('/api/backfill/cancel', async (c) => {
-  const { id } = await c.req.json<{ id: string }>()
+  const { id, mode = 'discard' } = await c.req.json<{ id: string; mode?: 'discard' | 'keep' }>()
   if (!id) return c.json({ error: 'id required' }, 400)
 
   const status = await redis.hGetAll('strata:ingest:status')
@@ -2461,8 +2479,24 @@ app.post('/api/backfill/cancel', async (c) => {
     return c.json({ error: 'No matching active backfill' }, 404)
   }
 
-  // Best-effort: cancel in-flight OpenAI batches. Don't fail the request if
-  // these don't go through — the scheduler bail-out is what stops the work.
+  if (mode === 'keep') {
+    // Stop ingesting but keep what's processed. Setting phase off 'realtime-ingest'
+    // makes the in-flight tick bail; recluster computes clusters + layout for the
+    // partial set and flips ingest status to 'done', writing the backfill record.
+    await redis.hSet('strata:ingest:status', { phase: 'clustering', lastPolledAt: String(Date.now()) })
+    await redis.del('strata:ingest:raw')
+    await redis.del('strata:ingest:order')
+    await scheduler.runJob({ name: 'recluster', runAt: new Date(Date.now() + 1000), data: { fromBackfill: true } })
+    console.log(`[Strata] Backfill ${id} stopped early; keeping ${status.processed ?? '?'} items, reclustering`)
+    return c.json({ ok: true, kept: true })
+  }
+
+  // discard: remove exactly this run's items so we return to the pre-backfill state.
+  // 'cancelling' stops the in-flight tick (phase !== 'realtime-ingest') and keeps the
+  // UI on a "Discarding…" screen during the (necessarily slow) clean delete, instead
+  // of flashing the dashboard with items that are about to vanish.
+  await redis.hSet('strata:ingest:status', { phase: 'cancelling' })
+
   try {
     const apiKey = await getOpenAIKey()
     if (apiKey) {
@@ -2474,15 +2508,29 @@ app.post('/api/backfill/cancel', async (c) => {
     console.error('[Strata] Batch cancel error:', err)
   }
 
-  await redis.hSet('strata:ingest:status', { phase: 'cancelled', endedAt: String(Date.now()) })
-  await updateBackfillRecord(id, { status: 'cancelled', endedAt: Date.now() })
-
+  // Remove only what this run actually stored — the processed prefix of the queue.
+  // Deleting the whole queue would do thousands of useless lookups for items never
+  // ingested. A chunk still in flight drops itself when its tick finishes (the
+  // realtime tick deletes its chunk if the run was cancelled mid-chunk).
+  const order: string[] = JSON.parse((await redis.get('strata:ingest:order')) || '[]')
+  const processed = parseInt((await redis.hGet('strata:ingest:status', 'processed')) || '0', 10)
+  const stored = order.slice(0, processed)
+  if (stored.length > 0) {
+    await store.deleteItems(stored)
+    invalidateItemCache()
+  }
   await redis.del('strata:ingest:raw')
+  await redis.del('strata:ingest:order')
   await redis.del('strata:ingest:embeddings')
   await redis.del('strata:ingest:entities')
 
-  console.log(`[Strata] Backfill ${id} cancelled`)
-  return c.json({ ok: true })
+  // Reset processed/total too: App derives itemCount as max(stats, ingest.processed),
+  // so a lingering processed count would keep the UI out of the empty/onboarding state.
+  await redis.hSet('strata:ingest:status', { phase: 'cancelled', endedAt: String(Date.now()), processed: '0', totalItems: '0' })
+  await updateBackfillRecord(id, { status: 'cancelled', endedAt: Date.now() })
+
+  console.log(`[Strata] Backfill ${id} cancelled; removed this run's items`)
+  return c.json({ ok: true, kept: false })
 })
 
 app.get('/api/backfill/history', async (c) => {
@@ -2550,12 +2598,18 @@ app.post('/api/alerts/reset', async (c) => {
   return c.json({ ok: true })
 })
 
-async function resetStrataData(): Promise<number> {
-  const count = await store.getItemCount()
+async function resetStrataData(opts: { includeApiKey?: boolean } = {}): Promise<number> {
+  // Delete items via deleteItems so every per-item entity zset/embedding/index is
+  // reversed — bulk-deleting the items hash would leave orphaned entity keys behind.
+  const ids = await store.getItemIds()
+  const count = ids.length
+  if (ids.length > 0) await store.deleteItems(ids)
+
   const ENTITY_TYPES = ['person', 'location', 'object', 'organization', 'phone', 'email', 'url', 'username', 'quantity']
   const keys = [
-    'strata:items', 'strata:embeddings', 'strata:idx:time',
-    'strata:entity-hub-counts', 'strata:cases', 'strata:rules',
+    // Idempotent safety even after deleteItems above.
+    'strata:items', 'strata:embeddings', 'strata:idx:time', 'strata:entity-hub-counts',
+    'strata:cases', 'strata:rules',
     'strata:backfill:complete', 'strata:backfill:history',
     'strata:scan:history', 'strata:scan:status', 'strata:scan:pairs', 'strata:scan:new-alert-ids',
     'strata:ingest:status', 'strata:ingest:raw', 'strata:ingest:order',
@@ -2565,13 +2619,19 @@ async function resetStrataData(): Promise<number> {
     'strata:cluster:alias', 'strata:cluster:counter',
     'strata:cluster:config', 'strata:cluster:status', 'strata:cluster:ingest-counter',
     'strata:graph:layout',
+    // Agent / API usage tracking: lifetime total + the current month (what the UI reads).
+    USAGE_TOTAL_KEY, usageMonthKey(),
     ...ENTITY_TYPES.map(t => `strata:entity-emb:${t}`),
     ...ENTITY_TYPES.map(t => `strata:idx:entity-surfaces:${t}`),
   ]
   for (const key of keys) await redis.del(key)
   await alertStore.resetAll()
+  if (opts.includeApiKey) {
+    await redis.del(OPENAI_KEY_REDIS)
+    await clearApiKeyInvalid()
+  }
   invalidateItemCache()
-  console.log(`[Strata] Reset complete: ${count} items removed (API key preserved)`)
+  console.log(`[Strata] Reset complete: ${count} items removed, usage cleared (API key ${opts.includeApiKey ? 'removed' : 'preserved'})`)
   return count
 }
 
@@ -2582,8 +2642,8 @@ app.post('/api/strata/reset', async (c) => {
 
 app.post('/internal/menu/reset', async (c) => {
   try {
-    const deleted = await resetStrataData()
-    return c.json<UiResponse>({ showToast: { text: `Strata reset — ${deleted} items wiped. API key kept.`, appearance: 'success' } })
+    const deleted = await resetStrataData({ includeApiKey: true })
+    return c.json<UiResponse>({ showToast: { text: `Strata reset — ${deleted} items wiped. API key removed.`, appearance: 'success' } })
   } catch (err) {
     console.error('[Strata] Menu reset failed:', err)
     return c.json<UiResponse>({ showToast: { text: `Reset failed: ${String(err)}`, appearance: 'neutral' } })

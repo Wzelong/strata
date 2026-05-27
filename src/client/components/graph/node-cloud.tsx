@@ -27,6 +27,9 @@ function computeTargets(
   const dimColor = new THREE.Color(isDark ? '#525252' : '#a1a1aa')
   const tc = new THREE.Color()
   const baseScale = isDark ? 0.25 : 0.27
+  // Dark mode glows via HDR bloom: push active node colors above 1.0 so they clear
+  // the bloom's ~1.0 luminance threshold. Dim/inactive nodes stay LDR and don't glow.
+  const glow = isDark ? 1.8 : 1
 
   return nodes.map(n => {
     const clusterColor = n.cluster_label ? clusterColors.get(n.cluster_label) : undefined
@@ -34,9 +37,9 @@ function computeTargets(
     else tc.copy(orphan)
 
     const active = !highlight || highlight.nodeIds.has(n.id)
-    const r = active ? tc.r : dimColor.r
-    const g = active ? tc.g : dimColor.g
-    const b = active ? tc.b : dimColor.b
+    const r = active ? tc.r * glow : dimColor.r
+    const g = active ? tc.g * glow : dimColor.g
+    const b = active ? tc.b * glow : dimColor.b
     const sizeMul = highlight && !active ? 0.6 : 1
     const scale = baseScale * (0.85 + Math.min(1, n.hub_score) * 0.5) * sizeMul
 
@@ -155,7 +158,10 @@ export function NodeCloud({
       const av = alpha[i]
 
       tempObj.position.set(pos[i * 3], pos[i * 3 + 1], pos[i * 3 + 2])
-      tempObj.scale.setScalar(scl[i])
+      // Scale by visibility too — a time-hidden node (av→0) must collapse to nothing,
+      // not just fade to the background color, or its full-size sphere keeps occluding
+      // visible nodes (near-black "zombie" spheres in dark mode) and still raycasts.
+      tempObj.scale.setScalar(scl[i] * av)
       tempObj.updateMatrix()
       meshRef.current.setMatrixAt(i, tempObj.matrix)
 

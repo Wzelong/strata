@@ -16,6 +16,7 @@ export function App() {
   const stats = useStats()
   const ingest = useIngestStatus()
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [skipOnboarding, setSkipOnboarding] = useState(false)
 
   if (loading) return <div className="h-full" />
   if (!isMod) return <PublicLanding />
@@ -30,26 +31,34 @@ export function App() {
   const openSettings = () => setSettingsOpen(true)
   const closeSettings = () => setSettingsOpen(false)
 
+  const showOnboarding = showEmpty && !skipOnboarding
+
   let body: React.ReactNode
   if (needsApiKey) {
     body = <ConfigureStrata subredditName={subredditName} />
   } else if (showFullProgress) {
     body = <BackfillProgress backfillId={ingest?.backfillId ?? undefined} subredditName={subredditName} />
-  } else if (showEmpty) {
-    body = <OnboardingView onStarted={() => refreshStats()} />
+  } else if (showOnboarding) {
+    body = <OnboardingView onStarted={() => refreshStats()} onSkip={() => setSkipOnboarding(true)} />
   } else if (settingsOpen) {
     body = <SettingsView onBack={closeSettings} />
   } else {
+    // No alerts yet but we have items: land on the Posts list (+ graph on desktop)
+    // instead of an empty alerts → blank-detail view that looks like nothing's here.
+    const noAlertsWithItems = !stats.hasAlerts && itemCount > 0
     body = (
       <div className="flex flex-col h-full">
         <div className="flex-1 min-h-0">
-          <Dashboard />
+          <Dashboard
+            initialTab={noAlertsWithItems ? 'items' : 'alerts'}
+            initialDetailTab={noAlertsWithItems ? 'explore' : undefined}
+          />
         </div>
       </div>
     )
   }
 
-  const chromeless = needsApiKey || showEmpty || showFullProgress
+  const chromeless = needsApiKey || showOnboarding || showFullProgress
 
   return (
     <div className="h-full flex flex-col">
@@ -57,6 +66,7 @@ export function App() {
         <Header
           settingsOpen={settingsOpen}
           onToggleSettings={() => (settingsOpen ? closeSettings() : openSettings())}
+          onBackfill={() => setSkipOnboarding(false)}
         />
       )}
       <main className={cn('flex-1 min-h-0 h-0', !chromeless && 'pt-10')}>{body}</main>

@@ -23,13 +23,11 @@ function priceFor(model: string): PricePerMillion {
   return match ? PRICING[match] : { input: 0, output: 0 }
 }
 
-function dayKey(d = new Date()): string {
-  return d.toISOString().slice(0, 10)
+export function usageMonthKey(d = new Date()): string {
+  return `strata:usage:month:${d.toISOString().slice(0, 7)}`
 }
 
-function monthKey(d = new Date()): string {
-  return d.toISOString().slice(0, 7)
-}
+export const USAGE_TOTAL_KEY = 'strata:usage:total'
 
 export interface UsageRecord {
   inputTokens: number
@@ -41,16 +39,15 @@ export async function recordUsage(model: string, usage: UsageRecord | undefined 
   const input = usage.inputTokens || 0
   const output = usage.outputTokens || 0
   if (input <= 0 && output <= 0) return
-  const day = dayKey()
-  const month = monthKey()
+  const month = usageMonthKey()
   try {
     await Promise.all([
-      redis.hIncrBy(`strata:usage:day:${day}`, `${model}:input`, input),
-      redis.hIncrBy(`strata:usage:day:${day}`, `${model}:output`, output),
-      redis.hIncrBy(`strata:usage:day:${day}`, `${model}:calls`, 1),
-      redis.hIncrBy(`strata:usage:month:${month}`, `${model}:input`, input),
-      redis.hIncrBy(`strata:usage:month:${month}`, `${model}:output`, output),
-      redis.hIncrBy(`strata:usage:month:${month}`, `${model}:calls`, 1),
+      redis.hIncrBy(month, `${model}:input`, input),
+      redis.hIncrBy(month, `${model}:output`, output),
+      redis.hIncrBy(month, `${model}:calls`, 1),
+      redis.hIncrBy(USAGE_TOTAL_KEY, `${model}:input`, input),
+      redis.hIncrBy(USAGE_TOTAL_KEY, `${model}:output`, output),
+      redis.hIncrBy(USAGE_TOTAL_KEY, `${model}:calls`, 1),
     ])
   } catch {}
 }
@@ -64,9 +61,9 @@ export interface ModelUsage {
 }
 
 export interface UsageSummary {
-  today: ModelUsage[]
   month: ModelUsage[]
-  totals: { today: ModelUsage; month: ModelUsage }
+  allTime: ModelUsage[]
+  totals: { month: ModelUsage; allTime: ModelUsage }
 }
 
 function parseBucket(hash: Record<string, string>): ModelUsage[] {
@@ -102,17 +99,15 @@ function rollup(rows: ModelUsage[]): ModelUsage {
 }
 
 export async function getUsageSummary(): Promise<UsageSummary> {
-  const day = dayKey()
-  const month = monthKey()
-  const [dayHash, monthHash] = await Promise.all([
-    redis.hGetAll(`strata:usage:day:${day}`).catch(() => ({} as Record<string, string>)),
-    redis.hGetAll(`strata:usage:month:${month}`).catch(() => ({} as Record<string, string>)),
+  const [monthHash, totalHash] = await Promise.all([
+    redis.hGetAll(usageMonthKey()).catch(() => ({} as Record<string, string>)),
+    redis.hGetAll(USAGE_TOTAL_KEY).catch(() => ({} as Record<string, string>)),
   ])
-  const today = parseBucket(dayHash)
-  const monthRows = parseBucket(monthHash)
+  const month = parseBucket(monthHash)
+  const allTime = parseBucket(totalHash)
   return {
-    today,
-    month: monthRows,
-    totals: { today: rollup(today), month: rollup(monthRows) },
+    month,
+    allTime,
+    totals: { month: rollup(month), allTime: rollup(allTime) },
   }
 }

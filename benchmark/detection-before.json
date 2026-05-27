@@ -1,0 +1,515 @@
+{
+  "config": {
+    "corpusSize": 5398,
+    "trials": 10,
+    "timestamp": "2026-05-27T03:06:09.537Z"
+  },
+  "summary": {
+    "surface": 10,
+    "scan": 10,
+    "flagPattern": 10,
+    "flagBrigade": 10
+  },
+  "trials": [
+    {
+      "trial": 1,
+      "surface": {
+        "ok": true,
+        "ms": 16333.746167000001,
+        "retrievedTop15": 4,
+        "relatedTop15": 4,
+        "witnesses": {
+          "t1_strata_surface1": {
+            "retrieved": true,
+            "related": true,
+            "relationship": "UPDATES"
+          },
+          "t3_strata_surface2": {
+            "retrieved": true,
+            "related": true,
+            "relationship": "UPDATES"
+          },
+          "t1_strata_surface3": {
+            "retrieved": true,
+            "related": true,
+            "relationship": "UPDATES"
+          },
+          "t3_strata_surface4": {
+            "retrieved": true,
+            "related": true,
+            "relationship": "CONFIRMS"
+          }
+        },
+        "decoysRetrieved": 1,
+        "decoysFalsePos": 0
+      },
+      "scan": {
+        "ok": true,
+        "ms": 3573.8542500000003,
+        "buriedInAnchors": 3,
+        "firstSignalRank": 16,
+        "pairs": 30
+      },
+      "flagPattern": {
+        "ok": true,
+        "ms": 1308.2802909999991,
+        "precedents": 3
+      },
+      "flagBrigade": {
+        "ok": true,
+        "ms": 3109.555708,
+        "authors": 5
+      }
+    },
+    {
+      "trial": 2,
+      "surface": {
+        "ok": true,
+        "ms": 23492.836417,
+        "retrievedTop15": 4,
+        "relatedTop15": 4,
+        "witnesses": {
+          "t1_strata_surface1": {
+            "retrieved": true,
+            "related": true,
+            "relationship": "UPDATES"
+          },
+          "t3_strata_surface2": {
+            "retrieved": true,
+            "related": true,
+            "relationship": "UPDATES"
+          },
+          "t1_strata_surface3": {
+            "retrieved": true,
+            "related": true,
+            "relationship": "UPDATES"
+          },
+          "t3_strata_surface4": {
+            "retrieved": true,
+            "related": true,
+            "relationship": "CONFIRMS"
+          }
+        },
+        "decoysRetrieved": 1,
+        "decoysFalsePos": 0
+      },
+      "scan": {
+        "ok": true,
+        "ms": 3723.8558330000014,
+        "buriedInAnchors": 3,
+        "firstSignalRank": 16,
+        "pairs": 30
+      },
+      "flagPattern": {
+        "ok": true,
+        "ms": 1174.448832999995,
+        "precedents": 3
+      },
+      "flagBrigade": {
+        "ok": true,
+        "ms": 1305.2135409999973,
+        "authors": 5
+      }
+    },
+    {
+      "trial": 3,
+      "surface": {
+        "ok": true,
+        "ms": 20766.013625000007,
+        "retrievedTop15": 4,
+        "relatedTop15": 4,
+        "witnesses": {
+          "t1_strata_surface1": {
+            "retrieved": true,
+            "related": true,
+            "relationship": "UPDATES"
+          },
+          "t3_strata_surface2": {
+            "retrieved": true,
+            "related": true,
+            "relationship": "UPDATES"
+          },
+          "t1_strata_surface3": {
+            "retrieved": true,
+            "related": true,
+            "relationship": "UPDATES"
+          },
+          "t3_strata_surface4": {
+            "retrieved": true,
+            "related": true,
+            "relationship": "CONFIRMS"
+          }
+        },
+        "decoysRetrieved": 1,
+        "decoysFalsePos": 0
+      },
+      "scan": {
+        "ok": true,
+        "ms": 4084.549040999991,
+        "buriedInAnchors": 3,
+        "firstSignalRank": 16,
+        "pairs": 30
+      },
+      "flagPattern": {
+        "ok": true,
+        "ms": 1287.6573329999956,
+        "precedents": 3
+      },
+      "flagBrigade": {
+        "ok": true,
+        "ms": 1214.2013339999976,
+        "authors": 5
+      }
+    },
+    {
+      "trial": 4,
+      "surface": {
+        "ok": true,
+        "ms": 19644.115332999994,
+        "retrievedTop15": 4,
+        "relatedTop15": 4,
+        "witnesses": {
+          "t1_strata_surface1": {
+            "retrieved": true,
+            "related": true,
+            "relationship": "UPDATES"
+          },
+          "t3_strata_surface2": {
+            "retrieved": true,
+            "related": true,
+            "relationship": "UPDATES"
+          },
+          "t1_strata_surface3": {
+            "retrieved": true,
+            "related": true,
+            "relationship": "UPDATES"
+          },
+          "t3_strata_surface4": {
+            "retrieved": true,
+            "related": true,
+            "relationship": "CONFIRMS"
+          }
+        },
+        "decoysRetrieved": 1,
+        "decoysFalsePos": 0
+      },
+      "scan": {
+        "ok": true,
+        "ms": 3694.2134170000063,
+        "buriedInAnchors": 3,
+        "firstSignalRank": 16,
+        "pairs": 30
+      },
+      "flagPattern": {
+        "ok": true,
+        "ms": 1405.7640830000018,
+        "precedents": 3
+      },
+      "flagBrigade": {
+        "ok": true,
+        "ms": 1217.2525840000017,
+        "authors": 5
+      }
+    },
+    {
+      "trial": 5,
+      "surface": {
+        "ok": true,
+        "ms": 18193.197541999994,
+        "retrievedTop15": 4,
+        "relatedTop15": 4,
+        "witnesses": {
+          "t1_strata_surface1": {
+            "retrieved": true,
+            "related": true,
+            "relationship": "UPDATES"
+          },
+          "t3_strata_surface2": {
+            "retrieved": true,
+            "related": true,
+            "relationship": "UPDATES"
+          },
+          "t1_strata_surface3": {
+            "retrieved": true,
+            "related": true,
+            "relationship": "UPDATES"
+          },
+          "t3_strata_surface4": {
+            "retrieved": true,
+            "related": true,
+            "relationship": "CONFIRMS"
+          }
+        },
+        "decoysRetrieved": 1,
+        "decoysFalsePos": 0
+      },
+      "scan": {
+        "ok": true,
+        "ms": 3626.3943750000035,
+        "buriedInAnchors": 3,
+        "firstSignalRank": 16,
+        "pairs": 30
+      },
+      "flagPattern": {
+        "ok": true,
+        "ms": 9990.714666999993,
+        "precedents": 3
+      },
+      "flagBrigade": {
+        "ok": true,
+        "ms": 1134.6826660000079,
+        "authors": 5
+      }
+    },
+    {
+      "trial": 6,
+      "surface": {
+        "ok": true,
+        "ms": 17495.26120800001,
+        "retrievedTop15": 4,
+        "relatedTop15": 4,
+        "witnesses": {
+          "t1_strata_surface1": {
+            "retrieved": true,
+            "related": true,
+            "relationship": "UPDATES"
+          },
+          "t3_strata_surface2": {
+            "retrieved": true,
+            "related": true,
+            "relationship": "UPDATES"
+          },
+          "t1_strata_surface3": {
+            "retrieved": true,
+            "related": true,
+            "relationship": "UPDATES"
+          },
+          "t3_strata_surface4": {
+            "retrieved": true,
+            "related": true,
+            "relationship": "CONFIRMS"
+          }
+        },
+        "decoysRetrieved": 1,
+        "decoysFalsePos": 0
+      },
+      "scan": {
+        "ok": true,
+        "ms": 3830.6684590000077,
+        "buriedInAnchors": 3,
+        "firstSignalRank": 16,
+        "pairs": 30
+      },
+      "flagPattern": {
+        "ok": true,
+        "ms": 1276.8299999999872,
+        "precedents": 3
+      },
+      "flagBrigade": {
+        "ok": true,
+        "ms": 936.4821670000092,
+        "authors": 5
+      }
+    },
+    {
+      "trial": 7,
+      "surface": {
+        "ok": true,
+        "ms": 19595.397459,
+        "retrievedTop15": 4,
+        "relatedTop15": 4,
+        "witnesses": {
+          "t1_strata_surface1": {
+            "retrieved": true,
+            "related": true,
+            "relationship": "UPDATES"
+          },
+          "t3_strata_surface2": {
+            "retrieved": true,
+            "related": true,
+            "relationship": "UPDATES"
+          },
+          "t1_strata_surface3": {
+            "retrieved": true,
+            "related": true,
+            "relationship": "UPDATES"
+          },
+          "t3_strata_surface4": {
+            "retrieved": true,
+            "related": true,
+            "relationship": "CONFIRMS"
+          }
+        },
+        "decoysRetrieved": 1,
+        "decoysFalsePos": 0
+      },
+      "scan": {
+        "ok": true,
+        "ms": 3460.764292000007,
+        "buriedInAnchors": 3,
+        "firstSignalRank": 16,
+        "pairs": 30
+      },
+      "flagPattern": {
+        "ok": true,
+        "ms": 1250.4192080000066,
+        "precedents": 3
+      },
+      "flagBrigade": {
+        "ok": true,
+        "ms": 1349.785917000001,
+        "authors": 5
+      }
+    },
+    {
+      "trial": 8,
+      "surface": {
+        "ok": true,
+        "ms": 20616.64979200001,
+        "retrievedTop15": 4,
+        "relatedTop15": 4,
+        "witnesses": {
+          "t1_strata_surface1": {
+            "retrieved": true,
+            "related": true,
+            "relationship": "UPDATES"
+          },
+          "t3_strata_surface2": {
+            "retrieved": true,
+            "related": true,
+            "relationship": "UPDATES"
+          },
+          "t1_strata_surface3": {
+            "retrieved": true,
+            "related": true,
+            "relationship": "UPDATES"
+          },
+          "t3_strata_surface4": {
+            "retrieved": true,
+            "related": true,
+            "relationship": "CONFIRMS"
+          }
+        },
+        "decoysRetrieved": 1,
+        "decoysFalsePos": 0
+      },
+      "scan": {
+        "ok": true,
+        "ms": 3462.4717079999973,
+        "buriedInAnchors": 3,
+        "firstSignalRank": 16,
+        "pairs": 30
+      },
+      "flagPattern": {
+        "ok": true,
+        "ms": 1369.066542000015,
+        "precedents": 3
+      },
+      "flagBrigade": {
+        "ok": true,
+        "ms": 1292.288333000004,
+        "authors": 5
+      }
+    },
+    {
+      "trial": 9,
+      "surface": {
+        "ok": true,
+        "ms": 19133.53016699999,
+        "retrievedTop15": 4,
+        "relatedTop15": 4,
+        "witnesses": {
+          "t1_strata_surface1": {
+            "retrieved": true,
+            "related": true,
+            "relationship": "UPDATES"
+          },
+          "t3_strata_surface2": {
+            "retrieved": true,
+            "related": true,
+            "relationship": "UPDATES"
+          },
+          "t1_strata_surface3": {
+            "retrieved": true,
+            "related": true,
+            "relationship": "UPDATES"
+          },
+          "t3_strata_surface4": {
+            "retrieved": true,
+            "related": true,
+            "relationship": "CONFIRMS"
+          }
+        },
+        "decoysRetrieved": 1,
+        "decoysFalsePos": 0
+      },
+      "scan": {
+        "ok": true,
+        "ms": 3477.7188750000205,
+        "buriedInAnchors": 3,
+        "firstSignalRank": 16,
+        "pairs": 30
+      },
+      "flagPattern": {
+        "ok": true,
+        "ms": 1075.7789160000102,
+        "precedents": 3
+      },
+      "flagBrigade": {
+        "ok": true,
+        "ms": 1152.2022909999941,
+        "authors": 5
+      }
+    },
+    {
+      "trial": 10,
+      "surface": {
+        "ok": true,
+        "ms": 38993.12079100002,
+        "retrievedTop15": 4,
+        "relatedTop15": 3,
+        "witnesses": {
+          "t1_strata_surface1": {
+            "retrieved": true,
+            "related": true,
+            "relationship": "UPDATES"
+          },
+          "t3_strata_surface2": {
+            "retrieved": true,
+            "related": true,
+            "relationship": "UPDATES"
+          },
+          "t1_strata_surface3": {
+            "retrieved": true,
+            "related": true,
+            "relationship": "UPDATES"
+          },
+          "t3_strata_surface4": {
+            "retrieved": true,
+            "related": false,
+            "relationship": "UNRELATED"
+          }
+        },
+        "decoysRetrieved": 1,
+        "decoysFalsePos": 0
+      },
+      "scan": {
+        "ok": true,
+        "ms": 3500.649167000025,
+        "buriedInAnchors": 3,
+        "firstSignalRank": 16,
+        "pairs": 30
+      },
+      "flagPattern": {
+        "ok": true,
+        "ms": 16128.600624999963,
+        "precedents": 3
+      },
+      "flagBrigade": {
+        "ok": true,
+        "ms": 953.380959000031,
+        "authors": 5
+      }
+    }
+  ]
+}

@@ -1,4 +1,4 @@
-import { Moon, Sun, Settings, AlertTriangle, Loader2, ScanSearch } from 'lucide-react'
+import { Moon, Sun, Settings, AlertTriangle, Loader2, ScanSearch, DatabaseZap } from 'lucide-react'
 import { useTheme } from '../hooks/use-theme'
 import { useStats, refreshStats } from '../hooks/use-stats'
 import { useViewer } from '../hooks/use-viewer'
@@ -11,9 +11,10 @@ import logo from '../assets/logo.png'
 interface Props {
   settingsOpen?: boolean
   onToggleSettings?: () => void
+  onBackfill?: () => void
 }
 
-export function Header({ settingsOpen, onToggleSettings }: Props) {
+export function Header({ settingsOpen, onToggleSettings, onBackfill }: Props) {
   const { theme, toggle } = useTheme()
   const stats = useStats()
   const { subredditName } = useViewer()
@@ -50,6 +51,15 @@ export function Header({ settingsOpen, onToggleSettings }: Props) {
           >
             <Loader2 className="size-3 animate-spin" />
             {compactCount(ingest?.processed ?? 0)}/{compactCount(ingest?.totalItems ?? 0)}
+          </button>
+        )}
+        {!isBackfilling && stats && stats.itemCount === 0 && onBackfill && (
+          <button
+            onClick={onBackfill}
+            className="h-7 px-2 inline-flex items-center gap-1.5 rounded-md text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-colors cursor-pointer"
+          >
+            <DatabaseZap className="size-3" />
+            Backfill
           </button>
         )}
         {!isBackfilling && stats && stats.itemCount > 0 && !stats.hasAlerts && (

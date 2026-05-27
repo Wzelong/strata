@@ -161,10 +161,27 @@ export class MemoryKVStore implements KVStore {
   }
 
   async deleteItems(ids: string[]): Promise<void> {
+    const idSet = new Set(ids)
     for (const id of ids) {
+      const item = this.items.get(id)
+      for (const e of item?.entities ?? []) {
+        const key = `${e.type}:${e.surfaceText}`
+        const arr = this.entityIndex.get(key)?.filter(x => x.member !== id)
+        if (!arr || arr.length === 0) this.entityIndex.delete(key)
+        else this.entityIndex.set(key, arr)
+        const hubKey = `${e.type}:${e.surfaceText.toLowerCase()}`
+        const c = (this.entityHubCounts.get(hubKey) ?? 0) - 1
+        if (c <= 0) this.entityHubCounts.delete(hubKey)
+        else this.entityHubCounts.set(hubKey, c)
+      }
       this.items.delete(id)
       this.embeddings.delete(id)
-      this.timeline = this.timeline.filter(e => e.member !== id)
+    }
+    this.timeline = this.timeline.filter(e => !idSet.has(e.member))
+    for (const [type, arr] of this.entityEmbeddings) {
+      const next = arr.filter(x => !idSet.has(x.itemId))
+      if (next.length === 0) this.entityEmbeddings.delete(type)
+      else this.entityEmbeddings.set(type, next)
     }
   }
 }
