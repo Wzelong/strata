@@ -3,17 +3,18 @@ dist/
 .env
 .venv/
 .DS_Store
-tests/cache.json
-tests/real-data/cache/
-tests/real-data/*.jsonl
+
+# Raw Reddit data (too large for git, ~187M)
 dataset/*.jsonl
-dataset/live-items.json
+
+# Generated outputs (reproducible from scripts)
 dataset/seed.json
-dataset/seed.json.backup*
-dataset/layout.json
-dataset/cluster-test.ts
-dataset/cluster-label-test.ts
-dataset/cluster-resolution-sweep.ts
-benchmark/results-*.json
-# Demo recording assets (local only)
+dataset/live-items.json
+benchmark/benchmark-seed.json
+
+# Demo recording assets
 demo/
+
+SUBMISSION.md
+HACKATHON.md
+SCRIPT.md

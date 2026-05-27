@@ -20,7 +20,7 @@ interface WelcomeScreenProps {
 export function WelcomeScreen({ onPick }: WelcomeScreenProps) {
   return (
     <div className="min-h-full flex flex-col items-center justify-center px-6 py-6 gap-4 text-center">
-      <img src={logoUrl} alt="Strata" className="size-10 opacity-90" />
+      <img src={logoUrl} alt="Strata" className="size-16 opacity-90" />
       <div className="space-y-1">
         <p className="text-sm font-medium">What can I help you moderate?</p>
         <p className="text-xs text-muted-foreground max-w-sm">
@@ -32,7 +32,7 @@ export function WelcomeScreen({ onPick }: WelcomeScreenProps) {
           <button
             key={label}
             onClick={() => onPick(label)}
-            className="text-left text-sm rounded-none border px-3 py-2 hover:bg-muted cursor-pointer flex items-center gap-2 transition-colors"
+            className="text-left text-sm rounded-lg border px-3 py-2 hover:bg-muted cursor-pointer flex items-center gap-2 transition-colors"
           >
             <Icon className="size-3.5 text-muted-foreground shrink-0" />
             <span className="truncate">{label}</span>

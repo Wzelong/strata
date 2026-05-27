@@ -3,6 +3,7 @@ import { useVirtualizer } from '@tanstack/react-virtual'
 import { Search, X, CheckCheck } from 'lucide-react'
 import { cn, compactCount } from '../lib/utils'
 import { FilterMenu } from './filter-menu'
+import { ConfirmDialog } from './confirm-dialog'
 import { Tooltip, TooltipTrigger, TooltipContent } from './ui/tooltip'
 import { Checkbox } from './ui/checkbox'
 
@@ -21,8 +22,9 @@ export interface FilterConfig {
 
 export interface BulkAction {
   icon: ReactNode
-  onClick: () => void
+  onClick: () => void | Promise<void>
   ariaLabel: string
+  confirm?: { title: string; description?: string; actionLabel: string; destructive?: boolean }
 }
 
 export interface InfiniteConfig {
@@ -49,7 +51,9 @@ interface DataListProps<T> {
   onSearchChange?: (value: string) => void
   toolbarButtons?: { icon: ReactNode; onClick: () => void; ariaLabel: string; active?: boolean; className?: string }[]
   overlay?: ReactNode
+  onBack?: () => void
   selectedIds?: Set<string>
+  canSelect?: (item: T) => boolean
   onSelectOne?: (id: string) => void
   onSelectAll?: () => void
   allSelected?: boolean
@@ -87,7 +91,9 @@ export function DataList<T>({
   onSearchChange,
   toolbarButtons = [],
   overlay,
+  onBack,
   selectedIds,
+  canSelect,
   onSelectOne,
   onSelectAll,
   allSelected,
@@ -156,7 +162,23 @@ export function DataList<T>({
                   <CheckCheck className="size-3" />
                 </button>
               )}
-              {bulkActions.map((action, idx) => (
+              {bulkActions.map((action, idx) => action.confirm ? (
+                <ConfirmDialog
+                  key={idx}
+                  title={action.confirm.title}
+                  description={action.confirm.description}
+                  actionLabel={action.confirm.actionLabel}
+                  destructive={action.confirm.destructive}
+                  onAction={action.onClick}
+                >
+                  <button
+                    className="h-6 w-6 inline-flex items-center justify-center rounded cursor-pointer text-muted-foreground hover:text-foreground transition-colors"
+                    aria-label={action.ariaLabel}
+                  >
+                    {action.icon}
+                  </button>
+                </ConfirmDialog>
+              ) : (
                 <button
                   key={idx}
                   onClick={action.onClick}
@@ -220,12 +242,21 @@ export function DataList<T>({
                 <button
                   onClick={() => { setSearchOpen(!searchOpen); if (searchOpen) onSearchChange('') }}
                   className={cn(
-                    'h-6 w-6 inline-flex items-center justify-center rounded cursor-pointer text-muted-foreground hover:text-foreground transition-colors',
+                    'cursor-pointer h-7 w-7 inline-flex items-center justify-center rounded-md hover:bg-accent text-muted-foreground hover:text-foreground transition-colors',
                     searchOpen && 'bg-accent text-foreground',
                   )}
                   aria-label="Search"
                 >
-                  <Search className="size-3" />
+                  <Search className="size-3.5" />
+                </button>
+              )}
+              {onBack && (
+                <button
+                  onClick={onBack}
+                  className="cursor-pointer h-7 w-7 inline-flex items-center justify-center rounded-md hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
+                  aria-label="Close detail"
+                >
+                  <X className="size-3.5" />
                 </button>
               )}
             </div>
@@ -248,7 +279,7 @@ export function DataList<T>({
             {searchValue && (
               <button
                 onClick={() => onSearchChange('')}
-                className="absolute right-0.5 top-0.5 h-6 w-6 inline-flex items-center justify-center text-muted-foreground hover:text-foreground"
+                className="absolute right-0.5 top-0.5 h-6 w-6 inline-flex items-center justify-center cursor-pointer text-muted-foreground hover:text-foreground"
               >
                 <X className="h-3 w-3" />
               </button>
@@ -291,12 +322,14 @@ export function DataList<T>({
                     onClick={() => { lastClickedRef.current = id; onItemClick?.(item) }}
                   >
                     {onSelectOne && (
-                      <Checkbox
-                        checked={isSelected}
-                        onCheckedChange={() => onSelectOne(id)}
-                        onClick={e => e.stopPropagation()}
-                        className="mt-[5px] cursor-pointer"
-                      />
+                      canSelect && !canSelect(item)
+                        ? <div className="mt-[5px] size-4 shrink-0" />
+                        : <Checkbox
+                            checked={isSelected}
+                            onCheckedChange={() => onSelectOne(id)}
+                            onClick={e => e.stopPropagation()}
+                            className="mt-[5px] cursor-pointer"
+                          />
                     )}
                     <div className="flex-1 min-w-0">{renderItem(item)}</div>
                   </div>

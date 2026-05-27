@@ -6,12 +6,11 @@
   "scripts": {
     "build": "vite build",
     "dev": "vite build --watch",
-    "dev:server": "tsx watch --env-file=.env dev-server.ts",
     "dev:client": "vite",
-    "seed": "tsx dataset/build-seed.ts",
-    "benchmark": "tsx benchmark/stability-10x.ts",
-    "benchmark:viz": "python3 benchmark/viz.py",
-    "test:detection": "tsx --env-file=.env benchmark/detection-10x.ts"
+    "seed": "tsx --env-file=.env dataset/build-seed.ts",
+    "benchmark:seed": "tsx --env-file=.env benchmark/build-benchmark-seed.ts",
+    "benchmark": "tsx --env-file=.env benchmark/stability-10x.ts",
+    "benchmark:viz": "python3 benchmark/viz.py"
   },
   "engines": {
     "node": ">=22.2.0"
@@ -56,5 +55,5 @@
     "typescript": "5.9.3",
     "vite": "7.3.1"
   },
-  "license": "BSD-3-Clause"
+  "license": "MIT"
 }

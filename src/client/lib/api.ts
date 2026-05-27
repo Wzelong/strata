@@ -388,11 +388,6 @@ export async function confirmBackfill(token: string, mode: 'realtime' | 'batch' 
   return res.json()
 }
 
-export async function fetchModContentSetting(): Promise<{ enabled: boolean }> {
-  const res = await fetch('/api/config/mod-content')
-  return res.json()
-}
-
 export async function saveModContentSetting(enabled: boolean): Promise<{ ok: boolean }> {
   const res = await fetch('/api/config/mod-content', {
     method: 'POST',

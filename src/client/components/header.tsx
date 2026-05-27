@@ -88,9 +88,9 @@ export function Header({ settingsOpen, onToggleSettings, onBackfill }: Props) {
               await startScan()
               await refreshScanStatus()
               if (!settingsOpen) onToggleSettings?.()
-              requestAnimationFrame(() => {
-                document.getElementById('settings-scan')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-              })
+              setTimeout(() => {
+                document.getElementById('settings-scan')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+              }, 100)
             }}
             className="h-7 px-2 inline-flex items-center gap-1.5 rounded-md text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-colors cursor-pointer"
           >

@@ -1,10 +1,10 @@
 import { useState, useEffect, useCallback, useRef, useMemo, lazy, Suspense } from 'react'
-import { Bell, Hash, PenTool, Stamp, Ban, Check, X, Waypoints, Telescope, Sparkles } from 'lucide-react'
+import { Bell, Hash, PenTool, Ban, Trash2, Check, X, Waypoints, Telescope, Sparkles } from 'lucide-react'
 import { DataList, type FilterConfig } from './data-list'
 import { AlertDetailPanel } from './alert-detail'
 import { ChatPanel, type ChatSurface } from './chat-panel'
 import type { ChatContext, ToolSideEffect } from '../types/chat'
-import { fetchAlerts, fetchItems, fetchClusters, alertAction, type AlertListItem, type ItemListItem, type ClusterListItem } from '../lib/api'
+import { fetchAlerts, fetchItems, fetchClusters, alertAction, deleteAlert, type AlertListItem, type ItemListItem, type ClusterListItem } from '../lib/api'
 import { buildClusterColorMap } from '../lib/graph-utils'
 import { useTheme } from '../hooks/use-theme'
 import { useIsMobile } from '../hooks/use-is-mobile'
@@ -69,6 +69,21 @@ export function Dashboard({ initialTab = 'alerts', initialDetailTab = null }: Da
     } catch { setAlerts([]) }
     setAlertsLoading(false)
   }, [statusFilter, confidenceFilter, typeFilter])
+
+  const filteredAlerts = useMemo(() => {
+    if (!search.trim()) return alerts
+    const q = search.toLowerCase()
+    return alerts.filter(a => {
+      const title = (a.anchorType === 'post' && a.anchorTitle) ? a.anchorTitle : a.anchorText.slice(0, 80)
+      return title.toLowerCase().includes(q)
+    })
+  }, [alerts, search])
+
+  const filteredClusters = useMemo(() => {
+    if (!search.trim()) return clusters
+    const q = search.toLowerCase()
+    return clusters.filter(c => c.label.toLowerCase().includes(q))
+  }, [clusters, search])
 
   const loadItemsPage = useCallback(async (cursor?: number, reset = false) => {
     if (reset) {
@@ -146,15 +161,16 @@ export function Dashboard({ initialTab = 'alerts', initialDetailTab = null }: Da
     }
   }, [itemsCursor, itemsHasMore, itemsFetchingMore, loadItemsPage])
 
-  const handleBulkResolve = async () => {
-    for (const id of selectedIds) await alertAction(id, 'resolved')
+  const handleBulkDismiss = async () => {
+    await Promise.all([...selectedIds].map(id => alertAction(id, 'dismissed')))
     setSelectedIds(new Set())
     loadAlerts()
   }
 
-  const handleBulkDismiss = async () => {
-    for (const id of selectedIds) await alertAction(id, 'dismissed')
+  const handleBulkDelete = async () => {
+    await Promise.all([...selectedIds].map(id => deleteAlert(id)))
     setSelectedIds(new Set())
+    setSelectedAlertId(null)
     loadAlerts()
   }
 
@@ -411,35 +427,38 @@ export function Dashboard({ initialTab = 'alerts', initialDetailTab = null }: Da
       <div className="w-full min-w-0 shrink-0 lg:w-[280px] lg:border-r flex flex-col h-full min-h-0 relative">
         {tab === 'alerts' ? (
           <DataList
-            data={alerts}
+            data={filteredAlerts}
             getItemId={a => a.id}
             renderItem={renderAlertItem}
             activeId={selectedAlertId ?? undefined}
             onItemClick={a => { setSelectedAlertId(a.id); setSelectedItemId(null); setSelectedClusterId(null); setMobileView(null) }}
             isLoading={alertsLoading}
             emptyIcon={<Bell className="size-6 text-muted-foreground" />}
-            emptyMessage={alertsLoading ? 'Loading alerts...' : 'No alerts yet'}
+            emptyMessage={alertsLoading ? 'Loading alerts...' : search ? 'No matching alerts' : 'No alerts yet'}
             tabs={listTabs}
             activeTab={listActiveTab}
             onTabChange={onListTabChange}
             filters={detailActive ? [] : alertFilters}
             searchValue={search}
             onSearchChange={detailActive ? undefined : setSearch}
+            onBack={detailActive ? clearSelection : undefined}
             selectedIds={selectedIds}
+            canSelect={a => a.status === 'pending'}
             onSelectOne={id => {
               const next = new Set(selectedIds)
               if (next.has(id)) next.delete(id); else next.add(id)
               setSelectedIds(next)
             }}
             onSelectAll={() => {
-              if (selectedIds.size === alerts.length) setSelectedIds(new Set())
-              else setSelectedIds(new Set(alerts.map(a => a.id)))
+              const pendingIds = filteredAlerts.filter(a => a.status === 'pending').map(a => a.id)
+              if (selectedIds.size === pendingIds.length) setSelectedIds(new Set())
+              else setSelectedIds(new Set(pendingIds))
             }}
-            allSelected={selectedIds.size === alerts.length && alerts.length > 0}
+            allSelected={selectedIds.size > 0 && selectedIds.size === filteredAlerts.filter(a => a.status === 'pending').length}
             onClearSelection={() => setSelectedIds(new Set())}
             bulkActions={[
-              { icon: <Stamp className="size-3" />, onClick: handleBulkResolve, ariaLabel: 'Resolve selected' },
-              { icon: <Ban className="size-3" />, onClick: handleBulkDismiss, ariaLabel: 'Dismiss selected' },
+              { icon: <Ban className="size-3" />, onClick: handleBulkDismiss, ariaLabel: 'Dismiss selected', confirm: { title: `Dismiss ${selectedIds.size} alert${selectedIds.size === 1 ? '' : 's'}?`, description: 'Selected alerts will be dismissed as false positives. No Reddit action will be taken.', actionLabel: 'Dismiss' } },
+              { icon: <Trash2 className="size-3" />, onClick: handleBulkDelete, ariaLabel: 'Delete selected', confirm: { title: `Delete ${selectedIds.size} alert${selectedIds.size === 1 ? '' : 's'}?`, description: 'Permanently removes selected alerts. This cannot be undone.', actionLabel: 'Delete', destructive: true } },
             ]}
             overlay={mobileContent}
             scrollToId={selectedAlertId}
@@ -453,13 +472,14 @@ export function Dashboard({ initialTab = 'alerts', initialDetailTab = null }: Da
             onItemClick={i => { setSelectedItemId(i.id); setSelectedAlertId(null); setSelectedClusterId(null); setMobileView(null) }}
             isLoading={itemsLoading}
             emptyIcon={<PenTool className="size-6 text-muted-foreground" />}
-            emptyMessage={itemsLoading ? 'Loading items...' : 'No items ingested'}
+            emptyMessage={itemsLoading ? 'Loading items...' : search ? 'No matching posts' : 'No items ingested'}
             tabs={listTabs}
             activeTab={listActiveTab}
             onTabChange={onListTabChange}
             filters={detailActive ? [] : itemFilters}
             searchValue={search}
             onSearchChange={detailActive ? undefined : setSearch}
+            onBack={detailActive ? clearSelection : undefined}
             infinite={{
               hasNextPage: itemsHasMore,
               isFetchingNextPage: itemsFetchingMore,
@@ -471,20 +491,21 @@ export function Dashboard({ initialTab = 'alerts', initialDetailTab = null }: Da
           />
         ) : (
           <DataList
-            data={clusters}
+            data={filteredClusters}
             getItemId={c => c.id}
             renderItem={renderClusterRow}
             activeId={selectedClusterId ?? undefined}
             onItemClick={c => { setSelectedClusterId(c.id); setSelectedAlertId(null); setSelectedItemId(null); setMobileView(null) }}
             isLoading={clustersLoading}
             emptyIcon={<Hash className="size-6 text-muted-foreground" />}
-            emptyMessage={clustersLoading ? 'Loading topics...' : 'No topics'}
+            emptyMessage={clustersLoading ? 'Loading topics...' : search ? 'No matching topics' : 'No topics'}
             tabs={listTabs}
             activeTab={listActiveTab}
             onTabChange={onListTabChange}
             filters={[]}
             searchValue={search}
             onSearchChange={detailActive ? undefined : setSearch}
+            onBack={detailActive ? clearSelection : undefined}
             overlay={mobileContent}
             scrollToId={selectedClusterId}
           />

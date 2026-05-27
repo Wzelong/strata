@@ -100,7 +100,7 @@
         ],
         "forUserType": "moderator",
         "endpoint": "/internal/menu/similar-decisions"
-      }
+      },
     ]
   },
   "forms": {

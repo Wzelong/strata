@@ -1,4 +1,4 @@
-export type ChatModel = 'gpt-5.5' | 'gpt-5.4' | 'gpt-5.4-mini' | 'gpt-5.4-nano'
+export type ChatModel = 'gpt-5.5' | 'gpt-5.4' | 'gpt-5.4-mini'
 
 export interface ChatMessageData {
   id: string

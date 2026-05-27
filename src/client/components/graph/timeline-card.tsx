@@ -158,7 +158,7 @@ export function TimelineCard({ minTs, maxTs, tCurrent, onChange, timestamps }: T
         tabIndex={0}
         role="slider"
         aria-label="Timeline cursor"
-        className="relative h-4 sm:h-6 cursor-pointer touch-none rounded-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-foreground/40"
+        className="relative h-4 sm:h-6 cursor-pointer touch-none rounded-sm outline-none"
         onKeyDown={handleKeyDown}
         onPointerDown={(e) => {
           draggingRef.current = true

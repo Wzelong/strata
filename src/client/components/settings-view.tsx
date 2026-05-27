@@ -13,8 +13,8 @@ import { CancelBackfillDialog } from './cancel-backfill-dialog.js'
 import {
   cancelBackfill, deleteAllItems, resetAllAlerts, resetStrata, fetchRules, reloadRules, startScan, fetchUsage,
   fetchCommunityContext, saveCommunityContext,
-  fetchClusterStatus, fetchClusterConfig, saveClusterConfig, triggerRecluster, saveModContentSetting,
-  type BackfillRecord, type RuleSummary, type ScanRecord, type UsageSummary, type ClusterStatus, type ClusterConfig,
+  fetchClusterStatus, triggerRecluster, saveModContentSetting,
+  type BackfillRecord, type RuleSummary, type ScanRecord, type UsageSummary, type ClusterStatus,
 } from '../lib/api.js'
 import { cn, formatBytes, formatRelativeTime, compactCount } from '../lib/utils.js'
 
@@ -284,25 +284,13 @@ function CommunityContextSection() {
 
 function ClustersSection() {
   const [status, setStatus] = useState<ClusterStatus | null>(null)
-  const [config, setConfig] = useState<ClusterConfig | null>(null)
-  const [resolution, setResolution] = useState(0.5)
-  const [minSize, setMinSize] = useState(10)
   const [reclustering, setReclustering] = useState(false)
-  const [savingConfig, setSavingConfig] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const load = async () => {
     try {
       const s = await fetchClusterStatus()
       setStatus(s)
-    } catch {}
-    try {
-      const c = await fetchClusterConfig()
-      if (c?.resolution != null) {
-        setConfig(c)
-        setResolution(c.resolution)
-        setMinSize(c.minClusterSize)
-      }
     } catch {}
   }
 
@@ -311,18 +299,6 @@ function ClustersSection() {
     const id = setInterval(load, 10000)
     return () => clearInterval(id)
   }, [])
-
-  const dirty = config !== null && (resolution !== config.resolution || minSize !== config.minClusterSize)
-
-  const handleSave = async () => {
-    setSavingConfig(true)
-    try {
-      const next = await saveClusterConfig({ resolution, minClusterSize: minSize })
-      setConfig(next)
-    } finally {
-      setSavingConfig(false)
-    }
-  }
 
   const [success, setSuccess] = useState<string | null>(null)
 
@@ -371,60 +347,6 @@ function ClustersSection() {
           {success && <p className="border-t border-border px-3 py-2 text-xs text-emerald-500">{success}</p>}
         </div>
 
-        <div className="rounded-md border border-border p-3 space-y-3">
-          <div>
-            <div className="flex items-center justify-between mb-1">
-              <label className="text-xs font-medium">Granularity</label>
-              <span className="text-[11px] text-muted-foreground tabular-nums">{resolution.toFixed(2)}</span>
-            </div>
-            <input
-              type="range"
-              min={0.3}
-              max={1.5}
-              step={0.1}
-              value={resolution}
-              onChange={e => setResolution(parseFloat(e.target.value))}
-              className="w-full accent-foreground"
-            />
-            <div className="flex justify-between text-[10px] text-muted-foreground mt-0.5">
-              <span>Broader topics</span>
-              <span>More specific</span>
-            </div>
-          </div>
-
-          <div>
-            <div className="flex items-center justify-between mb-1">
-              <label className="text-xs font-medium">Minimum cluster size</label>
-              <span className="text-[11px] text-muted-foreground tabular-nums">{minSize}</span>
-            </div>
-            <input
-              type="range"
-              min={5}
-              max={50}
-              step={1}
-              value={minSize}
-              onChange={e => setMinSize(parseInt(e.target.value, 10))}
-              className="w-full accent-foreground"
-            />
-            <div className="flex justify-between text-[10px] text-muted-foreground mt-0.5">
-              <span>5 items</span>
-              <span>50 items</span>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <button
-              onClick={handleSave}
-              disabled={!dirty || savingConfig}
-              className="h-7 px-2.5 text-xs rounded-md cursor-pointer border border-border text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
-            >
-              {savingConfig ? 'Saving…' : 'Save'}
-            </button>
-            <span className="text-[11px] text-muted-foreground">
-              Applies on next recluster. Defaults: resolution {config?.defaults.resolution.toFixed(2) ?? '0.5'}, min size {config?.defaults.minClusterSize ?? 10}.
-            </span>
-          </div>
-        </div>
       </div>
     </Section>
   )

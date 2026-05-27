@@ -164,6 +164,16 @@ export class RedisAlertStore implements AlertStore {
     return entries.map(e => e.member)
   }
 
+  async deleteAlert(id: string): Promise<void> {
+    const raw = await this.redis.hGetAll(`strata:alert:${id}`)
+    if (raw?.anchorId) {
+      await this.redis.zRem(`strata:idx:alert-anchor:${raw.anchorId}`, [id])
+    }
+    await this.redis.del(`strata:alert:${id}`)
+    await this.redis.del(`strata:alert:${id}:connections`)
+    await this.redis.zRem('strata:alerts', [id])
+  }
+
   async resetAll(): Promise<void> {
     const entries = await this.redis.zRange('strata:alerts', 0, -1).catch(() => [])
     const anchorIds = new Set<string>()

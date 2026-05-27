@@ -41,7 +41,7 @@ export function ChatInput({ value, onChange, onSubmit, streaming, disabled, plac
   const canSend = value.trim().length > 0 && !disabled && !streaming
 
   return (
-    <div className={cn('flex items-end gap-1.5 border border-border bg-background px-2 py-1.5', className)}>
+    <div className={cn('flex items-end gap-1.5 border border-border bg-background rounded-lg px-2 py-1.5 focus-within:border-foreground/40 transition-colors', className)}>
       <textarea
         ref={textareaRef}
         value={value}

@@ -9,5 +9,6 @@ export interface AlertStore {
   updateAlertDraft(id: string, fields: { draftPostTitle: string; draftPostBody: string; draftedAt: number; draftedBy: string }): Promise<void>
   updateAlertPublished(id: string, fields: { publishedPostId: string; publishedPostTitle: string; publishedPostBody: string; publishedPostPermalink: string; publishedAt: number; publishedBy: string }): Promise<void>
   getAlertIdsByAnchor(anchorId: string): Promise<string[]>
+  deleteAlert(id: string): Promise<void>
   resetAll(): Promise<void>
 }

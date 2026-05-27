@@ -78,6 +78,12 @@ export class MemoryAlertStore implements AlertStore {
       .map(a => a.id)
   }
 
+  async deleteAlert(id: string): Promise<void> {
+    this.alerts.delete(id)
+    this.connections.delete(id)
+    this.timeline = this.timeline.filter(e => e.id !== id)
+  }
+
   async resetAll(): Promise<void> {
     this.alerts.clear()
     this.connections.clear()

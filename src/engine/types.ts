@@ -19,6 +19,7 @@ export type Item = {
   createdAt: number
   threadRootId: string
   parentId: string | null
+  permalink?: string
   embedding: number[]
   entities: Entity[]
   decision: Decision
@@ -39,6 +40,7 @@ export type RawItem = {
   createdAt: number
   threadRootId: string
   parentId: string | null
+  permalink?: string
 }
 
 export type Rule = {

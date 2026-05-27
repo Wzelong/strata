@@ -56,6 +56,7 @@ export class StrataEngine {
       createdAt: raw.createdAt,
       threadRootId: raw.threadRootId,
       parentId: raw.parentId,
+      ...(raw.permalink && { permalink: raw.permalink }),
       entities,
       decision: 'pending',
       decisionAt: null,
@@ -76,6 +77,11 @@ export class StrataEngine {
     }
 
     return { ...stored, embedding }
+  }
+
+  async isNearDuplicate(embedding: number[], excludeId: string, threshold = 0.90): Promise<boolean> {
+    const hits = await findSimilar(this.store, embedding, 1, { excludeIds: new Set([excludeId]) })
+    return hits.length > 0 && hits[0].weight >= threshold
   }
 
   async surface(item: Item, opts?: { topK?: number }): Promise<{ candidates: Hit[]; entityMatches: Map<string, string[]> }> {

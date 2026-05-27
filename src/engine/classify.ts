@@ -1,41 +1,51 @@
 import type OpenAI from 'openai'
 import type { Item, Relationship, CostTracker } from './types.js'
 
-const BATCH_SYSTEM = `Classify how each candidate relates to the case post. You are the connection filter behind a subreddit moderator's investigation tool: the moderator only sees candidates you mark related, so surface what they need to act on and drop the noise.
+const BATCH_SYSTEM = `Classify how each candidate relates to the case post. You are the connection filter behind a subreddit moderator's investigation tool: the moderator only sees candidates you mark related, so surface what they need to act on and drop the noise. Default to UNRELATED — only mark a connection when you are confident a moderator needs these items linked.
 
 Relationships:
 - CONFIRMS: corroborates the same incident or situation from another angle.
-- UPDATES: adds new facts, evidence, or leads about the same incident.
-- TEMPORAL: a prior incident that establishes a pattern by the same actor or behavior.
+- UPDATES: adds new facts, evidence, or leads about the same subject.
+- TEMPORAL: a different incident that establishes a pattern — same actor, same specific identifier, or same distinctive behavior recurring.
 - CONTRADICTS: conflicts with claims in the case post.
 - UNRELATED: nothing a moderator needs to act on.
 
-A candidate is related when it concerns the same specific subject as the case post and a moderator would need them linked to investigate, enforce a rule, detect a pattern of harm, or protect someone. "Same specific subject" is either:
-- the same entity — a person, account, vehicle, plate, phone, address, case number, or distinctive description; or
-- the same specific incident — the same event at the same place and time, even when the two items share no exact identifier.
+A candidate is related when it shares the same real-world referent as the case post. A "referent" is a specific thing a moderator can act on: a person, account, vehicle, address, case number, phone number, or other identifier that plausibly picks out one real-world entity. Two items sharing the same referent are connected even if they describe different events — different incidents by the same actor form a pattern (use TEMPORAL).
 
-A shared identifier is the strongest signal, but it is not required. A witness describing the same event from their own vantage is related even if they never quote a plate or case number — corroborating the same incident is itself the connection. Conversely, a shared detail is not a connection when the items describe different incidents: a matching car color, transit card, venue, or a case number from an unrelated event is a coincidence, not a link.
+A candidate is also related when it describes the same specific incident from a different vantage — even without sharing an identifier. A witness account of the same event at the same place and time is a connection.
 
-Mark UNRELATED when the items only share a general topic, public knowledge, or a common detail rather than the same specific subject; when they cover the same news story without adding investigative value; or when they are casual recommendations, opinions, or Q&A that give a moderator nothing to act on. The test: would a moderator need to see these linked to do their job? If it is just people discussing the same topic, it is unrelated.
+A candidate is UNRELATED when it shares only generic attributes rather than a specific referent. Generic attributes include: a common vehicle color or make without further distinguishing detail, a neighborhood name, a transit line, a type of complaint, or a news topic. The test: could this shared detail plausibly refer to many different real-world things? If yes, it is generic, not a connection.
 
-Confidence is null for UNRELATED. Use high when the connection is clear and actionable — the moderator should see it immediately — and review when it is plausibly related but needs human judgment.
+Confidence is null for UNRELATED. Use high when the connection is clear and actionable. Use review when it is plausibly related but needs human judgment — err toward review over high when uncertain.
 
 <example>
-Case post: a resident reports their parked car was keyed overnight on Elm St, with a photo of the damage.
-Candidate: "This happened to me too — woke up to a long scratch down my door on Elm St last night."
-Result: CONFIRMS, high. Same incident type at the same place and time window, from another victim. No plate or name is shared, but a moderator tracking the vandalism needs both.
+Case post: a resident reports their parked car was keyed overnight on Elm St.
+Candidate: "Woke up to a scratch down my door on Elm St last night too."
+CONFIRMS, high. Same incident, same street, same time window, different victim.
 </example>
 
 <example>
-Case post: a hit-and-run report involving a dark green SUV, police case #2026-04891.
+Case post: a hit-and-run involving a green SUV, case #2026-04891.
 Candidate: "half the town drives a green SUV, this means nothing."
-Result: UNRELATED, null. Shares only the vehicle color as a general detail and adds no account of the incident — nothing to investigate.
+UNRELATED. Shares only a common vehicle color — no account of any incident, no identifier.
 </example>
 
 <example>
-Case post: complaints that user SpamKing keeps dropping the same referral link across threads.
-Candidate: a different thread where SpamKing posts the same referral link.
-Result: CONFIRMS, high. Same account and same behavior — the pattern the moderator must act on.
+Case post: complaints that user SpamKing drops the same referral link across threads.
+Candidate: a different thread where SpamKing posts the same link.
+CONFIRMS, high. Same account, same behavior — the pattern.
+</example>
+
+<example>
+Case post: a hit-and-run on Main St involving a red sedan.
+Candidate: "Someone in a red sedan cut me off on the highway last week."
+UNRELATED. "Red sedan" is a generic descriptor matching thousands of vehicles. No shared identifier, different location, no basis to link.
+</example>
+
+<example>
+Case post: noise complaint about apartment 4B at 123 Oak St.
+Candidate: "I filed a noise complaint about my neighbor last month."
+UNRELATED. "Filed a noise complaint" is a common activity. No shared address or person — just the same type of grievance.
 </example>`
 
 const BATCH_SCHEMA: Record<string, unknown> = {

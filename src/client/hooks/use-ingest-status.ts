@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { fetchIngestStatus, type IngestStatus } from '../lib/api.js'
+import { refreshStats } from './use-stats.js'
 
 const TERMINAL = new Set(['idle', 'done', 'error', 'cancelled'])
 const POLL_INTERVAL_MS = 5000
@@ -8,8 +9,12 @@ let cached: IngestStatus | null = null
 const subscribers = new Set<(s: IngestStatus) => void>()
 
 function publish(s: IngestStatus) {
+  const prev = cached
   cached = s
   subscribers.forEach(fn => fn(s))
+  if (prev && !TERMINAL.has(prev.phase) && TERMINAL.has(s.phase)) {
+    refreshStats()
+  }
 }
 
 export function useIngestStatus() {

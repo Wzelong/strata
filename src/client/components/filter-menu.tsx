@@ -27,12 +27,12 @@ export function FilterMenu({ filters, onReset }: FilterMenuProps) {
       <button
         onClick={() => setOpen(!open)}
         className={cn(
-          'h-6 w-6 inline-flex items-center justify-center rounded cursor-pointer text-muted-foreground hover:text-foreground transition-colors',
+          'cursor-pointer h-7 w-7 inline-flex items-center justify-center rounded-md hover:bg-accent text-muted-foreground hover:text-foreground transition-colors',
           (hasActiveFilter || open) && 'bg-accent text-foreground',
         )}
         aria-label="Filter"
       >
-        <ListFilter className="size-3" />
+        <ListFilter className="size-3.5" />
       </button>
 
       {open && (

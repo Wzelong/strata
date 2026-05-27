@@ -410,8 +410,7 @@ function SurfaceDraftCard({
                   setPublishing(true)
                   setError(null)
                   const res = await publishAlertPost(alertId, { title: draft.title.trim(), body: draft.body })
-                  setPublishing(false)
-                  if ('error' in res && res.error) { setError(res.error); return }
+                  if ('error' in res && res.error) { setPublishing(false); setError(res.error); return }
                   onPublished?.()
                 }}
                 className={cn(
@@ -427,7 +426,7 @@ function SurfaceDraftCard({
           </Tooltip>
         </div>
       </div>
-      <div className="p-3">
+      <div className={cn('p-3 transition-opacity', regenerating && 'opacity-50')}>
         {error && <p className="mb-3 text-xs text-destructive">{error}</p>}
         <p className="text-base font-semibold leading-snug break-words mb-3">{draft.title}</p>
         <MarkdownBody text={draft.body} />
@@ -437,6 +436,7 @@ function SurfaceDraftCard({
           value={refinement}
           onChange={setRefinement}
           onSubmit={handleRefine}
+          disabled={regenerating}
           streaming={regenerating}
           placeholder="Refine draft..."
         />
@@ -1133,6 +1133,23 @@ export function AlertDetailPanel({ alertId, alertData, itemId, itemData, cluster
                   className="h-7 px-2.5 text-xs rounded-md cursor-pointer border border-emerald-600/40 text-emerald-600 hover:bg-emerald-600/10 dark:text-emerald-400 dark:border-emerald-400/40 dark:hover:bg-emerald-400/10 transition-colors disabled:opacity-50"
                 >
                   Confirm
+                </button>
+              </div>
+            </div>
+          )}
+          {alert && alert.status !== 'pending' && detailTab === 'overview' && !bulkConfirm && (
+            <div className="shrink-0 border-t h-[45px] px-3 flex items-center gap-2">
+              <div className="ml-auto">
+                <button
+                  onClick={async () => {
+                    await alertAction(alertId!, 'pending')
+                    const fresh = await fetchAlertDetail(alertId!)
+                    setAlert(fresh)
+                    onStatusChange()
+                  }}
+                  className="h-7 px-2.5 text-xs rounded-md cursor-pointer text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                >
+                  Reopen
                 </button>
               </div>
             </div>
