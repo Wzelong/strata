@@ -72,9 +72,7 @@ Evaluated on a 10,044-item corpus with planted signals and adversarial decoys ac
 | False positive rate | 0% (no decoys classified as related) |
 | Consistency | 10/10 trials pass all checks |
 
-![Retrieval: finding buried witnesses among 10,044 community posts](benchmark/retrieval.png)
-
-3 of 4 planted witnesses (blue) surface in the top 15 out of 10,044 items. The 4th is a pure-narrative account with no shared entities — the honest ceiling of entity-driven retrieval. Adversarial decoys (red) — designed to share surface-level attributes but not a real-world referent — are retrieved but correctly rejected by the classifier. Full breakdown (precision/recall curves, confusion matrix, channel analysis) in [`benchmark/`](benchmark/).
+Full breakdown (precision/recall curves, retrieval ranking, confusion matrix, channel analysis) in the `benchmark/` directory.
 
 ### Reproduce
 
@@ -92,35 +90,35 @@ npm run benchmark:seed && npm run benchmark && npm run benchmark:viz
 
 ```
 Reddit event (post/comment submit)
-       │
-       ▼
-┌──────────────────────────────┐
-│  Devvit Trigger Handler      │
-│  (server/index.ts)           │
-└──────────┬───────────────────┘
-           │
-           ▼
-┌──────────────────────────────┐
-│  StrataEngine.ingest()       │
-│  ┌─────────┐  ┌───────────┐ │
-│  │ Embed   │  │ Extract   │ │   ← parallel
-│  │ (256d)  │  │ (entities)│ │
-│  └────┬────┘  └─────┬─────┘ │
-│       └──────┬───────┘       │
-│              ▼               │
-│     Store: Redis             │
-└──────────┬───────────────────┘
-           │
-     ┌─────┴─────┐
-     ▼           ▼
-┌─────────┐ ┌──────────┐
-│ Surface │ │   Flag   │
-│ (posts) │ │ (all)    │
-└────┬────┘ └────┬─────┘
-     │           │
-     ▼           ▼
-  Alerts      Mod Queue
-  ModMail     Dashboard
+        │
+        ▼
+┌─────────────────────────┐
+│  Devvit Trigger Handler │
+│  (server/index.ts)      │
+└───────────┬─────────────┘
+            │
+            ▼
+┌─────────────────────────┐
+│  StrataEngine.ingest()  │
+│  ┌────────┐ ┌─────────┐│
+│  │ Embed  │ │ Extract ││  ← parallel
+│  │ (256d) │ │(entities)││
+│  └───┬────┘ └────┬────┘│
+│      └─────┬─────┘     │
+│            ▼            │
+│      Store: Redis       │
+└───────────┬─────────────┘
+            │
+      ┌─────┴─────┐
+      ▼           ▼
+┌──────────┐ ┌──────────┐
+│ Surface  │ │   Flag   │
+│ (posts)  │ │  (all)   │
+└─────┬────┘ └────┬─────┘
+      │           │
+      ▼           ▼
+   Alerts      Mod Queue
+   ModMail     Dashboard
 ```
 
 ### Pipeline stages
@@ -225,4 +223,4 @@ strata/
 
 ## License
 
-BSD-3-Clause
+MIT

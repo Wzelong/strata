@@ -18,8 +18,7 @@
     "http": {
       "enable": true,
       "domains": [
-        "api.openai.com",
-        "raw.githubusercontent.com"
+        "api.openai.com"
       ]
     },
     "redis": true,
@@ -61,20 +60,6 @@
         "endpoint": "/internal/menu/dashboard"
       },
       {
-        "label": "Strata: Seed Data",
-        "description": "Load demo dataset into Redis",
-        "location": "subreddit",
-        "forUserType": "moderator",
-        "endpoint": "/internal/menu/seed-data"
-      },
-      {
-        "label": "Strata: Demo Setup",
-        "description": "Plant a recording-ready scene: brigade alert + removed pattern precedents",
-        "location": "subreddit",
-        "forUserType": "moderator",
-        "endpoint": "/internal/menu/demo-setup"
-      },
-      {
         "label": "Strata: Reset Data",
         "description": "Wipe all Strata data from Redis, including the OpenAI API key",
         "location": "subreddit",
@@ -100,7 +85,7 @@
         ],
         "forUserType": "moderator",
         "endpoint": "/internal/menu/similar-decisions"
-      },
+      }
     ]
   },
   "forms": {

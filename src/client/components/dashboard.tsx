@@ -120,6 +120,12 @@ export function Dashboard({ initialTab = 'alerts', initialDetailTab = null }: Da
 
   useEffect(() => { loadAlerts() }, [loadAlerts])
 
+  useEffect(() => {
+    if (tab !== 'alerts') return
+    const id = setInterval(loadAlerts, 30_000)
+    return () => clearInterval(id)
+  }, [tab, loadAlerts])
+
 
   const loadClusters = useCallback(async () => {
     setClustersLoading(true)
