@@ -4,9 +4,9 @@
 
 Strata is a **cross-thread intelligence engine** for Reddit moderators. It ingests every post and comment, extracts linkable entities, and surfaces buried connections, coordinated brigades, and repeat patterns — all inside a native Devvit custom post.
 
-- **Demo video** — *[YouTube link]*
-- **App listing** — *[developers.reddit.com/apps/strata-hackathon]*
-- **Live test post** — *[r/strata_hackathon_dev]*
+- **Demo video** — *[[YouTube link](https://www.youtube.com/watch?v=rApVnA2rZDo)]*
+- **App listing** — *[[developers.reddit.com/apps/strata-hackathon](https://developers.reddit.com/apps/strata-hackathon)]*
+- **Live test post** — *[[r/strata_hackathon_dev](https://www.reddit.com/r/strata_hackathon_dev/)]*
 
 ---
 
